@@ -1,0 +1,20 @@
+@import '../../app.wxss';
+
+.small-btn {
+  margin: 0;
+  font-size: 24rpx;
+  line-height: 1;
+  padding: 18rpx 22rpx;
+}
+
+.session-status-badge.active {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.34);
+  color: #b8ffdf;
+}
+
+.session-status-badge.finished {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: rgba(255,255,255,0.78);
+}

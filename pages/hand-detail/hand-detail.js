@@ -1,0 +1,643 @@
+const dataService = require('../../services/data-service')
+const voiceParser = require('../../utils/voice-parser')
+const cardUi = require('../../utils/card-ui')
+const display = require('../../utils/display')
+
+const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
+const SUITS = [
+  { key: 's', symbol: '♠', className: 'spade' },
+  { key: 'h', symbol: '♥', className: 'heart' },
+  { key: 'd', symbol: '♦', className: 'diamond' },
+  { key: 'c', symbol: '♣', className: 'club' }
+]
+const BOARD_FIELD_META = {
+  flop: { label: '翻牌', shortLabel: 'F', limit: 3, emptyText: '选择 3 张公牌' },
+  turn: { label: '转牌', shortLabel: 'T', limit: 1, emptyText: '选择 1 张公牌' },
+  river: { label: '河牌', shortLabel: 'R', limit: 1, emptyText: '选择 1 张公牌' }
+}
+
+function normalizeCardsValue(value, limit) {
+  return cardUi.parseCardsInput(value, limit)
+    .map(function (card) {
+      return card.rank + card.suit
+    })
+    .join('')
+}
+
+function buildBoardVisual(board) {
+  return cardUi.parseBoardStreets(board)
+}
+
+function buildParsedVoicePreview(parsedVoice) {
+  if (!parsedVoice) return null
+  return Object.assign({}, parsedVoice, {
+    heroCardsVisual: cardUi.parseHeroCardsInput(parsedVoice.heroCardsInput),
+    boardVisual: buildBoardVisual(parsedVoice.board)
+  })
+}
+
+function buildBoardEditorVisual(form) {
+  return Object.keys(BOARD_FIELD_META).map(function (key) {
+    const meta = BOARD_FIELD_META[key]
+    return {
+      key: key,
+      label: meta.label,
+      shortLabel: meta.shortLabel,
+      cards: cardUi.parseCardsInput(form[key], meta.limit),
+      emptyText: meta.emptyText
+    }
+  })
+}
+
+function buildHeroPickerDeck(form) {
+  const selected = cardUi.parseHeroCardsInput(form.heroCardsInput)
+    .map(function (card) {
+      return card.rank + card.suit
+    })
+
+  const occupied = Object.keys(BOARD_FIELD_META)
+    .reduce(function (list, key) {
+      const meta = BOARD_FIELD_META[key]
+      return list.concat(
+        cardUi.parseCardsInput(form[key], meta.limit).map(function (card) {
+          return card.rank + card.suit
+        })
+      )
+    }, [])
+
+  return SUITS.map(function (suit) {
+    return {
+      key: suit.key,
+      cards: RANKS.map(function (rank) {
+        const token = rank + suit.key
+        return {
+          token: token,
+          rank: rank,
+          suitClass: suit.className,
+          suitSymbol: suit.symbol,
+          selected: selected.indexOf(token) > -1,
+          disabled: occupied.indexOf(token) > -1
+        }
+      })
+    }
+  })
+}
+
+function buildHeroPickerPreview(form) {
+  return cardUi.parseHeroCardsInput(form.heroCardsInput)
+}
+
+function buildHeroPickerHint(form) {
+  const count = cardUi.parseHeroCardsInput(form.heroCardsInput).length
+  return '已选 ' + count + ' / 2 张'
+}
+
+function buildBoardPickerDeck(form, activeKey) {
+  const activeMeta = BOARD_FIELD_META[activeKey] || BOARD_FIELD_META.flop
+  const activeSelected = cardUi.parseCardsInput(form[activeKey], activeMeta.limit)
+    .map(function (card) {
+      return card.rank + card.suit
+    })
+
+  const occupied = Object.keys(BOARD_FIELD_META)
+    .filter(function (key) { return key !== activeKey })
+    .reduce(function (list, key) {
+      const meta = BOARD_FIELD_META[key]
+      return list.concat(
+        cardUi.parseCardsInput(form[key], meta.limit).map(function (card) {
+          return card.rank + card.suit
+        })
+      )
+    }, [])
+    .concat(
+      cardUi.parseHeroCardsInput(form.heroCardsInput).map(function (card) {
+        return card.rank + card.suit
+      })
+    )
+
+  return SUITS.map(function (suit) {
+    return {
+      key: suit.key,
+      cards: RANKS.map(function (rank) {
+        const token = rank + suit.key
+        return {
+          token: token,
+          rank: rank,
+          suitClass: suit.className,
+          suitSymbol: suit.symbol,
+          selected: activeSelected.indexOf(token) > -1,
+          disabled: occupied.indexOf(token) > -1
+        }
+      })
+    }
+  })
+}
+
+function buildBoardPickerPreview(form, activeKey) {
+  const meta = BOARD_FIELD_META[activeKey] || BOARD_FIELD_META.flop
+  return cardUi.parseCardsInput(form[activeKey], meta.limit)
+}
+
+function buildBoardPickerHint(form, activeKey) {
+  const meta = BOARD_FIELD_META[activeKey] || BOARD_FIELD_META.flop
+  const count = cardUi.parseCardsInput(form[activeKey], meta.limit).length
+  return '已选 ' + count + ' / ' + meta.limit + ' 张'
+}
+
+function getSessionDate(session) {
+  if (!session) return ''
+  return session.date || String(session.startTime || '').split(' ')[0] || ''
+}
+
+function getSessionLevel(session) {
+  if (!session) return ''
+  if (session.smallBlind || session.bigBlind) {
+    return String(session.smallBlind || 0) + '/' + String(session.bigBlind || 0)
+  }
+  return ''
+}
+
+function getBigBlindFromLevel(levelText, session) {
+  const text = String(levelText || '').trim()
+  const match = text.match(/^(\d+)\s*\/\s*(\d+)$/)
+  if (match) return Number(match[2]) || 0
+  return Number(session && session.bigBlind) || 0
+}
+
+function formatResultBb(value, levelText, session) {
+  const amount = Number(value)
+  const bigBlind = getBigBlindFromLevel(levelText, session)
+  if (!bigBlind || Number.isNaN(amount)) return '-'
+  const bb = amount / bigBlind
+  const rounded = Math.round(bb * 10) / 10
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return (rounded > 0 ? '+' : '') + text + ' BB'
+}
+
+function buildSelectorOptions(list, currentValue) {
+  return (list || []).map(function (item) {
+    const value = String(item || '')
+    return {
+      label: value,
+      value: value,
+      selected: value === String(currentValue || '')
+    }
+  })
+}
+
+Page({
+  data: {
+    handId: '',
+    hand: null,
+    session: null,
+    actions: [],
+    chipUnit: 'BB',
+    positions: [],
+    opponentTypes: [],
+    blindPresets: [],
+    form: {
+      playedDate: '',
+      stakeLevel: '',
+      heroSeat: '',
+      heroPosition: '',
+      villainPosition: '',
+      villainType: '',
+      buttonSeat: '',
+      heroCardsInput: '',
+      effectiveStack: '',
+      potSize: '',
+      currentProfit: '',
+      showdown: '',
+      streetSummary: '',
+      preflopActionLine: '',
+      preflopPot: '',
+      flopActionLine: '',
+      flopPot: '',
+      turnActionLine: '',
+      turnPot: '',
+      riverActionLine: '',
+      riverPot: '',
+      tagsInput: '',
+      flop: '',
+      turn: '',
+      river: '',
+      ev: '',
+      mindJourney: '',
+      voiceNote: ''
+    },
+    resultBbDisplay: '-',
+    heroEditorVisual: [],
+    heroPickerVisible: false,
+    heroPickerHint: '',
+    heroPickerPreview: [],
+    heroPickerDeck: [],
+    boardEditorVisual: [],
+    boardPickerVisible: false,
+    boardPickerKey: 'flop',
+    boardPickerTitle: '翻牌',
+    boardPickerHint: '',
+    boardPickerPreview: [],
+    boardPickerDeck: [],
+    selectorVisible: false,
+    selectorTitle: '',
+    selectorKey: '',
+    selectorOptions: [],
+    parsedVoice: null,
+    loading: false
+  },
+  onLoad(options) {
+    this.setData({ handId: options.id || '' })
+    this.refresh()
+  },
+  onShow() {
+    this.refresh()
+  },
+  async refresh() {
+    this.setData({ loading: true })
+    await dataService.bootstrapCloudSync()
+    const settings = dataService.getAppSettings()
+    const chipUnit = settings.chipUnit
+    const hand = await dataService.getHandById(this.data.handId)
+    if (!hand) {
+      this.setData({ loading: false })
+      return
+    }
+    const session = await dataService.getSessionById(hand.sessionId)
+    const actions = await dataService.getActionsByHandId(hand._id)
+    const handBoard = hand.board || {}
+    const streetInputs = hand.streetInputs || {}
+    const preflopInput = streetInputs.preflop || {}
+    const flopInput = streetInputs.flop || {}
+    const turnInput = streetInputs.turn || {}
+    const riverInput = streetInputs.river || {}
+    const form = {
+      playedDate: hand.playedDate || getSessionDate(session),
+      stakeLevel: hand.stakeLevel || getSessionLevel(session),
+      heroSeat: String(hand.heroSeat || ''),
+      heroPosition: hand.heroPosition || '',
+      villainPosition: hand.villainPosition || '',
+      villainType: hand.villainType || hand.opponentType || '',
+      buttonSeat: String(hand.buttonSeat || ''),
+      heroCardsInput: normalizeCardsValue(hand.heroCardsInput, 2),
+      effectiveStack: String(hand.effectiveStack || ''),
+      potSize: String(hand.potSize || ''),
+      currentProfit: String(hand.currentProfit || 0),
+      showdown: hand.showdown || '',
+      streetSummary: hand.streetSummary || '',
+      preflopActionLine: preflopInput.actionLine || '',
+      preflopPot: String(preflopInput.pot || ''),
+      flopActionLine: flopInput.actionLine || '',
+      flopPot: String(flopInput.pot || ''),
+      turnActionLine: turnInput.actionLine || '',
+      turnPot: String(turnInput.pot || ''),
+      riverActionLine: riverInput.actionLine || '',
+      riverPot: String(riverInput.pot || ''),
+      tagsInput: (hand.tags || []).join(', '),
+      flop: normalizeCardsValue(handBoard.flop, 3),
+      turn: normalizeCardsValue(handBoard.turn, 1),
+      river: normalizeCardsValue(handBoard.river, 1),
+      ev: hand.ev || '',
+      mindJourney: hand.mindJourney || hand.notes || '',
+      voiceNote: hand.voiceNote || ''
+    }
+    this.setData({
+      hand: Object.assign({}, hand, {
+        currentProfitDisplay: display.formatAmount(hand.currentProfit, chipUnit),
+        playedDateDisplay: hand.playedDate || getSessionDate(session),
+        stakeLevelDisplay: hand.stakeLevel || getSessionLevel(session),
+        heroCardsVisual: cardUi.parseHeroCardsInput(normalizeCardsValue(hand.heroCardsInput, 2)),
+        boardVisual: buildBoardVisual(handBoard)
+      }),
+      session,
+      actions,
+      chipUnit,
+      positions: settings.positions,
+      opponentTypes: settings.opponentTypes,
+      blindPresets: settings.blindPresets,
+      form: form,
+      resultBbDisplay: formatResultBb(form.currentProfit, form.stakeLevel, session),
+      heroEditorVisual: cardUi.parseHeroCardsInput(form.heroCardsInput),
+      heroPickerVisible: false,
+      heroPickerHint: '',
+      heroPickerPreview: [],
+      heroPickerDeck: [],
+      boardEditorVisual: buildBoardEditorVisual(form),
+      boardPickerVisible: false,
+      loading: false
+    })
+  },
+  onInput(e) {
+    const key = e.currentTarget.dataset.key
+    const value = e.detail.value
+    const nextForm = Object.assign({}, this.data.form, { [key]: value })
+    const patch = { ['form.' + key]: value }
+    if (key === 'currentProfit' || key === 'stakeLevel') {
+      patch.resultBbDisplay = formatResultBb(nextForm.currentProfit, nextForm.stakeLevel, this.data.session)
+    }
+    this.setData(patch)
+  },
+  noop() {},
+  openHeroPicker() {
+    this.setData({
+      heroPickerVisible: true,
+      heroPickerHint: buildHeroPickerHint(this.data.form),
+      heroPickerPreview: buildHeroPickerPreview(this.data.form),
+      heroPickerDeck: buildHeroPickerDeck(this.data.form)
+    })
+  },
+  closeHeroPicker() {
+    this.setData({ heroPickerVisible: false })
+  },
+  syncHeroField(rawValue) {
+    const normalized = normalizeCardsValue(rawValue, 2)
+    const nextForm = Object.assign({}, this.data.form, {
+      heroCardsInput: normalized
+    })
+    const patch = {
+      'form.heroCardsInput': normalized,
+      heroEditorVisual: cardUi.parseHeroCardsInput(normalized)
+    }
+    if (this.data.hand) {
+      patch['hand.heroCardsVisual'] = cardUi.parseHeroCardsInput(normalized)
+    }
+    if (this.data.heroPickerVisible) {
+      patch.heroPickerHint = buildHeroPickerHint(nextForm)
+      patch.heroPickerPreview = buildHeroPickerPreview(nextForm)
+      patch.heroPickerDeck = buildHeroPickerDeck(nextForm)
+    }
+    if (this.data.boardPickerVisible && this.data.boardPickerKey) {
+      patch.boardPickerDeck = buildBoardPickerDeck(nextForm, this.data.boardPickerKey)
+    }
+    this.setData(patch)
+  },
+  pickHeroCard(e) {
+    const token = e.currentTarget.dataset.token
+    const disabled = !!e.currentTarget.dataset.disabled
+    if (!token || disabled) return
+    const selected = cardUi.parseHeroCardsInput(this.data.form.heroCardsInput)
+      .map(function (card) {
+        return card.rank + card.suit
+      })
+    const existsIndex = selected.indexOf(token)
+    let next = []
+    if (existsIndex > -1) {
+      next = selected.filter(function (item) { return item !== token })
+    } else {
+      next = selected.concat(token).slice(0, 2)
+    }
+    this.syncHeroField(next.join(''))
+    if (next.length >= 2) {
+      this.setData({ heroPickerVisible: false })
+    }
+  },
+  handleHeroPickerTool(e) {
+    const action = e.currentTarget.dataset.action
+    const selected = cardUi.parseHeroCardsInput(this.data.form.heroCardsInput)
+      .map(function (card) {
+        return card.rank + card.suit
+      })
+    let next = selected
+    if (action === 'backspace') {
+      next = selected.slice(0, -1)
+    }
+    if (action === 'clear') {
+      next = []
+    }
+    this.syncHeroField(next.join(''))
+  },
+  openBoardPicker(e) {
+    const key = e.currentTarget.dataset.key
+    const meta = BOARD_FIELD_META[key]
+    if (!meta) return
+    this.setData({
+      boardPickerVisible: true,
+      boardPickerKey: key,
+      boardPickerTitle: meta.label,
+      boardPickerHint: buildBoardPickerHint(this.data.form, key),
+      boardPickerPreview: buildBoardPickerPreview(this.data.form, key),
+      boardPickerDeck: buildBoardPickerDeck(this.data.form, key)
+    })
+  },
+  closeBoardPicker() {
+    this.setData({ boardPickerVisible: false })
+  },
+  syncBoardField(key, rawValue) {
+    const meta = BOARD_FIELD_META[key]
+    if (!meta) return
+    const normalized = normalizeCardsValue(rawValue, meta.limit)
+    const nextForm = Object.assign({}, this.data.form, {
+      [key]: normalized
+    })
+    const patch = {
+      ['form.' + key]: normalized,
+      boardEditorVisual: buildBoardEditorVisual(nextForm)
+    }
+    if (this.data.hand) {
+      patch['hand.boardVisual'] = buildBoardVisual(nextForm)
+    }
+    if (this.data.boardPickerVisible && this.data.boardPickerKey) {
+      patch.boardPickerHint = buildBoardPickerHint(nextForm, this.data.boardPickerKey)
+      patch.boardPickerPreview = buildBoardPickerPreview(nextForm, this.data.boardPickerKey)
+      patch.boardPickerDeck = buildBoardPickerDeck(nextForm, this.data.boardPickerKey)
+    }
+    this.setData(patch)
+  },
+  pickBoardCard(e) {
+    const token = e.currentTarget.dataset.token
+    const disabled = !!e.currentTarget.dataset.disabled
+    const key = this.data.boardPickerKey
+    const meta = BOARD_FIELD_META[key]
+    if (!token || !meta || disabled) return
+    const selected = cardUi.parseCardsInput(this.data.form[key], meta.limit)
+      .map(function (card) {
+        return card.rank + card.suit
+      })
+    const existsIndex = selected.indexOf(token)
+    let next = []
+    if (existsIndex > -1) {
+      next = selected.filter(function (item) { return item !== token })
+    } else {
+      next = selected.concat(token).slice(0, meta.limit)
+    }
+    this.syncBoardField(key, next.join(''))
+    if (next.length >= meta.limit) {
+      this.setData({ boardPickerVisible: false })
+    }
+  },
+  handleBoardPickerTool(e) {
+    const action = e.currentTarget.dataset.action
+    const key = this.data.boardPickerKey
+    const meta = BOARD_FIELD_META[key]
+    if (!meta) return
+    const selected = cardUi.parseCardsInput(this.data.form[key], meta.limit)
+      .map(function (card) {
+        return card.rank + card.suit
+      })
+    let next = selected
+    if (action === 'backspace') {
+      next = selected.slice(0, -1)
+    }
+    if (action === 'clear') {
+      next = []
+    }
+    this.syncBoardField(key, next.join(''))
+  },
+  pickPosition(e) {
+    this.setData({ 'form.heroPosition': this.data.positions[e.detail.value] })
+  },
+  openPositionSelector() {
+    this.setData({
+      selectorVisible: true,
+      selectorTitle: '选择位置',
+      selectorKey: 'heroPosition',
+      selectorOptions: buildSelectorOptions(this.data.positions, this.data.form.heroPosition)
+    })
+  },
+  openVillainPositionSelector() {
+    this.setData({
+      selectorVisible: true,
+      selectorTitle: '选择对手位置',
+      selectorKey: 'villainPosition',
+      selectorOptions: buildSelectorOptions(this.data.positions, this.data.form.villainPosition)
+    })
+  },
+  openVillainTypeSelector() {
+    this.setData({
+      selectorVisible: true,
+      selectorTitle: '选择对手类型',
+      selectorKey: 'villainType',
+      selectorOptions: buildSelectorOptions(this.data.opponentTypes, this.data.form.villainType)
+    })
+  },
+  openLevelSelector() {
+    this.setData({
+      selectorVisible: true,
+      selectorTitle: '选择级别',
+      selectorKey: 'stakeLevel',
+      selectorOptions: buildSelectorOptions(this.data.blindPresets, this.data.form.stakeLevel)
+    })
+  },
+  closeSelector() {
+    this.setData({ selectorVisible: false })
+  },
+  selectPresetOption(e) {
+    const key = this.data.selectorKey
+    const value = String(e.currentTarget.dataset.value || '')
+    if (!key || !value) return
+    const nextForm = Object.assign({}, this.data.form, { [key]: value })
+    const patch = {
+      ['form.' + key]: value,
+      selectorVisible: false
+    }
+    if (key === 'stakeLevel') {
+      patch.resultBbDisplay = formatResultBb(nextForm.currentProfit, nextForm.stakeLevel, this.data.session)
+    }
+    this.setData(patch)
+  },
+  async saveDetail() {
+    const tags = this.data.form.tagsInput
+      ? this.data.form.tagsInput.split(',').map(item => item.trim()).filter(Boolean)
+      : []
+    await dataService.updateHand(this.data.handId, {
+      playedDate: this.data.form.playedDate,
+      stakeLevel: this.data.form.stakeLevel,
+      heroSeat: this.data.form.heroSeat,
+      heroPosition: this.data.form.heroPosition,
+      villainPosition: this.data.form.villainPosition,
+      villainType: this.data.form.villainType,
+      buttonSeat: this.data.form.buttonSeat,
+      heroCardsInput: this.data.form.heroCardsInput,
+      effectiveStack: this.data.form.effectiveStack,
+      potSize: this.data.form.potSize,
+      currentProfit: this.data.form.currentProfit,
+      resultBB: formatResultBb(this.data.form.currentProfit, this.data.form.stakeLevel, this.data.session),
+      opponentType: this.data.form.villainType,
+      showdown: this.data.form.showdown,
+      streetSummary: this.data.form.streetSummary,
+      streetInputs: {
+        preflop: {
+          board: '',
+          actionLine: this.data.form.preflopActionLine,
+          pot: this.data.form.preflopPot
+        },
+        flop: {
+          board: this.data.form.flop,
+          actionLine: this.data.form.flopActionLine,
+          pot: this.data.form.flopPot
+        },
+        turn: {
+          board: this.data.form.turn,
+          actionLine: this.data.form.turnActionLine,
+          pot: this.data.form.turnPot
+        },
+        river: {
+          board: this.data.form.river,
+          actionLine: this.data.form.riverActionLine,
+          pot: this.data.form.riverPot
+        }
+      },
+      tags,
+      board: {
+        flop: this.data.form.flop,
+        turn: this.data.form.turn,
+        river: this.data.form.river
+      },
+      ev: this.data.form.ev,
+      notes: this.data.form.mindJourney,
+      mindJourney: this.data.form.mindJourney,
+      voiceNote: this.data.form.voiceNote
+    })
+    wx.showToast({ title: '详情已保存', icon: 'success' })
+    this.refresh()
+  },
+  parseVoice() {
+    if (!this.data.form.voiceNote) {
+      wx.showToast({ title: '请先输入口述内容', icon: 'none' })
+      return
+    }
+    const parsedVoice = buildParsedVoicePreview(voiceParser.parseVoiceText(this.data.form.voiceNote))
+    this.setData({ parsedVoice })
+    wx.showToast({ title: '已生成复盘建议', icon: 'success' })
+  },
+  async applyVoice() {
+    if (!this.data.parsedVoice) {
+      wx.showToast({ title: '暂无可回填内容', icon: 'none' })
+      return
+    }
+    const parsed = this.data.parsedVoice
+    const patch = {
+      heroPosition: parsed.heroPosition || this.data.hand.heroPosition,
+      heroCardsInput: parsed.heroCardsInput || this.data.hand.heroCardsInput,
+      effectiveStack: parsed.effectiveStack || this.data.hand.effectiveStack,
+      potSize: parsed.potSize || this.data.hand.potSize,
+      currentProfit: parsed.currentProfit || this.data.hand.currentProfit,
+      board: {
+        flop: parsed.board.flop || this.data.form.flop,
+        turn: parsed.board.turn || this.data.form.turn,
+        river: parsed.board.river || this.data.form.river
+      },
+      voiceNote: this.data.form.voiceNote,
+      notes: (this.data.form.mindJourney || '') + '\n[语音复盘] ' + parsed.noteSummary,
+      mindJourney: (this.data.form.mindJourney || '') + '\n[语音复盘] ' + parsed.noteSummary
+    }
+    await dataService.updateHand(this.data.handId, patch)
+    wx.showToast({ title: '已确认回填', icon: 'success' })
+    this.setData({ parsedVoice: null })
+    this.refresh()
+  },
+  deleteHand() {
+    wx.showModal({
+      title: '删除手牌',
+      content: '删除后本手动作链也会一起移除，是否继续？',
+      confirmColor: '#dc2626',
+      success: async res => {
+        if (!res.confirm) return
+        await dataService.deleteHand(this.data.handId)
+        wx.showToast({ title: '已删除', icon: 'success' })
+        setTimeout(() => {
+          wx.navigateBack()
+        }, 250)
+      }
+    })
+  }
+})

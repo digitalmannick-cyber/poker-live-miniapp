@@ -1,0 +1,143 @@
+<view class="app-bg"></view>
+<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
+<view class="container">
+  <view class="card home-hero-card">
+    <view class="home-hero-head">
+      <view class="home-hero-copy">
+        <view class="section-kicker">Preview Ready</view>
+        <view class="home-hero-title">一眼看清 bankroll、场次状态和最近手牌</view>
+        <view class="muted home-hero-desc">首页保留为概览页，在微信里也能直接看清当前牌局、累计盈亏和最近录入。</view>
+      </view>
+      <view class="status-pill">
+        <text>{{chipUnit}}</text>
+        <text> 当前单位</text>
+      </view>
+    </view>
+    <view class="home-kpi-grid">
+      <view class="home-kpi-cell">
+        <view class="kpi-value">{{stats.bankrollCurrent || 0}}</view>
+        <view class="kpi-label">当前 Bankroll</view>
+      </view>
+      <view class="home-kpi-cell">
+        <view class="kpi-value {{(stats.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{stats.totalProfitDisplay}}</view>
+        <view class="kpi-label">累计盈亏</view>
+      </view>
+      <view class="home-kpi-cell">
+        <view class="kpi-value">{{stats.sessionCount || 0}}</view>
+        <view class="kpi-label">总场次</view>
+      </view>
+      <view class="home-kpi-cell">
+        <view class="kpi-value">{{stats.handCount || 0}}</view>
+        <view class="kpi-label">总手数</view>
+      </view>
+    </view>
+    <view class="home-cta-row">
+      <button class="primary-btn home-cta-main" bindtap="goNewSession">开始新牌局</button>
+      <button class="secondary-btn home-cta-sub" bindtap="goQuickRecord">快速记一手</button>
+      <button class="secondary-btn home-cta-sub" bindtap="goSessionList">全部场次</button>
+    </view>
+  </view>
+
+  <view wx:if="{{activeSession}}" class="card home-session-card">
+    <view class="home-section-head">
+      <view>
+        <view class="section-kicker">Active Session</view>
+        <view class="section-title home-section-title">进行中场次</view>
+        <view class="muted small">{{activeSession.title}}</view>
+      </view>
+      <view class="badge">进行中</view>
+    </view>
+    <view class="home-session-grid">
+      <view class="home-session-cell">
+        <view class="kpi-label">级别</view>
+        <view class="home-session-value">{{activeSession.blindDisplay || '--'}}</view>
+      </view>
+      <view class="home-session-cell">
+        <view class="kpi-label">买入</view>
+        <view class="home-session-value">{{activeSession.buyIn || 0}}</view>
+      </view>
+      <view class="home-session-cell">
+        <view class="kpi-label">手数</view>
+        <view class="home-session-value">{{activeSession.handCountLabel}}</view>
+      </view>
+      <view class="home-session-cell">
+        <view class="kpi-label">盈亏</view>
+        <view class="home-session-value {{(activeSession.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{activeSession.totalProfitDisplay}}</view>
+      </view>
+    </view>
+    <button class="primary-btn home-session-btn" bindtap="goContinue">继续本场</button>
+  </view>
+
+  <view wx:else class="card home-session-card">
+    <view class="home-section-head">
+      <view>
+        <view class="section-kicker">Session Workspace</view>
+        <view class="section-title home-section-title">当前没有进行中的场次</view>
+        <view class="muted small">先开一场，再从这里直接继续记牌和复盘。</view>
+      </view>
+      <view class="badge-outline">待开始</view>
+    </view>
+    <view class="home-empty-actions">
+      <button class="primary-btn home-cta-main" bindtap="goNewSession">立即开局</button>
+      <button class="secondary-btn home-cta-sub" bindtap="goSessionList">看看历史场次</button>
+    </view>
+  </view>
+
+  <view class="card home-list-card">
+    <view class="home-section-head">
+      <view>
+        <view class="section-kicker">Recent Hands</view>
+        <view class="section-title home-section-title">最近手牌</view>
+        <view class="muted small">优先展示最近更新的记录，方便直接继续复盘。</view>
+      </view>
+      <view class="status-pill">
+        <text>Top 4</text>
+        <text> 最近更新</text>
+      </view>
+    </view>
+    <view wx:if="{{recentHands.length}}">
+      <view
+        wx:for="{{recentHands}}"
+        wx:key="_id"
+        class="home-hand-item"
+        bindtap="goHandDetail"
+        data-id="{{item._id}}"
+      >
+        <view class="home-hand-main">
+          <view class="cards-inline home-hand-cards">
+            <view class="cards-inline tight home-hero-inline">
+              <view
+                wx:for="{{item.heroCardsVisual}}"
+                wx:for-item="card"
+                wx:key="index"
+                class="mini-card mini-card-{{card.suitClass}}"
+              >
+                <text class="mini-card-rank">{{card.rank}}</text>
+                <text class="mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
+            </view>
+            <text class="home-hand-position">· {{item.heroPosition}}</text>
+            <view class="cards-inline tight home-board-inline">
+              <block wx:for="{{item.boardStreetVisual}}" wx:for-item="street" wx:key="street">
+                <view
+                  wx:for="{{street.cards}}"
+                  wx:for-item="card"
+                  wx:key="index"
+                  class="mini-card mini-card-board mini-card-{{card.suitClass}}"
+                >
+                  <text class="mini-card-rank">{{card.rank}}</text>
+                  <text class="mini-card-suit">{{card.suitSymbol}}</text>
+                </view>
+              </block>
+            </view>
+          </view>
+          <view class="small muted">底池 {{item.potSize || '-'}} · 有效筹码 {{item.effectiveStack || '-'}}</view>
+        </view>
+        <view class="home-hand-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
+      </view>
+    </view>
+    <view wx:else class="empty">还没有最近手牌，先开始记录一手吧。</view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

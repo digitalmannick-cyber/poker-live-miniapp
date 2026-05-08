@@ -1,0 +1,386 @@
+<view class="app-bg"></view>
+<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
+<view class="container" wx:if="{{hand}}">
+  <view class="card">
+    <view class="row">
+      <view>
+        <view class="card-title cards-inline">
+          <view class="cards-inline tight">
+            <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{hand.heroCardsVisual}}" wx:for-item="card" wx:key="index">
+              <text class="mini-card-rank">{{card.rank}}</text>
+              <text class="mini-card-suit">{{card.suitSymbol}}</text>
+            </view>
+          </view>
+          <text>· {{hand.heroPosition}}</text>
+        </view>
+        <view class="muted small">
+        {{session.title}}
+        <text wx:if="{{hand.playedDateDisplay}}"> · {{hand.playedDateDisplay}}</text>
+        <text wx:if="{{hand.stakeLevelDisplay}}"> · {{hand.stakeLevelDisplay}}</text>
+        <text> · 本手输赢 {{hand.currentProfitDisplay}}</text>
+        <text wx:if="{{hand.opponentType}}"> · {{hand.opponentType}}</text>
+          <text wx:if="{{form.heroSeat}}"> · Hero Seat {{form.heroSeat}}</text>
+          <text wx:if="{{form.buttonSeat}}"> · BTN {{form.buttonSeat}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="grid-2" style="margin-top: 20rpx;">
+      <view>
+        <view class="kpi-value">{{hand.effectiveStack}}</view>
+        <view class="kpi-label">有效筹码</view>
+      </view>
+      <view>
+        <view class="kpi-value">{{hand.potSize}}</view>
+        <view class="kpi-label">当前底池</view>
+      </view>
+    </view>
+    <view style="margin-top: 20rpx;">
+      <view class="board-line" wx:for="{{hand.boardVisual}}" wx:key="index">
+        <text class="board-street-label">{{item.label}}</text>
+        <view wx:if="{{item.cards.length}}" class="cards-inline tight">
+          <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{item.cards}}" wx:for-item="card" wx:key="index">
+            <text class="mini-card-rank">{{card.rank}}</text>
+            <text class="mini-card-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+        <text wx:else class="board-empty-text">-</text>
+      </view>
+    </view>
+    <view class="muted small" style="margin-top: 16rpx;">{{hand.streetSummary}}</view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">逐街动作时间线</view>
+    <view wx:if="{{actions.length}}">
+      <view class="list-item" wx:for="{{actions}}" wx:key="_id">
+        <view>{{item.street}} · {{item.actorLabel}} · {{item.actionType}} {{item.amount}}</view>
+        <view class="small muted">Seat {{item.actorSeat}} · Pot {{item.potAfter || '-'}}</view>
+      </view>
+    </view>
+    <view class="empty" wx:else>暂无动作明细</view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">基础信息</view>
+    <view class="grid-2">
+      <view>
+        <view class="label">日期</view>
+        <picker mode="date" value="{{form.playedDate}}" bindchange="onInput" data-key="playedDate">
+          <view class="picker preset-trigger">{{form.playedDate || '请选择日期'}}</view>
+        </picker>
+      </view>
+      <view>
+        <view class="label">级别</view>
+        <view class="picker preset-trigger" bindtap="openLevelSelector">{{form.stakeLevel || '请选择级别'}}</view>
+      </view>
+      <view>
+        <view class="label">Hero 座位</view>
+        <input class="input" type="number" value="{{form.heroSeat}}" data-key="heroSeat" bindinput="onInput" />
+      </view>
+      <view>
+        <view class="label">Hero 位置</view>
+        <view class="picker preset-trigger" bindtap="openPositionSelector">{{form.heroPosition || '请选择位置'}}</view>
+      </view>
+      <view>
+        <view class="label">Button 座位</view>
+        <input class="input" type="number" value="{{form.buttonSeat}}" data-key="buttonSeat" bindinput="onInput" />
+      </view>
+      <view>
+        <view class="label">Hero 手牌</view>
+        <view class="hero-editor-trigger" bindtap="openHeroPicker">
+          <view wx:if="{{heroEditorVisual.length}}" class="cards-inline tight">
+            <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{heroEditorVisual}}" wx:for-item="card" wx:key="index">
+              <text class="mini-card-rank">{{card.rank}}</text>
+              <text class="mini-card-suit">{{card.suitSymbol}}</text>
+            </view>
+          </view>
+          <text wx:else class="board-empty-text">点击选择 Hero 手牌</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">盈亏记录</view>
+    <view class="grid-2">
+      <view>
+        <view class="label">输或赢</view>
+        <input class="input" type="number" value="{{form.currentProfit}}" data-key="currentProfit" bindinput="onInput" />
+      </view>
+      <view>
+        <view class="label">结果(BB)</view>
+        <view class="picker readonly-display">{{resultBbDisplay}}</view>
+      </view>
+      <view>
+        <view class="label">EV</view>
+        <input class="input" value="{{form.ev}}" data-key="ev" bindinput="onInput" />
+      </view>
+      <view>
+        <view class="label">当前底池</view>
+        <input class="input" type="number" value="{{form.potSize}}" data-key="potSize" bindinput="onInput" />
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">位置与对手</view>
+    <view class="grid-2">
+      <view>
+        <view class="label">对手位置</view>
+        <view class="picker preset-trigger" bindtap="openVillainPositionSelector">{{form.villainPosition || '请选择对手位置'}}</view>
+      </view>
+      <view>
+        <view class="label">对手类型</view>
+        <view class="picker preset-trigger" bindtap="openVillainTypeSelector">{{form.villainType || '请选择对手类型'}}</view>
+      </view>
+      <view>
+        <view class="label">有效筹码</view>
+        <input class="input" type="number" value="{{form.effectiveStack}}" data-key="effectiveStack" bindinput="onInput" />
+      </view>
+      <view>
+        <view class="label">对手说明</view>
+        <view class="picker readonly-display">{{form.villainPosition || '-'}} · {{form.villainType || '-'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">牌局流程</view>
+    <view class="label">公牌选择</view>
+    <view class="board-editor-list">
+      <view class="board-editor-item" wx:for="{{boardEditorVisual}}" wx:key="key">
+        <view class="board-editor-label">{{item.label}}</view>
+        <view class="board-editor-trigger" bindtap="openBoardPicker" data-key="{{item.key}}">
+          <view wx:if="{{item.cards.length}}" class="cards-inline tight">
+            <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{item.cards}}" wx:for-item="card" wx:key="index">
+              <text class="mini-card-rank">{{card.rank}}</text>
+              <text class="mini-card-suit">{{card.suitSymbol}}</text>
+            </view>
+          </view>
+          <text wx:else class="board-empty-text">{{item.emptyText}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="street-stack">
+      <view class="street-block">
+        <view class="street-title">翻前</view>
+        <view class="grid-2 compact-grid">
+          <view>
+            <view class="label">动作线</view>
+            <input class="input compact-input" value="{{form.preflopActionLine}}" data-key="preflopActionLine" bindinput="onInput" />
+          </view>
+          <view>
+            <view class="label">底池</view>
+            <input class="input compact-input" type="number" value="{{form.preflopPot}}" data-key="preflopPot" bindinput="onInput" />
+          </view>
+        </view>
+      </view>
+      <view class="street-block">
+        <view class="street-title">翻牌</view>
+        <view class="grid-2 compact-grid">
+          <view>
+            <view class="label">动作线</view>
+            <input class="input compact-input" value="{{form.flopActionLine}}" data-key="flopActionLine" bindinput="onInput" />
+          </view>
+          <view>
+            <view class="label">底池</view>
+            <input class="input compact-input" type="number" value="{{form.flopPot}}" data-key="flopPot" bindinput="onInput" />
+          </view>
+        </view>
+      </view>
+      <view class="street-block">
+        <view class="street-title">转牌</view>
+        <view class="grid-2 compact-grid">
+          <view>
+            <view class="label">动作线</view>
+            <input class="input compact-input" value="{{form.turnActionLine}}" data-key="turnActionLine" bindinput="onInput" />
+          </view>
+          <view>
+            <view class="label">底池</view>
+            <input class="input compact-input" type="number" value="{{form.turnPot}}" data-key="turnPot" bindinput="onInput" />
+          </view>
+        </view>
+      </view>
+      <view class="street-block">
+        <view class="street-title">河牌</view>
+        <view class="grid-2 compact-grid">
+          <view>
+            <view class="label">动作线</view>
+            <input class="input compact-input" value="{{form.riverActionLine}}" data-key="riverActionLine" bindinput="onInput" />
+          </view>
+          <view>
+            <view class="label">底池</view>
+            <input class="input compact-input" type="number" value="{{form.riverPot}}" data-key="riverPot" bindinput="onInput" />
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">复盘分析</view>
+    <view class="label">行动总结</view>
+    <textarea class="textarea analysis-textarea" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput"></textarea>
+    <view class="label">心路历程</view>
+    <textarea class="textarea analysis-textarea" value="{{form.mindJourney}}" data-key="mindJourney" bindinput="onInput"></textarea>
+    <view class="grid-2">
+      <view>
+        <view class="label">标签（逗号分隔）</view>
+        <input class="input" value="{{form.tagsInput}}" data-key="tagsInput" bindinput="onInput" />
+      </view>
+      <view>
+        <view class="label">对手 showdown</view>
+        <input class="input" value="{{form.showdown}}" data-key="showdown" bindinput="onInput" />
+        <view class="small muted inline-note">例如：对手 AQ / Villain AhQd / 对手 77</view>
+      </view>
+    </view>
+    <button class="primary-btn" bindtap="saveDetail">保存详情</button>
+    <button class="danger-btn" style="margin-top: 16rpx;" bindtap="deleteHand">删除本手</button>
+  </view>
+
+  <view class="card">
+    <view class="section-title">复盘阶段语音复盘</view>
+    <view class="muted small">这里是 MVP 中唯一的语音入口。先手动记牌，复盘时再口述补全。</view>
+    <view class="label" style="margin-top: 16rpx;">口述内容</view>
+    <textarea class="textarea" placeholder="例如：我在 CO 拿 AhKd，有效筹码 800，底池 60，赢 320，翻牌 Ts7d2c，转牌 Ad，河牌 5h" value="{{form.voiceNote}}" data-key="voiceNote" bindinput="onInput"></textarea>
+    <button class="secondary-btn" bindtap="parseVoice">生成复盘建议</button>
+
+    <view class="card" wx:if="{{parsedVoice}}" style="margin-top: 20rpx; margin-bottom: 0;">
+      <view class="card-title">待确认回填</view>
+      <view class="small muted">位置 {{parsedVoice.heroPosition || '-'}} · 有效筹码 {{parsedVoice.effectiveStack || '-'}} · 底池 {{parsedVoice.potSize || '-'}} · 输赢 {{parsedVoice.currentProfit || '-'}}</view>
+      <view style="margin-top: 14rpx;">
+        <view class="label">Hero 手牌</view>
+        <view wx:if="{{parsedVoice.heroCardsVisual.length}}" class="cards-inline tight">
+          <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{parsedVoice.heroCardsVisual}}" wx:for-item="card" wx:key="index">
+            <text class="mini-card-rank">{{card.rank}}</text>
+            <text class="mini-card-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+        <text wx:else class="board-empty-text">-</text>
+      </view>
+      <view style="margin-top: 14rpx;">
+        <view class="label">公牌</view>
+        <view class="board-line" wx:for="{{parsedVoice.boardVisual}}" wx:key="index">
+          <text class="board-street-label">{{item.label}}</text>
+          <view wx:if="{{item.cards.length}}" class="cards-inline tight">
+            <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{item.cards}}" wx:for-item="card" wx:key="index">
+              <text class="mini-card-rank">{{card.rank}}</text>
+              <text class="mini-card-suit">{{card.suitSymbol}}</text>
+            </view>
+          </view>
+          <text wx:else class="board-empty-text">-</text>
+        </view>
+      </view>
+      <button class="primary-btn" style="margin-top: 16rpx;" bindtap="applyVoice">确认回填</button>
+    </view>
+  </view>
+
+  <view wx:if="{{boardPickerVisible}}" class="board-picker-modal">
+    <view class="board-picker-mask" bindtap="closeBoardPicker"></view>
+    <view class="board-picker-panel" catchtap="noop">
+      <view class="board-picker-head">
+        <view>
+          <view class="board-picker-title">{{boardPickerTitle}}</view>
+          <view class="small muted">按牌面点选公牌，同一张牌不会重复出现在不同街。</view>
+        </view>
+        <button class="picker-close-btn" bindtap="closeBoardPicker">关闭</button>
+      </view>
+      <view class="hero-picked-preview">
+        <view class="badge-outline">{{boardPickerHint}}</view>
+        <view class="hero-picked-center cards-inline tight">
+          <view class="quick-picked-card mini-card mini-card-{{card.suitClass}}" wx:for="{{boardPickerPreview}}" wx:for-item="card" wx:key="index">
+            <text class="quick-picked-rank">{{card.rank}}</text>
+            <text class="quick-picked-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="hero-picker-deck">
+        <view class="hero-picker-row" wx:for="{{boardPickerDeck}}" wx:key="key">
+          <view
+            class="hero-picker-card hero-picker-card-{{card.suitClass}} {{card.selected ? 'selected' : ''}} {{card.disabled ? 'disabled' : ''}}"
+            wx:for="{{item.cards}}"
+            wx:for-item="card"
+            wx:key="token"
+            data-token="{{card.token}}"
+            data-disabled="{{card.disabled ? 1 : ''}}"
+            bindtap="pickBoardCard"
+          >
+            <text class="hero-picker-rank">{{card.rank}}</text>
+            <text class="hero-picker-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="hero-picker-tools">
+        <button class="secondary-btn picker-tool-main" data-action="backspace" bindtap="handleBoardPickerTool">退一张</button>
+              <button class="danger-btn picker-tool-main" data-action="clear" bindtap="handleBoardPickerTool">清空</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{heroPickerVisible}}" class="board-picker-modal">
+    <view class="board-picker-mask" bindtap="closeHeroPicker"></view>
+    <view class="board-picker-panel" catchtap="noop">
+      <view class="board-picker-head">
+        <view>
+          <view class="board-picker-title">Hero 手牌</view>
+          <view class="small muted">直接按牌面选择 2 张手牌，已在公牌里的牌会自动置灰不可选。</view>
+        </view>
+        <button class="picker-close-btn" bindtap="closeHeroPicker">关闭</button>
+      </view>
+      <view class="hero-picked-preview">
+        <view class="badge-outline">{{heroPickerHint}}</view>
+        <view class="hero-picked-center cards-inline tight">
+          <view class="quick-picked-card mini-card mini-card-{{card.suitClass}}" wx:for="{{heroPickerPreview}}" wx:for-item="card" wx:key="index">
+            <text class="quick-picked-rank">{{card.rank}}</text>
+            <text class="quick-picked-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="hero-picker-deck">
+        <view class="hero-picker-row" wx:for="{{heroPickerDeck}}" wx:key="key">
+          <view
+            class="hero-picker-card hero-picker-card-{{card.suitClass}} {{card.selected ? 'selected' : ''}} {{card.disabled ? 'disabled' : ''}}"
+            wx:for="{{item.cards}}"
+            wx:for-item="card"
+            wx:key="token"
+            data-token="{{card.token}}"
+            data-disabled="{{card.disabled ? 1 : ''}}"
+            bindtap="pickHeroCard"
+          >
+            <text class="hero-picker-rank">{{card.rank}}</text>
+            <text class="hero-picker-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="hero-picker-tools">
+        <button class="secondary-btn picker-tool-main" data-action="backspace" bindtap="handleHeroPickerTool">退一张</button>
+        <button class="danger-btn picker-tool-main" data-action="clear" bindtap="handleHeroPickerTool">清空</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{selectorVisible}}" class="board-picker-modal">
+    <view class="board-picker-mask" bindtap="closeSelector"></view>
+    <view class="selector-sheet" catchtap="noop">
+      <view class="board-picker-head">
+        <view>
+          <view class="board-picker-title">{{selectorTitle}}</view>
+          <view class="small muted">直接点选你预设好的选项。</view>
+        </view>
+        <button class="picker-close-btn" bindtap="closeSelector">关闭</button>
+      </view>
+      <scroll-view scroll-y="true" class="selector-option-list">
+        <view
+          wx:for="{{selectorOptions}}"
+          wx:key="value"
+          class="selector-option {{item.selected ? 'active' : ''}}"
+          data-value="{{item.value}}"
+          bindtap="selectPresetOption"
+        >
+          <view class="selector-option-label">{{item.label}}</view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,222 @@
+<view class="app-bg"></view>
+<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
+<view class="container">
+  <view class="card">
+    <view class="row">
+      <view>
+        <view class="card-title">复盘列表</view>
+        <view class="muted small">语音复盘从这里进入某手详情后使用</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">复盘摘要</view>
+    <view class="grid-2">
+      <view>
+        <view class="kpi-value">{{summary.totalHands}}</view>
+        <view class="kpi-label">筛选后手数</view>
+      </view>
+      <view>
+        <view class="kpi-value {{summary.totalProfit >= 0 ? 'positive' : 'negative'}}">{{summary.totalProfitDisplay}}</view>
+        <view class="kpi-label">筛选后盈亏</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">按 Session 筛选</view>
+    <scroll-view scroll-x="true" class="chip-scroll">
+      <view class="inline-actions nowrap">
+        <view class="pill {{selectedSessionId === '' ? 'active' : ''}}" bindtap="selectSession" data-id="">全部</view>
+        <view wx:for="{{sessions}}" wx:key="_id" class="pill {{selectedSessionId === item._id ? 'active' : ''}}" bindtap="selectSession" data-id="{{item._id}}">
+          {{item.title}}
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="card">
+    <view wx:if="{{hands.length}}">
+      <view wx:for="{{hands}}" wx:key="_id" class="list-item" bindtap="openHandDetail" data-id="{{item._id}}">
+        <view class="review-top-row">
+          <view class="review-hand-main cards-inline">
+            <view class="cards-inline tight review-hero-inline">
+              <view wx:for="{{item.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                <text class="mini-card-rank">{{card.rank}}</text>
+                <text class="mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
+            </view>
+            <view class="position-chip">{{item.heroPosition}}</view>
+            <view class="cards-inline tight review-board-inline">
+              <block wx:for="{{item.boardStreetVisual}}" wx:for-item="street" wx:key="street">
+                <view wx:for="{{street.cards}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-board mini-card-{{card.suitClass}}">
+                  <text class="mini-card-rank mini-card-rank-board">{{card.rank}}</text>
+                  <text class="mini-card-suit mini-card-suit-board">{{card.suitSymbol}}</text>
+                </view>
+              </block>
+            </view>
+          </view>
+          <view class="review-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
+        </view>
+        <view class="review-action-line">{{item.actionLine}}</view>
+        <view class="review-meta-row">
+          <view class="small muted">
+            底池 {{item.potSize || '-'}} · 有效筹码 {{item.effectiveStack || '-'}}
+            <text wx:if="{{item.opponentType}}"> · {{item.opponentType}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="empty">还没有可复盘的手牌。</view>
+  </view>
+
+  <view wx:if="{{detailVisible}}" class="review-modal">
+    <view class="review-modal-mask" bindtap="closeHandDetail"></view>
+    <view class="review-modal-panel" catchtap="stopModalTap">
+      <view class="review-modal-header">
+        <view>
+          <view class="card-title" style="margin-bottom: 8rpx;">
+            <view wx:if="{{detailHand}}" class="cards-inline">
+              <view class="cards-inline tight">
+                <view wx:for="{{detailHand.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                  <text class="mini-card-rank">{{card.rank}}</text>
+                  <text class="mini-card-suit">{{card.suitSymbol}}</text>
+                </view>
+              </view>
+              <text>· {{detailHand.heroPosition}}</text>
+            </view>
+            <text wx:else>手牌详情</text>
+          </view>
+          <view class="small muted">{{detailSession ? detailSession.title : ''}}</view>
+        </view>
+        <view class="review-modal-header-right">
+          <button class="review-top-action voice {{voiceRecording ? 'recording' : ''}}" bindtap="handleVoiceEntry" loading="{{voiceBusy}}" disabled="{{detailLoading || voiceBusy}}">
+            {{voiceRecording ? '结束录音' : '语音复盘'}}
+          </button>
+          <button class="review-top-action close" bindtap="closeHandDetail">关闭</button>
+          <view class="review-profit {{detailHand && detailHand.currentProfit >= 0 ? 'positive' : 'negative'}}">
+            {{detailHand ? detailHand.currentProfitDisplay : '0'}}
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{detailLoading}}" class="empty">详情加载中...</view>
+
+      <view wx:elif="{{detailHand}}">
+        <view class="review-detail-card">
+          <view class="review-detail-grid">
+            <view>
+              <view class="kpi-label">行动线</view>
+              <view class="review-detail-text">{{detailHand.actionLine}}</view>
+            </view>
+            <view>
+              <view class="kpi-label">Board</view>
+              <view class="review-detail-text review-board-wrap">
+                <view wx:for="{{detailHand.boardVisual}}" wx:key="index" class="board-line">
+                  <text class="board-street-label">{{item.label}}</text>
+                  <view wx:if="{{item.cards.length}}" class="cards-inline tight">
+                    <view wx:for="{{item.cards}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                      <text class="mini-card-rank">{{card.rank}}</text>
+                      <text class="mini-card-suit">{{card.suitSymbol}}</text>
+                    </view>
+                  </view>
+                  <text wx:else class="board-empty-text">-</text>
+                </view>
+              </view>
+            </view>
+            <view>
+              <view class="kpi-label">有效筹码</view>
+              <view class="review-detail-text">{{detailHand.effectiveStack || '-'}}</view>
+            </view>
+            <view>
+              <view class="kpi-label">当前底池</view>
+              <view class="review-detail-text">{{detailHand.potSize || '-'}}</view>
+            </view>
+          </view>
+          <view wx:if="{{detailHand.showdown}}" class="review-detail-block">
+            <view class="kpi-label">Showdown</view>
+            <view class="review-detail-text">{{detailHand.showdown}}</view>
+          </view>
+          <view wx:if="{{detailHand.tagsText}}" class="review-detail-block">
+            <view class="kpi-label">标签</view>
+            <view class="review-detail-text">{{detailHand.tagsText}}</view>
+          </view>
+          <view wx:if="{{detailHand.notes}}" class="review-detail-block">
+            <view class="kpi-label">备注</view>
+            <view class="review-detail-text">{{detailHand.notes}}</view>
+          </view>
+        </view>
+
+        <view class="review-detail-card">
+          <view class="section-title">逐街动作</view>
+          <view wx:if="{{detailActions.length}}">
+            <view wx:for="{{detailActions}}" wx:key="_id" class="review-action-row">
+              <view class="review-action-title">{{item.street}} · {{item.actorLabel}} · {{item.actionType}} {{item.amount}}</view>
+              <view class="small muted">Seat {{item.actorSeat}} · Pot {{item.potAfter || '-'}}</view>
+            </view>
+          </view>
+          <view wx:else class="empty">暂无动作明细</view>
+        </view>
+
+        <view wx:if="{{voicePanelVisible || voiceNote}}" class="review-detail-card">
+          <view class="review-voice-head">
+            <view class="section-title">语音复盘</view>
+            <view class="small muted">{{voiceStatus || '点右上角语音复盘后，直接开始说这手牌。'}}</view>
+          </view>
+          <view class="label">转写文本</view>
+          <textarea
+            class="textarea review-voice-textarea"
+            placeholder="这里会放豆包识别结果；如果当前环境还没接好豆包，也可以直接手动修改文本再继续。"
+            value="{{voiceNote}}"
+            bindinput="onVoiceNoteInput"
+          ></textarea>
+          <view class="review-voice-actions">
+            <button class="secondary-btn" bindtap="handleVoiceEntry" loading="{{voiceBusy}}" disabled="{{voiceBusy}}">
+              {{voiceRecording ? '结束录音' : '重新录音'}}
+            </button>
+            <button class="secondary-btn" bindtap="parseVoiceNote" disabled="{{voiceBusy || !voiceNote}}">生成复盘建议</button>
+            <button class="primary-btn" bindtap="applyVoicePatch" disabled="{{voiceBusy || !parsedVoice}}">确认回填</button>
+          </view>
+
+          <view wx:if="{{parsedVoice}}" class="review-voice-preview">
+            <view class="small muted">待回填字段预览</view>
+            <view class="review-detail-text">
+              位置 {{parsedVoice.heroPosition || '-'}} · 有效筹码 {{parsedVoice.effectiveStack || '-'}} · 底池 {{parsedVoice.potSize || '-'}} · 输赢 {{parsedVoice.currentProfit || '-'}}
+            </view>
+            <view class="review-detail-text review-voice-card-line">
+              <view class="kpi-label">Hero 手牌</view>
+              <view wx:if="{{parsedVoice.heroCardsVisual.length}}" class="cards-inline tight">
+                <view wx:for="{{parsedVoice.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                  <text class="mini-card-rank">{{card.rank}}</text>
+                  <text class="mini-card-suit">{{card.suitSymbol}}</text>
+                </view>
+              </view>
+              <text wx:else class="board-empty-text">-</text>
+            </view>
+            <view class="review-detail-text review-voice-card-line">
+              <view class="kpi-label">Board</view>
+              <view class="review-board-wrap">
+                <view wx:for="{{parsedVoice.boardVisual}}" wx:key="index" class="board-line">
+                  <text class="board-street-label">{{item.label}}</text>
+                  <view wx:if="{{item.cards.length}}" class="cards-inline tight">
+                    <view wx:for="{{item.cards}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                      <text class="mini-card-rank">{{card.rank}}</text>
+                      <text class="mini-card-suit">{{card.suitSymbol}}</text>
+                    </view>
+                  </view>
+                  <text wx:else class="board-empty-text">-</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="review-modal-actions">
+          <button class="primary-btn" bindtap="goHandDetailPage">完整详情</button>
+        </view>
+      </view>
+    </view>
+  </view>
+  <view class="tab-bar-spacer"></view>
+</view>

@@ -1,0 +1,199 @@
+@import '../../app.wxss';
+
+.home-hero-card {
+  padding-top: 34rpx;
+}
+
+.home-hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.home-hero-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-hero-title {
+  font-size: 46rpx;
+  line-height: 1.18;
+  font-weight: 900;
+  color: #ffffff;
+}
+
+.home-hero-desc {
+  margin-top: 16rpx;
+  line-height: 1.65;
+}
+
+.home-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18rpx;
+  margin-top: 26rpx;
+}
+
+.home-kpi-cell,
+.home-session-cell {
+  position: relative;
+  padding: 20rpx 22rpx;
+  border-radius: 22rpx;
+  background: rgba(255,255,255,0.05);
+  border: 1rpx solid rgba(255,255,255,0.10);
+  overflow: hidden;
+}
+
+.home-kpi-cell::after,
+.home-session-cell::after {
+  content: '';
+  position: absolute;
+  right: -26rpx;
+  top: -20rpx;
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 999rpx;
+  background: radial-gradient(circle, rgba(0, 209, 255, 0.16), rgba(0, 209, 255, 0));
+}
+
+.home-cta-row,
+.home-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.home-cta-main {
+  flex: 1.2;
+}
+
+.home-cta-sub {
+  flex: 1;
+}
+
+.home-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 22rpx;
+}
+
+.home-section-title {
+  margin-bottom: 8rpx;
+}
+
+.home-session-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16rpx;
+}
+
+.home-session-value {
+  margin-top: 8rpx;
+  font-size: 34rpx;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.home-session-btn {
+  margin-top: 22rpx;
+}
+
+.home-list-card {
+  padding-bottom: 18rpx;
+}
+
+.home-hand-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 22rpx;
+  border-radius: 24rpx;
+  background: rgba(255,255,255,0.04);
+  border: 1rpx solid rgba(255,255,255,0.10);
+  margin-bottom: 16rpx;
+}
+
+.home-hand-item:last-child {
+  margin-bottom: 0;
+}
+
+.home-hand-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-hand-cards {
+  margin-bottom: 10rpx;
+}
+
+.home-hand-position {
+  color: rgba(255,255,255,0.78);
+  font-weight: 700;
+}
+
+.home-hero-inline .mini-card {
+  width: 50rpx;
+  height: 72rpx;
+  padding: 8rpx 8rpx 9rpx;
+  border-radius: 13rpx;
+}
+
+.home-hero-inline .mini-card .mini-card-rank {
+  font-size: 32rpx;
+}
+
+.home-hero-inline .mini-card .mini-card-suit {
+  font-size: 21rpx;
+}
+
+.home-board-inline {
+  flex-wrap: nowrap;
+  margin-left: 6rpx;
+}
+
+.home-board-inline .mini-card {
+  width: 40rpx;
+  height: 58rpx;
+  padding: 6rpx 6rpx 7rpx;
+  border-radius: 10rpx;
+}
+
+.home-board-inline .mini-card-rank {
+  font-size: 25rpx;
+}
+
+.home-board-inline .mini-card-suit {
+  font-size: 17rpx;
+}
+
+.home-hand-profit {
+  flex-shrink: 0;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.home-bottom-space {
+  height: 8rpx;
+}
+
+@media (max-width: 360px) {
+  .home-hero-head,
+  .home-section-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .home-hand-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .home-hand-profit {
+    font-size: 28rpx;
+  }
+}

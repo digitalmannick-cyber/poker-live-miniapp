@@ -1,0 +1,9 @@
+{
+  "desc": "auto-generated sitemap",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

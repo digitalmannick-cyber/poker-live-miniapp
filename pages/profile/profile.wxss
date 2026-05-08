@@ -1,0 +1,667 @@
+@import '../../app.wxss';
+
+.profile-hero {
+  position: relative;
+  min-height: 238rpx;
+  padding: 26rpx 28rpx;
+  margin-bottom: 24rpx;
+  border-radius: 30rpx;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(230, 0, 18, 0.94), rgba(181, 0, 32, 0.88)),
+    linear-gradient(180deg, rgba(20, 20, 27, 0.96), rgba(11, 11, 15, 0.96));
+  border: 1rpx solid rgba(255,255,255,0.12);
+}
+
+.profile-hero-glow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04));
+  pointer-events: none;
+}
+
+.profile-avatar-wrap {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-hero-main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  min-width: 0;
+}
+
+.profile-avatar {
+  width: 144rpx;
+  height: 144rpx;
+  border-radius: 50%;
+  border: 6rpx solid rgba(255,255,255,0.16);
+  background: #05050a;
+}
+
+.profile-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffedf2;
+  font-size: 50rpx;
+  font-weight: 900;
+}
+
+.profile-avatar-edit {
+  position: absolute;
+  right: -2rpx;
+  bottom: -8rpx;
+  min-width: 56rpx;
+  height: 54rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 11, 15, 0.58);
+  border: 1rpx solid rgba(255,255,255,0.18);
+  color: #ffffff;
+  font-size: 18rpx;
+  font-weight: 700;
+}
+
+.profile-main {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 212rpx;
+  gap: 24rpx;
+  align-items: center;
+}
+
+.profile-primary-copy {
+  min-width: 0;
+}
+
+.profile-name-trigger,
+.profile-id-trigger,
+.profile-tag-trigger {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.profile-name-trigger {
+  font-size: 66rpx;
+  font-weight: 900;
+  line-height: 1.02;
+  color: #ffffff;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-id-block {
+  margin-top: 8rpx;
+}
+
+.profile-id-trigger {
+  color: rgba(255,255,255,0.86);
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.profile-tag-trigger {
+  display: inline-flex;
+  margin-top: 14rpx;
+  padding: 10rpx 18rpx;
+  border-radius: 18rpx;
+  background: rgba(255,255,255,0.16);
+  color: #fff2f5;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.profile-hero-meta {
+  display: grid;
+  gap: 16rpx;
+}
+
+.profile-hero-chip {
+  position: relative;
+  min-height: 132rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 22rpx;
+  border: 1rpx solid rgba(201, 236, 255, 0.18);
+  background: linear-gradient(180deg, rgba(228, 245, 255, 0.14), rgba(160, 220, 255, 0.06));
+  backdrop-filter: blur(10rpx);
+  overflow: hidden;
+  box-shadow:
+    inset 0 1rpx 0 rgba(255,255,255,0.20),
+    0 10rpx 24rpx rgba(5, 18, 34, 0.12);
+  box-sizing: border-box;
+}
+
+.profile-hero-chip-hands {
+  background:
+    radial-gradient(circle at right top, rgba(255, 255, 255, 0.22), rgba(255,255,255,0) 42%),
+    linear-gradient(180deg, rgba(233, 245, 255, 0.18), rgba(156, 214, 255, 0.07));
+}
+
+.profile-hero-chip-profit {
+  background:
+    radial-gradient(circle at right top, rgba(118, 214, 255, 0.26), rgba(118,214,255,0) 42%),
+    linear-gradient(180deg, rgba(189, 235, 255, 0.20), rgba(103, 196, 255, 0.08));
+}
+
+.profile-hero-chip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1rpx;
+  background: rgba(255,255,255,0.30);
+}
+
+.profile-hero-chip::after {
+  content: '';
+  position: absolute;
+  left: 16rpx;
+  right: 16rpx;
+  bottom: 0;
+  height: 8rpx;
+  border-radius: 999rpx 999rpx 0 0;
+  opacity: 0.8;
+}
+
+.profile-hero-chip-hands::after {
+  background: linear-gradient(90deg, rgba(210, 239, 255, 0), rgba(210, 239, 255, 0.24), rgba(210, 239, 255, 0));
+}
+
+.profile-hero-chip-profit::after {
+  background: linear-gradient(90deg, rgba(91, 203, 255, 0), rgba(91, 203, 255, 0.28), rgba(91, 203, 255, 0));
+}
+
+.profile-hero-chip-kicker {
+  font-size: 18rpx;
+  font-weight: 900;
+  letter-spacing: 0;
+  color: rgba(181, 230, 255, 0.80);
+}
+
+.profile-hero-chip-value {
+  margin-top: 12rpx;
+  font-size: 34rpx;
+  font-weight: 900;
+  color: #dff5ff;
+  line-height: 1.08;
+  text-shadow: 0 4rpx 12rpx rgba(35, 84, 124, 0.14);
+}
+
+.profile-hero-chip-sub {
+  margin-top: 8rpx;
+  font-size: 18rpx;
+  color: rgba(185, 225, 245, 0.76);
+}
+
+.profile-hero-chip-hands .profile-hero-chip-kicker {
+  color: rgba(255, 232, 169, 0.84);
+}
+
+.profile-hero-chip-hands .profile-hero-chip-value {
+  color: #ffe4a3;
+  text-shadow: 0 4rpx 12rpx rgba(120, 81, 13, 0.18);
+}
+
+.profile-hero-chip-hands .profile-hero-chip-sub {
+  color: rgba(255, 231, 178, 0.78);
+}
+
+.profile-hero-chip-profit .profile-hero-chip-kicker {
+  color: rgba(176, 236, 212, 0.86);
+}
+
+.profile-hero-chip-profit .profile-hero-chip-value {
+  color: #7ef0b0;
+  text-shadow: 0 4rpx 12rpx rgba(22, 110, 62, 0.18);
+}
+
+.profile-hero-chip-profit .profile-hero-chip-value.negative {
+  color: #ff8f8f;
+  text-shadow: 0 4rpx 12rpx rgba(138, 32, 32, 0.18);
+}
+
+.profile-hero-chip-profit .profile-hero-chip-sub {
+  color: rgba(190, 238, 214, 0.78);
+}
+
+.profile-hero-art {
+  position: absolute;
+  right: -32rpx;
+  top: -8rpx;
+  width: 260rpx;
+  bottom: -22rpx;
+  opacity: 0.20;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 38% 24%, rgba(255,255,255,0.20), rgba(255,255,255,0) 34%),
+    linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0) 62%);
+  transform: rotate(-8deg);
+}
+
+.section-label {
+  margin: 4rpx 0 12rpx;
+  font-size: 24rpx;
+  font-weight: 800;
+  color: rgba(255,255,255,0.78);
+  letter-spacing: 2rpx;
+}
+
+.profile-card-compact {
+  padding-top: 14rpx;
+  padding-bottom: 8rpx;
+}
+
+.profile-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255,255,255,0.08);
+  border: 1rpx solid rgba(255,255,255,0.16);
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.profile-action.compact {
+  min-height: 48rpx;
+  padding: 0 16rpx;
+  font-size: 20rpx;
+}
+
+.stats-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18rpx;
+}
+
+.stats-cell {
+  padding: 18rpx;
+  border-radius: 22rpx;
+  background: rgba(255,255,255,0.04);
+  border: 1rpx solid rgba(255,255,255,0.10);
+}
+
+.setting-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 18rpx 4rpx;
+  border-bottom: 1rpx solid rgba(255,255,255,0.08);
+}
+
+.setting-row::before {
+  content: '';
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.22);
+  box-shadow: 0 0 0 8rpx rgba(255,255,255,0.03);
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-row.danger::before {
+  background: rgba(255, 51, 88, 0.92);
+  box-shadow: 0 0 0 8rpx rgba(255, 51, 88, 0.10);
+}
+
+.setting-row.danger .setting-title {
+  color: #ff3358;
+}
+
+.setting-title {
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+.setting-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-arrow {
+  color: rgba(255,255,255,0.42);
+  font-size: 34rpx;
+  line-height: 1;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.05);
+  border: 1rpx solid rgba(255,255,255,0.08);
+}
+
+.setting-block {
+  position: relative;
+  z-index: 1;
+  padding: 8rpx 0 16rpx;
+  border-bottom: 1rpx solid rgba(255,255,255,0.08);
+}
+
+.setting-block:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.setting-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-bottom: 14rpx;
+}
+
+.segment-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10rpx;
+}
+
+.segment-item {
+  flex: 1;
+  min-width: 0;
+  height: 64rpx;
+  padding: 0 6rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.68);
+  font-size: 24rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.segment-item.active {
+  background: rgba(230, 0, 18, 0.24);
+  border-color: rgba(230, 0, 18, 0.42);
+  color: #ffffff;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.pref-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255,255,255,0.06);
+  border: 1rpx solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.84);
+  font-size: 22rpx;
+}
+
+.profile-footer {
+  padding: 20rpx 0 40rpx;
+  text-align: center;
+}
+
+.settings-editor-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 24rpx 24rpx calc(214rpx + env(safe-area-inset-bottom));
+  background: rgba(3, 6, 12, 0.58);
+  box-sizing: border-box;
+}
+
+.settings-editor-sheet {
+  width: 100%;
+  max-height: calc(100vh - 260rpx - env(safe-area-inset-bottom));
+  border-radius: 28rpx;
+  padding: 24rpx;
+  background: linear-gradient(180deg, rgba(20, 20, 27, 0.98), rgba(11, 11, 15, 0.98));
+  border: 1rpx solid rgba(255,255,255,0.12);
+  box-sizing: border-box;
+}
+
+.settings-editor-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.settings-editor-title {
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.settings-editor-subtitle {
+  margin-top: 8rpx;
+  color: rgba(255,255,255,0.62);
+  font-size: 22rpx;
+  line-height: 1.45;
+}
+
+.settings-editor-close {
+  flex-shrink: 0;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.08);
+  border: 1rpx solid rgba(255,255,255,0.14);
+}
+
+.settings-editor-list {
+  margin-top: 22rpx;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+.settings-editor-row,
+.settings-editor-create {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.settings-editor-row + .settings-editor-row {
+  margin-top: 14rpx;
+}
+
+.settings-editor-create {
+  margin-top: 18rpx;
+}
+
+.settings-editor-input {
+  flex: 1;
+  min-width: 0;
+  height: 88rpx;
+  padding: 0 22rpx;
+  border-radius: 18rpx;
+  background: rgba(255,255,255,0.06);
+  border: 1rpx solid rgba(255,255,255,0.14);
+  color: #ffffff;
+  font-size: 26rpx;
+  box-sizing: border-box;
+}
+
+.settings-editor-placeholder {
+  color: rgba(255,255,255,0.36);
+}
+
+.settings-editor-delete,
+.settings-editor-add {
+  flex-shrink: 0;
+  width: 80rpx;
+  height: 88rpx;
+  border-radius: 18rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-editor-delete {
+  background: rgba(255, 59, 89, 0.14);
+  border: 1rpx solid rgba(255, 59, 89, 0.30);
+  color: #ff97aa;
+}
+
+.settings-editor-add {
+  background: rgba(0, 209, 255, 0.14);
+  border: 1rpx solid rgba(0, 209, 255, 0.30);
+  color: #91eaff;
+}
+
+.icon-close,
+.icon-plus {
+  position: relative;
+  width: 24rpx;
+  height: 24rpx;
+}
+
+.icon-close-line,
+.icon-plus-line {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 24rpx;
+  height: 4rpx;
+  margin-top: -2rpx;
+  border-radius: 999rpx;
+  background: currentColor;
+}
+
+.icon-close {
+  color: rgba(255,255,255,0.88);
+}
+
+.icon-close-line {
+  transform: rotate(45deg);
+}
+
+.icon-close-line-rotated {
+  transform: rotate(-45deg);
+}
+
+.icon-plus {
+  color: #91eaff;
+}
+
+.icon-plus-line-vertical {
+  transform: rotate(90deg);
+}
+
+.icon-trash {
+  position: relative;
+  width: 28rpx;
+  height: 28rpx;
+}
+
+.icon-trash-lid {
+  position: absolute;
+  left: 4rpx;
+  top: 2rpx;
+  width: 20rpx;
+  height: 4rpx;
+  border-radius: 999rpx;
+  background: currentColor;
+}
+
+.icon-trash-body {
+  position: absolute;
+  left: 6rpx;
+  top: 8rpx;
+  width: 16rpx;
+  height: 16rpx;
+  border: 2rpx solid currentColor;
+  border-top-width: 3rpx;
+  border-radius: 3rpx 3rpx 5rpx 5rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4rpx;
+}
+
+.icon-trash-stem {
+  width: 2rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: currentColor;
+}
+
+.settings-editor-delete .icon-trash {
+  color: #ff97aa;
+}
+
+.settings-editor-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14rpx;
+  margin-top: 24rpx;
+}
+
+.settings-editor-action {
+  height: 84rpx;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+.settings-editor-action-secondary {
+  background: rgba(255,255,255,0.08);
+  border: 1rpx solid rgba(255,255,255,0.16);
+  color: rgba(255,255,255,0.86);
+}
+
+.settings-editor-action-primary {
+  background: linear-gradient(135deg, #e60012, #ff2a2a);
+  border: 1rpx solid rgba(255,255,255,0.12);
+  color: #ffffff;
+}
+
+@media (max-width: 360px) {
+  .profile-hero-main,
+  .profile-main {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .profile-hero-main {
+    gap: 18rpx;
+  }
+}

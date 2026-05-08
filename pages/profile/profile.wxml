@@ -1,0 +1,202 @@
+<view class="app-bg"></view>
+<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
+<view class="container">
+  <view class="profile-hero">
+    <view class="profile-hero-glow"></view>
+    <view class="profile-hero-main">
+      <view class="profile-avatar-wrap" bindtap="chooseAvatar">
+        <image wx:if="{{profile.avatarUrl}}" class="profile-avatar" src="{{profile.avatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="profile-avatar profile-avatar-fallback">{{profile.avatarText}}</view>
+        <view class="profile-avatar-edit">改头像</view>
+      </view>
+      <view class="profile-main">
+        <view class="profile-primary-copy">
+          <view class="profile-name-trigger" bindtap="editName">{{profile.name}}</view>
+          <view class="profile-id-block">
+            <view class="profile-id-trigger" bindtap="copyPlayerId">UID: {{profile.playerId}}</view>
+          </view>
+          <view class="profile-tag-trigger" bindtap="editTitle">{{profile.title}}</view>
+        </view>
+        <view class="profile-hero-meta">
+          <view class="profile-hero-chip profile-hero-chip-hands">
+            <view class="profile-hero-chip-kicker">手数</view>
+            <view class="profile-hero-chip-value">{{stats.handCount || 0}}</view>
+            <view class="profile-hero-chip-sub">已记录总手数</view>
+          </view>
+          <view class="profile-hero-chip profile-hero-chip-profit">
+            <view class="profile-hero-chip-kicker">结果</view>
+            <view class="profile-hero-chip-value {{(stats.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{totalProfitDisplay}}</view>
+            <view class="profile-hero-chip-sub">累计净结果</view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="profile-hero-art"></view>
+  </view>
+
+  <view class="section-label">牌局管理</view>
+  <view class="card profile-card-compact">
+    <view class="setting-row" bindtap="importBackup">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">导入牌局数据</view>
+          <view class="small muted">从剪贴板导入备份 JSON</view>
+        </view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
+    <view class="setting-row" bindtap="exportBackup">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">导出牌局数据</view>
+          <view class="small muted">复制完整备份到剪贴板</view>
+        </view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
+  </view>
+
+  <view class="section-label">偏好设置</view>
+  <view class="card profile-card-compact">
+    <view class="setting-block">
+      <view class="setting-head">
+        <view>
+          <view class="setting-title">筹码单位</view>
+          <view class="small muted">当前按 {{unitLabel}} 显示总盈亏</view>
+        </view>
+      </view>
+      <view class="segment-row">
+        <view class="segment-item {{settings.chipUnit === 'BB' ? 'active' : ''}}" data-value="BB" bindtap="selectChipUnit">BB</view>
+        <view class="segment-item {{settings.chipUnit === 'CNY' ? 'active' : ''}}" data-value="CNY" bindtap="selectChipUnit">¥</view>
+        <view class="segment-item {{settings.chipUnit === 'HKD' ? 'active' : ''}}" data-value="HKD" bindtap="selectChipUnit">HK$</view>
+        <view class="segment-item {{settings.chipUnit === 'USD' ? 'active' : ''}}" data-value="USD" bindtap="selectChipUnit">$</view>
+      </view>
+    </view>
+
+    <view class="setting-block">
+      <view class="setting-head">
+        <view class="setting-title">场地预设</view>
+        <view class="profile-action compact" bindtap="editVenues">编辑</view>
+      </view>
+      <view class="chip-list">
+        <view wx:for="{{settings.venues}}" wx:key="*this" class="pref-chip">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="setting-block">
+      <view class="setting-head">
+        <view class="setting-title">级别预设</view>
+        <view class="profile-action compact" bindtap="editBlindPresets">编辑</view>
+      </view>
+      <view class="chip-list">
+        <view wx:for="{{settings.blindPresets}}" wx:key="*this" class="pref-chip">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="setting-block">
+      <view class="setting-head">
+        <view class="setting-title">位置预设</view>
+        <view class="profile-action compact" bindtap="editPositions">编辑</view>
+      </view>
+      <view class="chip-list">
+        <view wx:for="{{settings.positions}}" wx:key="*this" class="pref-chip">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="setting-block">
+      <view class="setting-head">
+        <view class="setting-title">对手类型</view>
+        <view class="profile-action compact" bindtap="editOpponentTypes">编辑</view>
+      </view>
+      <view class="chip-list">
+        <view wx:for="{{settings.opponentTypes}}" wx:key="*this" class="pref-chip">{{item}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section-label">账号与数据</view>
+  <view class="card profile-card-compact">
+    <view class="setting-row danger" bindtap="clearData">
+      <view class="setting-main">
+        <view class="setting-title">清除所有数据</view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
+    <view class="setting-row" bindtap="showAbout">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">关于</view>
+          <view class="small muted">{{version}}</view>
+        </view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
+  </view>
+
+  <view class="profile-footer">
+    <view class="small muted">The poker is life.</view>
+  </view>
+
+  <view wx:if="{{settingsEditorVisible}}" class="settings-editor-mask" bindtap="onSettingsEditorMaskTap">
+    <view class="settings-editor-sheet" catchtap="noop">
+      <view class="settings-editor-head">
+        <view>
+          <view class="settings-editor-title">{{settingsEditorTitle}}</view>
+          <view class="settings-editor-subtitle">可直接修改、删除已有预设，也可新增一项。</view>
+        </view>
+        <view class="settings-editor-close" bindtap="closeSettingsEditor">
+          <view class="icon-close">
+            <view class="icon-close-line"></view>
+            <view class="icon-close-line icon-close-line-rotated"></view>
+          </view>
+        </view>
+      </view>
+
+      <view class="settings-editor-list">
+        <view wx:for="{{settingsEditorItems}}" wx:key="id" wx:for-item="preset" wx:for-index="index" class="settings-editor-row">
+          <input
+            class="settings-editor-input"
+            value="{{preset.value}}"
+            data-index="{{index}}"
+            placeholder="{{settingsEditorPlaceholder}}"
+            placeholder-class="settings-editor-placeholder"
+            bindinput="onSettingsEditorInput"
+          />
+          <view class="settings-editor-delete" data-index="{{index}}" bindtap="removeSettingsEditorItem">
+            <view class="icon-trash">
+              <view class="icon-trash-lid"></view>
+              <view class="icon-trash-body">
+                <view class="icon-trash-stem"></view>
+                <view class="icon-trash-stem"></view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="settings-editor-create">
+        <input
+          class="settings-editor-input settings-editor-input-create"
+          value="{{settingsEditorNewValue}}"
+          placeholder="{{settingsEditorPlaceholder}}"
+          placeholder-class="settings-editor-placeholder"
+          bindinput="onSettingsEditorNewValueInput"
+          confirm-type="done"
+        />
+        <view class="settings-editor-add" bindtap="addSettingsEditorItem">
+          <view class="icon-plus">
+            <view class="icon-plus-line"></view>
+            <view class="icon-plus-line icon-plus-line-vertical"></view>
+          </view>
+        </view>
+      </view>
+
+      <view class="settings-editor-actions">
+        <view class="settings-editor-action settings-editor-action-secondary" bindtap="closeSettingsEditor">取消</view>
+        <view class="settings-editor-action settings-editor-action-primary" bindtap="saveSettingsEditor">保存</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

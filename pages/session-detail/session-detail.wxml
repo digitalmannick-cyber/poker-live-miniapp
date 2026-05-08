@@ -1,0 +1,155 @@
+<view class="app-bg"></view>
+<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
+<view class="container">
+  <view class="card">
+    <view class="row">
+      <view>
+        <view class="card-title">{{mode === 'create' ? '新建 Session' : (session.title || 'Session 详情')}}</view>
+      </view>
+      <view wx:if="{{session}}" class="badge-outline session-status-badge {{session.status === 'active' ? 'active' : 'finished'}}">
+        {{session.status === 'active' ? '进行中' : '已结束'}}
+      </view>
+    </view>
+
+    <view style="margin-top: 20rpx;">
+      <view class="session-time-stack">
+        <view class="session-time-block">
+          <view class="label">开始时间</view>
+          <view class="session-time-row">
+            <picker class="session-time-item" mode="date" value="{{form.startDate}}" bindchange="pickStartDate">
+              <view class="picker">{{form.startDate || '选择日期'}}</view>
+            </picker>
+            <picker class="session-time-item" mode="time" value="{{form.startTime}}" bindchange="pickStartTime">
+              <view class="picker">{{form.startTime || '选择时间'}}</view>
+            </picker>
+          </view>
+        </view>
+        <view class="session-time-block">
+          <view class="label">结束时间</view>
+          <view class="session-time-row">
+            <picker class="session-time-item" mode="date" value="{{form.endDate}}" bindchange="pickEndDate">
+              <view class="picker">{{form.endDate || '自动记录'}}</view>
+            </picker>
+            <picker class="session-time-item" mode="time" value="{{form.endTime}}" bindchange="pickEndTime">
+              <view class="picker">{{form.endTime || '自动记录'}}</view>
+            </picker>
+          </view>
+        </view>
+      </view>
+
+      <view class="label">场地</view>
+      <view class="picker preset-trigger" bindtap="openVenueSelector">{{form.venue || '请选择场地'}}</view>
+
+      <view class="label">级别</view>
+      <view class="picker preset-trigger" bindtap="openBlindPresetSelector">{{form.blindPreset || '请选择级别'}}</view>
+
+      <view class="grid-2">
+        <view>
+          <view class="label">小盲</view>
+          <input class="input" type="number" value="{{form.smallBlind}}" data-key="smallBlind" bindinput="onInput" />
+        </view>
+        <view>
+          <view class="label">大盲</view>
+          <input class="input" type="number" value="{{form.bigBlind}}" data-key="bigBlind" bindinput="onInput" />
+        </view>
+        <view>
+          <view class="label">人数</view>
+          <input class="input" type="number" value="{{form.tableSize}}" data-key="tableSize" bindinput="onInput" />
+        </view>
+        <view>
+          <view class="label">买入</view>
+          <input class="input" type="number" value="{{form.buyIn}}" data-key="buyIn" bindinput="onInput" />
+        </view>
+        <view>
+          <view class="label">提现</view>
+          <input class="input" type="number" value="{{form.cashOut}}" data-key="cashOut" bindinput="onInput" />
+        </view>
+        <view>
+          <view class="label">当前输赢</view>
+          <view class="picker session-profit-preview {{profitPreviewTone}}">{{profitPreviewDisplay}}</view>
+        </view>
+      </view>
+
+      <view class="label">备注</view>
+      <textarea class="textarea session-notes-textarea" value="{{form.notes}}" data-key="notes" bindinput="onInput"></textarea>
+
+      <view class="session-action-row">
+        <button class="primary-btn session-action-main" bindtap="saveSession">
+          {{session && session.status === 'active' ? '更新牌局信息' : (mode === 'create' ? '开始牌局' : '保存牌局信息')}}
+        </button>
+        <button wx:if="{{session && session.status === 'active'}}" class="session-record-btn session-action-side" bindtap="goAddHand">快速记录手牌</button>
+        <button class="danger-btn session-action-side" disabled="{{!session || session.status !== 'active'}}" bindtap="finishSession">结束牌局</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{session}}" class="card">
+    <view class="grid-2 session-summary-grid">
+      <view>
+        <view class="kpi-value">{{session.handCount || 0}}</view>
+        <view class="kpi-label">本场手数</view>
+      </view>
+      <view>
+        <view class="kpi-value {{(session.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{session.totalProfitDisplay}}</view>
+        <view class="kpi-label">当前盈亏</view>
+      </view>
+    </view>
+
+    <view class="section-title">本场手牌</view>
+    <view wx:if="{{hands.length}}">
+      <view wx:for="{{hands}}" wx:key="_id" class="list-item" bindtap="goHandDetail" data-id="{{item._id}}">
+        <view class="session-hand-top-row">
+          <view class="session-hand-main cards-inline">
+            <view class="cards-inline tight session-hero-inline">
+              <view wx:for="{{item.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                <text class="mini-card-rank">{{card.rank}}</text>
+                <text class="mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
+            </view>
+            <view class="position-chip">{{item.heroPosition}}</view>
+            <view class="cards-inline tight session-board-inline">
+              <block wx:for="{{item.boardStreetVisual}}" wx:for-item="street" wx:key="street">
+                <view wx:for="{{street.cards}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-board mini-card-{{card.suitClass}}">
+                  <text class="mini-card-rank mini-card-rank-board">{{card.rank}}</text>
+                  <text class="mini-card-suit mini-card-suit-board">{{card.suitSymbol}}</text>
+                </view>
+              </block>
+            </view>
+          </view>
+          <view class="session-hand-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
+        </view>
+        <view class="session-hand-meta-row">
+          <view class="small muted">
+            底池 {{item.potSize || '-'}} · 有效筹码 {{item.effectiveStack || '-'}}
+            <text wx:if="{{item.opponentType}}"> · {{item.opponentType}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="empty">这场还没有记录手牌。</view>
+  </view>
+
+  <view wx:if="{{selectorVisible}}" class="selector-modal">
+    <view class="selector-mask" bindtap="closeSelector"></view>
+    <view class="selector-sheet" catchtap="noop">
+      <view class="selector-head">
+        <view>
+          <view class="selector-title">{{selectorTitle}}</view>
+          <view class="small muted">直接点选你预设好的选项。</view>
+        </view>
+        <button class="picker-close-btn" bindtap="closeSelector">关闭</button>
+      </view>
+      <scroll-view scroll-y="true" class="selector-option-list">
+        <view
+          wx:for="{{selectorOptions}}"
+          wx:key="value"
+          class="selector-option {{item.selected ? 'active' : ''}}"
+          data-value="{{item.value}}"
+          bindtap="selectPresetOption"
+        >
+          <view class="selector-option-label">{{item.label}}</view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</view>

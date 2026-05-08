@@ -1,0 +1,35 @@
+<view class="app-bg"></view>
+<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
+<view class="container">
+  <view class="card">
+    <view class="row">
+      <view>
+        <view class="card-title">全部 Session</view>
+        <view class="muted small">先从一场一场的闭环做起</view>
+      </view>
+      <button class="primary-btn small-btn" bindtap="goNewSession">新建</button>
+    </view>
+  </view>
+
+  <view class="card">
+    <view wx:if="{{sessions.length}}">
+      <view wx:for="{{sessions}}" wx:key="_id" class="list-item" bindtap="goSessionDetail" data-id="{{item._id}}">
+        <view class="row">
+          <view>
+            <view>{{item.title}}</view>
+            <view class="small muted">{{item.date}}</view>
+          </view>
+          <view class="badge-outline session-status-badge {{item.status === 'active' ? 'active' : 'finished'}}">
+            {{item.status === 'active' ? '进行中' : '已结束'}}
+          </view>
+        </view>
+        <view class="row" style="margin-top: 14rpx;">
+          <view class="small muted">买入 {{item.buyIn}} · 手数 {{item.handCount}}</view>
+          <view class="small {{(item.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{item.totalProfitDisplay}}</view>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="empty">还没有任何牌局，先创建一场。</view>
+  </view>
+  <view class="tab-bar-spacer"></view>
+</view>

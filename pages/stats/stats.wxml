@@ -1,0 +1,30 @@
+<view class="app-bg"></view>
+<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
+<view class="container">
+  <view class="card">
+    <view class="card-title">统计概览</view>
+    <view class="grid-2" style="margin-top: 20rpx;">
+      <view>
+        <view class="kpi-value">{{stats.sessionCount || 0}}</view>
+        <view class="kpi-label">总场次</view>
+      </view>
+      <view>
+        <view class="kpi-value">{{stats.handCount || 0}}</view>
+        <view class="kpi-label">总手数</view>
+      </view>
+      <view>
+        <view class="kpi-value {{(stats.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{stats.totalProfitDisplay}}</view>
+        <view class="kpi-label">累计盈亏</view>
+      </view>
+      <view>
+        <view class="kpi-value">{{stats.hourlyRateDisplay}}</view>
+        <view class="kpi-label">时薪</view>
+      </view>
+      <view>
+        <view class="kpi-value">{{stats.totalHours || 0}}</view>
+        <view class="kpi-label">总时长</view>
+      </view>
+    </view>
+  </view>
+  <view class="tab-bar-spacer"></view>
+</view>

@@ -1,0 +1,13 @@
+node_modules/
+miniprogram_npm/
+cloudfunctions/**/node_modules/
+
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+
+project.private.config.json
+
+*.log
