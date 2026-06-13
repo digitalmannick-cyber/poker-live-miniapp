@@ -1,7 +1,9 @@
 const dataService = require('../../services/data-service')
 const cardUi = require('../../utils/card-ui')
+const handDetailFields = require('../../utils/hand-detail-fields')
 const tabBar = require('../../utils/tab-bar')
 
+const REVIEW_PENDING_FILTER_KEY = 'pokerReviewPendingFilters'
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = [
   { key: 's', symbol: '♠', className: 'spade' },
@@ -185,6 +187,54 @@ function getSessionLevel(session) {
   return ''
 }
 
+function getSessionUpdatedAt(session) {
+  return Number(session && (session.updatedAt || session.createdAt || 0)) || 0
+}
+
+function pickRecordSession(sessions, sessionId) {
+  const list = sessions || []
+  if (sessionId) {
+    const matched = list.find(function (item) { return item._id === sessionId })
+    if (matched) return matched
+  }
+  const active = list.find(function (item) { return item.status === 'active' })
+  if (active) return active
+  const finished = list
+    .filter(function (item) { return item.status === 'finished' })
+    .sort(function (a, b) { return getSessionUpdatedAt(b) - getSessionUpdatedAt(a) })
+  return finished[0] || list[0] || null
+}
+
+function buildSessionSelectorOptions(sessions, currentId) {
+  return (sessions || []).map(function (item) {
+    const level = getSessionLevel(item)
+    const status = item.status === 'active' ? '进行中' : '已结束'
+    const meta = [item.date, item.venue, level].filter(Boolean).join(' · ')
+    return {
+      label: (item.title || meta || '未命名场次') + ' · ' + status,
+      value: item._id,
+      selected: item._id === currentId
+    }
+  })
+}
+
+function buildSessionPatch(session, settings) {
+  const positionOptions = handDetailFields.getPositionOptions(settings.positions, false)
+  return {
+    sessionId: session ? session._id : '',
+    session: session || null,
+    'form.playedDate': getSessionDate(session),
+    'form.stakeLevel': getSessionLevel(session),
+    'form.hasStraddle': false,
+    'form.heroPosition': positionOptions[0] || 'CO',
+    'form.opponentType': settings.opponentTypes[0] || '',
+    'form.villainPosition': positionOptions[positionOptions.length - 1] || 'BB',
+    sessionBlindDisplay: session ? [session.smallBlind, session.bigBlind].filter(Boolean).join('/') : '',
+    sessionMetaText: session ? [session.date, session.venue, session.status === 'active' ? '进行中' : '已结束'].filter(Boolean).join(' · ') : '',
+    resultBbDisplay: formatResultBb('', getSessionLevel(session), session)
+  }
+}
+
 function getBigBlindFromLevel(levelText, session) {
   const text = String(levelText || '').trim()
   const match = text.match(/^(\d+)\s*\/\s*(\d+)$/)
@@ -202,13 +252,61 @@ function formatResultBb(value, levelText, session) {
   return (rounded > 0 ? '+' : '') + text + ' BB'
 }
 
+function getEmptyHandFormPatch(session, settings) {
+  const positionOptions = handDetailFields.getPositionOptions(settings.positions, false)
+  return {
+    'form.playedDate': getSessionDate(session),
+    'form.stakeLevel': getSessionLevel(session),
+    'form.playerCount': '',
+    'form.hasStraddle': false,
+    'form.heroSeat': '4',
+    'form.heroPosition': positionOptions[0] || 'CO',
+    'form.opponentType': settings.opponentTypes[0] || '',
+    'form.villainPosition': positionOptions[positionOptions.length - 1] || 'BB',
+    'form.buttonSeat': '2',
+    'form.heroCardsInput': '',
+    'form.flop': '',
+    'form.turn': '',
+    'form.river': '',
+    'form.effectiveStack': '',
+    'form.potSize': '',
+    'form.currentProfit': '',
+    'form.streetSummary': '',
+    'form.preflopActionLine': '',
+    'form.preflopPot': '',
+    'form.flopActionLine': '',
+    'form.flopPot': '',
+    'form.turnActionLine': '',
+    'form.turnPot': '',
+    'form.riverActionLine': '',
+    'form.riverPot': '',
+    'form.tagsInput': '',
+    'form.notes': '',
+    'form.opponentName': '',
+    'form.heroQuestion': '',
+    'form.showdown': '',
+    actions: [],
+    heroCardsVisual: [],
+    boardEditorVisual: buildBoardEditorVisual({
+      heroCardsInput: '',
+      flop: '',
+      turn: '',
+      river: ''
+    }),
+    resultBbDisplay: '-'
+  }
+}
+
 Page({
   data: {
     sessionId: '',
     session: null,
+    allSessions: [],
     form: {
       playedDate: '',
       stakeLevel: '',
+      playerCount: '',
+      hasStraddle: false,
       heroSeat: '4',
       heroPosition: 'CO',
       opponentType: '',
@@ -232,6 +330,8 @@ Page({
       riverPot: '',
       tagsInput: '',
       notes: '',
+      opponentName: '',
+      heroQuestion: '',
       showdown: ''
     },
     draftAction: {
@@ -249,6 +349,7 @@ Page({
     streets: ['preflop', 'flop', 'turn', 'river'],
     actionTypes: ['fold', 'check', 'call', 'bet', 'raise', 'all_in'],
     loading: false,
+    pageReady: false,
     advancedOpen: false,
     heroPickerVisible: false,
     heroPickerDeck: [],
@@ -280,34 +381,40 @@ Page({
     this.pendingSessionId = ''
   },
   async initializePage(sessionId) {
-    await dataService.bootstrapCloudSync()
     const settings = dataService.getAppSettings()
-    this.setData({ loading: true })
-    let targetSessionId = sessionId || ''
-    let session = targetSessionId ? await dataService.getSessionById(targetSessionId) : null
-    if (!session) {
-      const dashboard = await dataService.getDashboardData()
-      session = dashboard.activeSession || null
-      targetSessionId = session ? session._id : ''
-    }
+    const positionOptions = handDetailFields.getPositionOptions(settings.positions, false)
     this.setData({
-      sessionId: targetSessionId,
-      session,
+      pageReady: true,
       positions: settings.positions,
       opponentTypes: settings.opponentTypes,
-      blindPresets: settings.blindPresets,
-      'form.playedDate': getSessionDate(session),
-      'form.stakeLevel': getSessionLevel(session),
-      'form.heroPosition': settings.positions[0] || 'CO',
-      'form.opponentType': settings.opponentTypes[0] || '',
-      'form.villainPosition': settings.positions[settings.positions.length - 1] || 'BB',
-      sessionBlindDisplay: session ? [session.smallBlind, session.bigBlind].filter(Boolean).join('/') : '',
-      sessionMetaText: session ? [session.date, session.venue].filter(Boolean).join(' · ') : '',
-      resultBbDisplay: formatResultBb(this.data.form.currentProfit, getSessionLevel(session), session),
-      boardEditorVisual: buildBoardEditorVisual(this.data.form),
-      loading: false
+      blindPresets: settings.blindPresets
     })
-    this.syncHeroCardsState(this.data.form.heroCardsInput)
+
+    const loadSession = async () => {
+      const sessionData = await dataService.getSessionListData()
+      const sessions = sessionData.sessions || []
+      const session = pickRecordSession(sessions, sessionId)
+      const targetSessionId = session ? session._id : ''
+
+      this.setData({
+        allSessions: sessions,
+        sessionId: targetSessionId,
+        session,
+        'form.playedDate': getSessionDate(session),
+        'form.stakeLevel': getSessionLevel(session),
+        'form.hasStraddle': false,
+        'form.heroPosition': positionOptions[0] || 'CO',
+        'form.opponentType': settings.opponentTypes[0] || '',
+        'form.villainPosition': positionOptions[positionOptions.length - 1] || 'BB',
+        sessionBlindDisplay: session ? [session.smallBlind, session.bigBlind].filter(Boolean).join('/') : '',
+        sessionMetaText: session ? [session.date, session.venue].filter(Boolean).join(' · ') : '',
+        resultBbDisplay: formatResultBb(this.data.form.currentProfit, getSessionLevel(session), session),
+        boardEditorVisual: buildBoardEditorVisual(this.data.form)
+      })
+      this.syncHeroCardsState(this.data.form.heroCardsInput)
+    }
+
+    loadSession().catch(() => {})
   },
   onInput(e) {
     const key = e.currentTarget.dataset.key
@@ -334,11 +441,12 @@ Page({
     this.setData({ 'form.opponentType': this.data.opponentTypes[e.detail.value] })
   },
   openPositionSelector() {
+    const positionOptions = handDetailFields.getPositionOptions(this.data.positions, this.data.form.hasStraddle)
     this.setData({
       selectorVisible: true,
       selectorTitle: '选择位置',
       selectorKey: 'heroPosition',
-      selectorOptions: buildSelectorOptions(this.data.positions, this.data.form.heroPosition)
+      selectorOptions: buildSelectorOptions(positionOptions, this.data.form.heroPosition)
     })
   },
   openOpponentTypeSelector() {
@@ -350,11 +458,12 @@ Page({
     })
   },
   openVillainPositionSelector() {
+    const positionOptions = handDetailFields.getPositionOptions(this.data.positions, this.data.form.hasStraddle)
     this.setData({
       selectorVisible: true,
       selectorTitle: '选择对手位置',
       selectorKey: 'villainPosition',
-      selectorOptions: buildSelectorOptions(this.data.positions, this.data.form.villainPosition)
+      selectorOptions: buildSelectorOptions(positionOptions, this.data.form.villainPosition)
     })
   },
   openLevelSelector() {
@@ -365,6 +474,18 @@ Page({
       selectorOptions: buildSelectorOptions(this.data.blindPresets, this.data.form.stakeLevel)
     })
   },
+  openSessionSelector() {
+    if (!this.data.allSessions.length) {
+      wx.showToast({ title: '暂无可选场次', icon: 'none' })
+      return
+    }
+    this.setData({
+      selectorVisible: true,
+      selectorTitle: '选择目标场次',
+      selectorKey: 'sessionId',
+      selectorOptions: buildSessionSelectorOptions(this.data.allSessions, this.data.sessionId)
+    })
+  },
   closeSelector() {
     this.setData({ selectorVisible: false })
   },
@@ -372,6 +493,16 @@ Page({
     const key = this.data.selectorKey
     const value = String(e.currentTarget.dataset.value || '')
     if (!key || !value) return
+    if (key === 'sessionId') {
+      const settings = dataService.getAppSettings()
+      const session = (this.data.allSessions || []).find(function (item) { return item._id === value }) || null
+      const patch = Object.assign(buildSessionPatch(session, settings), {
+        selectorVisible: false,
+        resultBbDisplay: formatResultBb(this.data.form.currentProfit, getSessionLevel(session), session)
+      })
+      this.setData(patch)
+      return
+    }
     const nextForm = Object.assign({}, this.data.form, { [key]: value })
     const patch = {
       ['form.' + key]: value,
@@ -390,6 +521,20 @@ Page({
   },
   toggleAdvanced() {
     this.setData({ advancedOpen: !this.data.advancedOpen })
+  },
+  toggleStraddle() {
+    const hasStraddle = !this.data.form.hasStraddle
+    const positionOptions = handDetailFields.getPositionOptions(this.data.positions, hasStraddle)
+    const patch = {
+      'form.hasStraddle': hasStraddle
+    }
+    if (!hasStraddle && this.data.form.heroPosition === 'STR') {
+      patch['form.heroPosition'] = positionOptions[0] || ''
+    }
+    if (!hasStraddle && this.data.form.villainPosition === 'STR') {
+      patch['form.villainPosition'] = positionOptions[positionOptions.length - 1] || ''
+    }
+    this.setData(patch)
   },
   noop() {},
   openHeroPicker() {
@@ -416,7 +561,13 @@ Page({
     }
     this.syncHeroCardsState(next.join(''))
     if (next.length >= 2) {
-      this.setData({ heroPickerVisible: false })
+      const parsed = parseProfitEditorValue(this.data.form.currentProfit)
+      this.setData({
+        heroPickerVisible: false,
+        profitEditorVisible: true,
+        profitEditorSign: parsed.sign,
+        profitEditorDigits: parsed.digits
+      })
     }
   },
   handleHeroPickerTool(e) {
@@ -512,6 +663,24 @@ Page({
       profitEditorVisible: false
     })
   },
+  openMoreInfoFromProfit() {
+    const nextValue = buildProfitEditorValue(this.data.profitEditorSign, this.data.profitEditorDigits)
+    this.setData({
+      'form.currentProfit': nextValue,
+      resultBbDisplay: formatResultBb(nextValue, this.data.form.stakeLevel, this.data.session),
+      profitEditorVisible: false,
+      advancedOpen: true
+    })
+  },
+  quickSaveFromProfit() {
+    const nextValue = buildProfitEditorValue(this.data.profitEditorSign, this.data.profitEditorDigits)
+    this.setData({
+      'form.currentProfit': nextValue,
+      resultBbDisplay: formatResultBb(nextValue, this.data.form.stakeLevel, this.data.session),
+      profitEditorVisible: false
+    })
+    this.saveHand({ currentProfit: nextValue })
+  },
   syncBoardField(key, rawValue) {
     const meta = BOARD_FIELD_META[key]
     if (!meta) return
@@ -596,71 +765,88 @@ Page({
     actions.splice(index, 1)
     this.setData({ actions })
   },
-  async saveHand() {
+  async saveHand(options) {
+    const override = options || {}
+    const form = Object.assign({}, this.data.form, override.currentProfit != null ? {
+      currentProfit: override.currentProfit
+    } : {})
     if (!this.data.sessionId) {
       wx.showToast({ title: '缺少 Session', icon: 'none' })
       return
     }
-    if (!this.data.form.heroCardsInput || this.data.form.currentProfit === '') {
+    if (!form.heroCardsInput || form.currentProfit === '') {
       wx.showToast({ title: '请先填写手牌与输赢', icon: 'none' })
       return
     }
-    if (hasDuplicateHeroCards(this.data.form.heroCardsInput)) {
+    if (hasDuplicateHeroCards(form.heroCardsInput)) {
       wx.showToast({ title: '同点数手牌不能重复花色', icon: 'none' })
       return
     }
-    const tags = this.data.form.tagsInput ? this.data.form.tagsInput.split(',').map(item => item.trim()).filter(Boolean) : []
-    const hand = await dataService.createHand({
+    const tags = form.tagsInput ? form.tagsInput.split(',').map(item => item.trim()).filter(Boolean) : []
+    await dataService.createHand({
       sessionId: this.data.sessionId,
-      playedDate: this.data.form.playedDate,
-      stakeLevel: this.data.form.stakeLevel,
-      heroSeat: this.data.form.heroSeat,
-      heroPosition: this.data.form.heroPosition,
-      villainPosition: this.data.form.villainPosition,
-      villainType: this.data.form.opponentType,
-      opponentType: this.data.form.opponentType,
-      buttonSeat: this.data.form.buttonSeat,
-      heroCardsInput: this.data.form.heroCardsInput,
-      flop: this.data.form.flop,
-      turn: this.data.form.turn,
-      river: this.data.form.river,
-      effectiveStack: this.data.form.effectiveStack,
-      potSize: this.data.form.potSize,
-      currentProfit: this.data.form.currentProfit,
-      resultBB: formatResultBb(this.data.form.currentProfit, this.data.form.stakeLevel, this.data.session),
-      streetSummary: this.data.form.streetSummary,
+      playedDate: form.playedDate,
+      stakeLevel: form.stakeLevel,
+      playerCount: form.playerCount,
+      hasStraddle: form.hasStraddle,
+      heroSeat: form.heroSeat,
+      heroPosition: form.heroPosition,
+      villainPosition: form.villainPosition,
+      villainType: form.opponentType,
+      opponentType: form.opponentType,
+      buttonSeat: form.buttonSeat,
+      heroCardsInput: form.heroCardsInput,
+      flop: form.flop,
+      turn: form.turn,
+      river: form.river,
+      effectiveStack: form.effectiveStack,
+      potSize: form.potSize,
+      currentProfit: form.currentProfit,
+      resultBB: formatResultBb(form.currentProfit, form.stakeLevel, this.data.session),
+      streetSummary: form.streetSummary,
       streetInputs: {
         preflop: {
           board: '',
-          actionLine: this.data.form.preflopActionLine,
-          pot: this.data.form.preflopPot
+          actionLine: form.preflopActionLine,
+          pot: form.preflopPot
         },
         flop: {
-          board: this.data.form.flop,
-          actionLine: this.data.form.flopActionLine,
-          pot: this.data.form.flopPot
+          board: form.flop,
+          actionLine: form.flopActionLine,
+          pot: form.flopPot
         },
         turn: {
-          board: this.data.form.turn,
-          actionLine: this.data.form.turnActionLine,
-          pot: this.data.form.turnPot
+          board: form.turn,
+          actionLine: form.turnActionLine,
+          pot: form.turnPot
         },
         river: {
-          board: this.data.form.river,
-          actionLine: this.data.form.riverActionLine,
-          pot: this.data.form.riverPot
+          board: form.river,
+          actionLine: form.riverActionLine,
+          pot: form.riverPot
         }
       },
-      showdown: this.data.form.showdown,
+      showdown: form.showdown,
+      opponentName: form.opponentName,
+      heroQuestion: form.heroQuestion,
       tags,
-      notes: this.data.form.notes,
-      mindJourney: this.data.form.notes,
+      notes: form.notes,
+      mindJourney: form.notes,
       actions: this.data.actions
     })
     wx.showToast({ title: '手牌已保存', icon: 'success' })
-    setTimeout(() => {
-      wx.redirectTo({ url: '/pages/hand-detail/hand-detail?id=' + hand._id })
-    }, 250)
+    wx.setStorageSync(REVIEW_PENDING_FILTER_KEY, {
+      sessionId: this.data.sessionId,
+      dateRange: 'all',
+      resultFilter: 'all',
+      sortBy: 'dateDesc'
+    })
+    const settings = dataService.getAppSettings()
+    this.setData(getEmptyHandFormPatch(this.data.session, settings))
+    this.syncHeroCardsState('')
+    setTimeout(function () {
+      wx.switchTab({ url: '/pages/review-list/review-list' })
+    }, 450)
   },
   goCreateSession() {
     wx.navigateTo({ url: '/pages/session-detail/session-detail?mode=create' })

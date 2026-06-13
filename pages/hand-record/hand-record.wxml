@@ -1,13 +1,6 @@
 <view class="app-bg"></view>
-<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
 <view class="container">
-  <view wx:if="{{loading}}" class="card quick-empty-card">
-    <view class="section-kicker">Quick Record</view>
-    <view class="section-title">正在加载当前场次</view>
-    <view class="muted quick-empty-desc">记牌页会自动连接到当前进行中的牌局。</view>
-  </view>
-
-  <view wx:elif="{{!session}}" class="card quick-empty-card">
+  <view wx:if="{{pageReady && !allSessions.length}}" class="card quick-empty-card">
     <view class="section-kicker">Quick Record</view>
     <view class="section-title">先创建一个进行中的场次</view>
     <view class="muted quick-empty-desc">记牌页现在是主入口。进入后会默认连接当前进行中的场次；如果还没有场次，先去创建一场。</view>
@@ -15,7 +8,7 @@
     <button class="secondary-btn quick-empty-btn" bindtap="goSessionList">查看全部场次</button>
   </view>
 
-  <block wx:elif="{{session}}">
+  <block wx:if="{{pageReady && allSessions.length}}">
     <view class="card quick-hero-card">
       <view class="quick-topline">
         <view class="quick-topline-copy">
@@ -24,7 +17,7 @@
           <view class="muted quick-page-desc">先选两张手牌，再补输赢和关键字段；需要时再展开补充详情。</view>
         </view>
       </view>
-      <view class="quick-session-bar">
+      <view class="quick-session-bar" bindtap="openSessionSelector">
         <view class="quick-session-main">
           <view class="quick-session-label">当前场次</view>
           <view class="quick-session-name">{{session.title}}</view>
@@ -32,7 +25,7 @@
         </view>
         <view class="quick-session-side">
           <view class="quick-session-chip">{{sessionBlindDisplay || '--'}}</view>
-          <view class="small muted">级别</view>
+          <view class="small muted">点此切换</view>
         </view>
       </view>
     </view>
@@ -113,6 +106,14 @@
               <view class="picker compact-input preset-trigger" bindtap="openLevelSelector">{{form.stakeLevel || '请选择级别'}}</view>
             </view>
             <view>
+              <view class="label">是否 Straddle</view>
+              <view class="picker compact-input preset-trigger" bindtap="toggleStraddle">{{form.hasStraddle ? '是' : '否'}}</view>
+            </view>
+            <view>
+              <view class="label">人数</view>
+              <input class="input compact-input" type="number" value="{{form.playerCount}}" data-key="playerCount" bindinput="onInput" />
+            </view>
+            <view>
               <view class="label">Hero 位置</view>
               <view class="picker compact-input preset-trigger" bindtap="openPositionSelector">{{form.heroPosition || '请选择位置'}}</view>
             </view>
@@ -127,6 +128,10 @@
             <view>
               <view class="label">对手位置</view>
               <view class="picker compact-input preset-trigger" bindtap="openVillainPositionSelector">{{form.villainPosition || '请选择对手位置'}}</view>
+            </view>
+            <view>
+              <view class="label">对手昵称</view>
+              <input class="input compact-input" value="{{form.opponentName}}" data-key="opponentName" bindinput="onInput" />
             </view>
             <view>
               <view class="label">对手类型</view>
@@ -254,13 +259,15 @@
           <textarea class="textarea analysis-textarea" placeholder="例如 open 30, BB call; flop bet 80 call" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput"></textarea>
           <view class="label">心路历程</view>
           <textarea class="textarea analysis-textarea" value="{{form.notes}}" data-key="notes" bindinput="onInput"></textarea>
+          <view class="label">Hero 疑问点</view>
+          <textarea class="textarea analysis-textarea hero-question-textarea" maxlength="160" value="{{form.heroQuestion}}" data-key="heroQuestion" bindinput="onInput"></textarea>
           <view class="grid-2 compact-grid">
             <view>
               <view class="label">标签（逗号分隔）</view>
               <input class="input compact-input" placeholder="例如 3bet_pot, hero_call_down" value="{{form.tagsInput}}" data-key="tagsInput" bindinput="onInput" />
             </view>
             <view>
-              <view class="label">对手 showdown</view>
+              <view class="label">对手手牌</view>
               <input class="input compact-input" placeholder="例如 对手 AQ / Villain AhQd / 对手 77" value="{{form.showdown}}" data-key="showdown" bindinput="onInput" />
             </view>
           </view>
@@ -410,7 +417,8 @@
 
       <view class="hero-picker-tools">
         <button class="secondary-btn picker-tool-main" bindtap="closeProfitEditor">取消</button>
-        <button class="primary-btn picker-tool-main" bindtap="applyProfitEditor">确定</button>
+        <button class="secondary-btn picker-tool-main profit-more-btn" bindtap="openMoreInfoFromProfit">更多信息</button>
+        <button class="primary-btn picker-tool-main" bindtap="quickSaveFromProfit">快速记录</button>
       </view>
     </view>
   </view>
@@ -439,3 +447,4 @@
     </view>
   </view>
 </view>
+<agent-chat />
