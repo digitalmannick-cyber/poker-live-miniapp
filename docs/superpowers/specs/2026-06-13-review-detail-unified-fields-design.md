@@ -1,127 +1,128 @@
-# Review Detail Unified Fields Design
+# 复盘详情统一字段设计
 
-## Goal
+## 目标
 
-Unify hand detail fields and layout across three flows:
+统一三处手牌详情字段和页面结构：
 
-- Quick entry expanded details.
-- AI voice recognition confirmation and backfill.
-- Hand review detail display and edit pages.
+- 快速录入里展开的更多手牌详情。
+- AI 语音识别后的待确认回填页面。
+- 手牌复盘详情展示页和详情编辑页。
 
-The same field model should drive all three surfaces. The surfaces differ only by mode: empty-field behavior, editability, and whether the AI confirmation panel is active.
+这三处使用同一套字段模型和同一套字段顺序。页面差异只由当前模式决定：是否可编辑、空字段如何展示，以及 AI 确认回填区域是否处于展开状态。
 
-## Field Set
+## 统一字段
 
-The canonical hand detail fields are:
+标准手牌详情字段如下：
 
-- Date
-- Stake level
-- Player count
-- Straddle enabled
-- Hero position
-- Villain position
-- Villain type
-- Effective stack
-- Current pot
-- Hand profit
-- Opponent nickname
-- Opponent hand / Showdown
-- Hero cards
-- Action summary
-- Mind journey
-- Hero question
-- Street details
-- Tags
-- AI advice
+- 日期
+- 级别
+- 人数
+- 是否 Straddle
+- Hero 位置
+- 对手位置
+- 对手类型
+- 有效筹码
+- 当前底池
+- 本手输赢
+- 对手昵称
+- 对手手牌 / Showdown
+- Hero 手牌
+- 行动线总结
+- 心路历程
+- Hero 疑问点
+- 逐街详情
+- 标签
+- AI 建议
 
-Street details use full Chinese street names, not abbreviations:
+逐街详情使用完整中文街名，不使用 `PF / F / T / R` 简写：
 
-- 翻前: pot and action line.
-- 翻牌: board cards, pot, and action line.
-- 转牌: board card, pot, and action line.
-- 河牌: board card, pot, and action line.
+- 翻前：Pot、行动线
+- 翻牌：牌面、Pot、行动线
+- 转牌：牌面、Pot、行动线
+- 河牌：牌面、Pot、行动线
 
-## Straddle Rules
+## Straddle 规则
 
-Straddle is a checkbox and defaults to off.
+Straddle 是一个勾选项，默认不勾选。
 
-When straddle is off:
+未勾选 Straddle 时：
 
-- `STR` is not available in position selectors.
-- BB displays and statistics use the stake level big blind.
+- 位置选择里不显示或不可选择 `STR`。
+- BB 展示和统计都按级别里的大盲计算。
 
-When straddle is on:
+勾选 Straddle 后：
 
-- `STR` becomes available in position selectors.
-- Straddle amount is automatically `bigBlind * 2`.
-- No separate straddle amount input is shown.
-- Profit BB, result BB, and statistics still use the stake level big blind.
-- AI review requests include `hasStraddle=true` and the computed `straddleAmount`.
+- 位置选择里允许选择 `STR`。
+- Straddle 金额自动等于 `大盲 * 2`。
+- 不展示单独的 Straddle 金额输入框。
+- 本手输赢 BB、结果 BB、统计 BB 仍然按级别里的大盲计算。
+- AI 复盘请求里传入 `hasStraddle=true` 和自动计算出的 `straddleAmount`。
 
-## Page Modes
+## 页面模式
 
-### Quick Entry Default
+### 快速录入默认状态
 
-Only Hero cards and hand profit are required. Expanded detail fields are hidden.
+只要求录入 Hero 手牌和本手输赢。更多详情字段默认隐藏。
 
-### Quick Entry Expanded
+### 快速录入展开更多
 
-Show the full canonical field form. All fields are editable. Empty values are allowed.
+展示完整的统一字段表单。所有字段可编辑，空值允许保存。
 
-### Review Detail Initial
+### 复盘详情初始状态
 
-If a hand only has quick-entry data, show the top summary and voice review entry. Do not show a full empty detail form before AI recognition.
+如果这手牌只有快速录入数据，页面只显示顶部摘要和语音复盘入口。AI 识别前不展示一整块空的详情字段表单。
 
-### AI Recognition Confirmation
+### AI 识别后待确认回填
 
-Show the full canonical field form as the confirmation surface. Users can correct recognized values before backfill. While this panel is active, do not also show a duplicate full read-only detail section.
+展示完整的统一字段确认表单，用户可以在确认回填前修正识别结果。该区域展开时，不再同时展示另一套完整只读详情，避免同屏出现重复字段。
 
-### Backfilled Review Detail
+### 确认回填后的只读详情
 
-After confirmation:
+确认回填后：
 
-- Save the backfilled fields.
-- Collapse the AI recognition panel by default.
-- Show the canonical detail page in read-only mode.
-- Show all fields. Empty fields render as `-`.
+- 保存回填字段。
+- AI 识别区域默认折叠。
+- 页面主体展示统一字段详情。
+- 页面为只读状态。
+- 所有字段都展示，空字段统一显示为 `-`。
 
-### Edit Detail
+### 详情编辑状态
 
-When entering from review-list edit actions or the full detail edit path:
+从复盘列表点编辑，或从完整详情入口进入编辑状态时：
 
-- Show the same canonical field page.
-- Show all fields.
-- All editable fields are editable.
-- Empty fields remain visible and can be filled.
+- 展示同一套统一字段页面。
+- 所有字段都展示。
+- 可编辑字段全部可编辑。
+- 空字段继续展示，并可补录。
 
-## Implementation Direction
+## 实现方向
 
-Create a shared field schema and view-model builder for hand detail fields. The shared layer should define:
+新增一套共享的手牌详情字段 schema 和 view model 构建逻辑。共享层负责定义：
 
-- Field order and labels.
-- Field type: text, number, date, select, checkbox, cards, street group, textarea.
-- Empty display value, defaulting to `-` in read-only mode.
-- Editability by mode.
-- Position options filtered by `hasStraddle`.
+- 字段顺序和字段文案。
+- 字段类型：文本、数字、日期、选择、勾选、手牌、公牌、逐街分组、长文本。
+- 只读模式下的空值展示，默认使用 `-`。
+- 不同模式下的可编辑状态。
+- 根据 `hasStraddle` 过滤位置选项。
 
-The existing pages should consume this shared model instead of maintaining independent field lists. This prevents quick entry, AI confirmation, read-only detail, and edit detail from drifting apart.
+现有页面应消费这套共享模型，而不是各自维护独立字段列表。这样可以避免快速录入、AI 确认回填、只读详情和编辑详情后续出现字段不一致。
 
-## AI Review Inputs
+## AI 复盘输入
 
-AI review should receive the canonical field payload, including:
+AI 复盘请求应接收统一字段 payload，包括：
 
-- Full street details.
-- `hasStraddle` and computed `straddleAmount`.
-- Opponent hand / showdown when recognized.
-- Hero question, so the advice can answer the user's specific concern.
+- 完整逐街详情。
+- `hasStraddle` 和自动计算出的 `straddleAmount`。
+- 识别到的对手手牌 / showdown。
+- Hero 疑问点，让 AI 建议优先回答用户最关心的问题。
 
-If the user does not mention opponent hand or Hero question, those fields remain empty and display as `-` after backfill.
+如果用户没有提到对手手牌或 Hero 疑问点，这些字段保持为空；确认回填后的只读详情里显示为 `-`。
 
-## Acceptance Criteria
+## 验收标准
 
-- Quick entry expanded details, AI confirmation, read-only detail, and edit detail use the same field order and labels.
-- `STR` is unavailable until straddle is checked.
-- Checking straddle computes `bigBlind * 2` for AI context without changing BB statistics.
-- AI confirmation and read-only detail are not shown as duplicate full forms at the same time.
-- After backfill, the AI panel is collapsed and the detail page shows all fields with `-` for empty values.
-- Edit mode shows the same fields as read-only mode, but editable.
+- 快速录入展开更多、AI 确认回填、只读详情、编辑详情使用同一套字段顺序和字段文案。
+- 未勾选 Straddle 时，`STR` 不可选。
+- 勾选 Straddle 后，系统自动按 `大盲 * 2` 计算 Straddle 金额，并传给 AI；BB 统计口径不变。
+- AI 确认回填区域和完整只读详情不会以两套完整表单的形式同时展开。
+- 确认回填后，AI 区域默认折叠，详情页展示所有字段，空字段显示 `-`。
+- 编辑状态和只读状态字段一致，只是编辑状态允许录入和修改。
