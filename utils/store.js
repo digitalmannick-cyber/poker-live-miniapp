@@ -380,6 +380,7 @@ function createHand(payload) {
     heroPosition: payload.heroPosition || '',
     villainPosition: payload.villainPosition || '',
     villainType: payload.villainType || payload.opponentType || '',
+    hasStraddle: !!payload.hasStraddle,
     buttonSeat: Number(payload.buttonSeat) || 0,
     heroCardsInput: payload.heroCardsInput || '',
     effectiveStack: Number(payload.effectiveStack) || 0,
@@ -387,6 +388,7 @@ function createHand(payload) {
     currentProfit: Number(payload.currentProfit) || 0,
     resultBB: payload.resultBB || '',
     opponentType: payload.opponentType || '',
+    opponentName: payload.opponentName || '',
     board: {
       flop: payload.flop || '',
       turn: payload.turn || '',
@@ -399,6 +401,8 @@ function createHand(payload) {
     notes: payload.notes || '',
     mindJourney: payload.mindJourney || payload.notes || '',
     streetSummary: payload.streetSummary || '',
+    heroQuestion: payload.heroQuestion || '',
+    detailBackfilled: !!payload.detailBackfilled,
     voiceNote: '',
     createdAt: now(),
     updatedAt: now()
