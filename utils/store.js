@@ -192,6 +192,15 @@ function buildSeedData() {
   })
 }
 
+function buildInitialStoreData() {
+  return ensureStoreShape({
+    sessions: [],
+    hands: [],
+    handActions: [],
+    bankrollLogs: []
+  })
+}
+
 function readStore() {
   const raw = wx.getStorageSync(STORAGE_KEY)
   if (raw) {
@@ -215,6 +224,8 @@ function writeStore(data) {
 function initStore() {
   readStore()
 }
+
+function resetCachedStoreForTest() {}
 
 function parseBlindPreset(value) {
   const text = String(value || '').trim()
@@ -545,5 +556,9 @@ module.exports = {
   getStatsSummary,
   exportBackup,
   importBackup,
-  clearAllData
+  clearAllData,
+  __test: {
+    buildInitialStoreData,
+    resetCachedStoreForTest
+  }
 }

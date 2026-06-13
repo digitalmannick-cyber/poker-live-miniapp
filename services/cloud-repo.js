@@ -629,5 +629,8 @@ module.exports = {
   updateHand,
   deleteHand,
   getReviewHands,
-  getStatsSummary
+  getStatsSummary,
+  __test: {
+    buildHandDoc
+  }
 }
