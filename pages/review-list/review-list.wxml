@@ -463,6 +463,7 @@
             <view class="review-detail-text">{{detailHand.notes}}</view>
           </view>
         </view>
+        </block>
 
         <view wx:if="{{detailHand.aiReviewGenerating}}" class="review-detail-card review-agent-pending-card">
           <view class="review-agent-pending-body">
@@ -545,7 +546,6 @@
             <view wx:for="{{detailHand.aiReviewView.missingFields}}" wx:key="index" class="review-agent-list-item review-agent-list-item-missing">{{item}}</view>
           </view>
         </view>
-        </block>
 
         <view class="review-modal-actions">
           <button class="primary-btn" bindtap="goHandDetailPage">完整详情</button>

@@ -838,16 +838,7 @@ function buildVoicePatch(detailHand, parsedVoice, voiceNote) {
     .concat(sanitizeStringArray(lockedParsedVoice.tags))
     .concat(inferReviewTagsFromReview(lockedParsedVoice, lockedParsedVoice.aiReview || current.aiReview))
   )
-  const streetInputs = Object.assign(
-    {
-      preflop: { actionLine: '', pot: '' },
-      flop: { actionLine: '', pot: '' },
-      turn: { actionLine: '', pot: '' },
-      river: { actionLine: '', pot: '' }
-    },
-    current.streetInputs || {},
-    lockedParsedVoice.streetInputs || {}
-  )
+  const streetInputs = mergeBlankStreetInputs(lockedParsedVoice.streetInputs, current.streetInputs)
 
   return {
     playerCount: Number(lockedParsedVoice.playerCount) || current.playerCount || 0,

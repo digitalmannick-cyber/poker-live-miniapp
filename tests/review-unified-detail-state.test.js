@@ -22,6 +22,21 @@ test('read-only detail is gated while voice confirmation is expanded', () => {
   assert.ok(wxml.includes('wx:if="{{detailHand.shouldShowFullDetails && !voicePanelVisible}}"'))
 })
 
+test('voice patch preserves current street fields when voice extraction is blank', () => {
+  assert.ok(js.includes('mergeBlankStreetInputs(lockedParsedVoice.streetInputs, current.streetInputs)'))
+})
+
+test('ai review status remains visible while voice confirmation is expanded', () => {
+  const gateStart = wxml.indexOf('wx:if="{{detailHand.shouldShowFullDetails && !voicePanelVisible}}"')
+  const gateEnd = wxml.indexOf('</block>', gateStart)
+  const aiGenerating = wxml.indexOf('detailHand.aiReviewGenerating')
+
+  assert.notEqual(gateStart, -1, 'expected full-detail gate to exist')
+  assert.notEqual(gateEnd, -1, 'expected full-detail gate to close')
+  assert.notEqual(aiGenerating, -1, 'expected AI generating card to exist')
+  assert.ok(aiGenerating > gateEnd, 'AI status cards should not be inside the full-detail voice-panel gate')
+})
+
 test('apply voice patch marks hand as backfilled and collapses voice panel', () => {
   assert.ok(js.includes('detailBackfilled: true'))
   assert.ok(js.includes('voicePanelVisible: false'))
