@@ -152,8 +152,9 @@ function hasOnlyQuickEntryDetails(hand) {
 
 function buildRows(form, options) {
   const config = options || {}
+  const excludedKeys = new Set(['streetDetails', 'aiReview'].concat(config.excludeRowKeys || []))
   return CANONICAL_FIELD_KEYS
-    .filter(key => key !== 'streetDetails' && key !== 'aiReview')
+    .filter(key => !excludedKeys.has(key))
     .map(key => {
       const meta = FIELD_META[key]
       const rawValue = key === 'hasStraddle' ? (form.hasStraddle ? '是' : '否') : form[key]

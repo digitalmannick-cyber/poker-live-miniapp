@@ -276,23 +276,23 @@
               </view>
               <text class="review-editing-help">点字段修改，确认回填会以修改后的内容为准。</text>
             </view>
-            <view class="review-voice-meta-grid">
-              <view class="review-voice-meta-item editable">
+            <view class="review-voice-meta-grid unified-field-grid">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">日期</view>
                 <view class="review-edit-hint">编辑</view>
                 <input class="review-field-input" value="{{parsedVoice.playedDate}}" data-field="playedDate" bindinput="onParsedVoiceFieldInput" placeholder="-" />
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">级别</view>
                 <view class="review-edit-hint">选择</view>
                 <view class="review-field-picker" data-field="stakeLevel" bindtap="openVoicePresetSelector">{{parsedVoice.stakeLevel || '-'}}</view>
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">人数</view>
                 <view class="review-edit-hint">编辑</view>
                 <input class="review-field-input" value="{{parsedVoice.playerCountDisplayText}}" data-field="playerCount" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'playerCount'}}" placeholder="默认 8，例如 5" />
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">是否 Straddle</view>
                 <view class="review-edit-hint">勾选</view>
                 <checkbox-group class="detail-checkbox-group" data-field="hasStraddle" bindchange="onParsedVoiceToggleChange">
@@ -302,42 +302,42 @@
                   </label>
                 </checkbox-group>
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">Hero 位置</view>
                 <view class="review-edit-hint">选择</view>
                 <view class="review-field-picker" data-field="heroPosition" bindtap="openVoicePresetSelector">{{parsedVoice.heroPosition || '-'}}</view>
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">对手位置</view>
                 <view class="review-edit-hint">选择</view>
                 <view class="review-field-picker" data-field="villainPosition" bindtap="openVoicePresetSelector">{{parsedVoice.villainPositionText || '-'}}</view>
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">对手类型</view>
                 <view class="review-edit-hint">选择</view>
                 <view class="review-field-picker" data-field="opponentType" bindtap="openVoicePresetSelector">{{parsedVoice.opponentTypeText || '-'}}</view>
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">有效筹码</view>
                 <view class="review-edit-hint">编辑</view>
                 <input class="review-field-input" value="{{parsedVoice.effectiveStack}}" data-field="effectiveStack" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'effectiveStack'}}" placeholder="-" />
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">当前底池</view>
                 <view class="review-edit-hint">编辑</view>
                 <input class="review-field-input" value="{{parsedVoice.potSize}}" data-field="potSize" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'potSize'}}" placeholder="-" />
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">本手输赢</view>
                 <view class="review-edit-hint">编辑</view>
                 <input class="review-field-input" value="{{parsedVoice.currentProfitDisplayText}}" data-field="currentProfit" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'currentProfit'}}" placeholder="+ 赢 / - 输" />
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">对手昵称</view>
                 <view class="review-edit-hint">编辑</view>
                 <input class="review-field-input" value="{{parsedVoice.opponentName}}" data-field="opponentName" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'opponentName'}}" placeholder="-" />
               </view>
-              <view class="review-voice-meta-item editable">
+              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">对手手牌</view>
                 <view class="review-edit-hint">编辑</view>
                 <view class="review-card-select-area" bindtap="openVoiceShowdownPicker">
@@ -424,10 +424,10 @@
 
         <block wx:if="{{detailHand.shouldShowFullDetails && !voicePanelVisible}}">
         <view class="review-detail-card review-info-card">
-          <view class="unified-field-grid">
-            <view wx:for="{{detailHand.detailRows}}" wx:key="key" class="unified-field-card">
-              <view class="kpi-label">{{item.label}}</view>
-              <view class="unified-field-value">{{item.displayValue}}</view>
+          <view class="readonly-field-grid">
+            <view wx:for="{{detailHand.detailRows}}" wx:key="key" class="readonly-field-card">
+              <view class="readonly-field-label">{{item.label}}</view>
+              <view class="readonly-field-value">{{item.displayValue}}</view>
             </view>
           </view>
         </view>

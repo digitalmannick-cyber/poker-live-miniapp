@@ -5,7 +5,7 @@ const path = require('path')
 const root = path.resolve(__dirname, '..')
 const js = fs.readFileSync(path.join(root, 'pages/review-list/review-list.js'), 'utf8')
 const wxml = fs.readFileSync(path.join(root, 'pages/review-list/review-list.wxml'), 'utf8')
-const metaGridStart = wxml.indexOf('<view class="review-voice-meta-grid">')
+const metaGridStart = wxml.indexOf('<view class="review-voice-meta-grid')
 const metaGridEnd = wxml.indexOf('<view class="review-detail-text review-voice-card-line">')
 const metaGridWxml = metaGridStart >= 0 && metaGridEnd > metaGridStart ? wxml.slice(metaGridStart, metaGridEnd) : ''
 const detailInfoStart = wxml.indexOf('<view class="review-detail-card review-info-card">')

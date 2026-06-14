@@ -64,10 +64,10 @@
 
   <view wx:if="{{!editMode}}" class="card">
     <view class="section-title">统一详情</view>
-    <view class="grid-2">
-      <view wx:for="{{detailRows}}" wx:key="key">
-        <view class="label">{{item.label}}</view>
-        <view class="picker readonly-display">{{item.displayValue}}</view>
+    <view class="readonly-field-grid">
+      <view wx:for="{{detailRows}}" wx:key="key" class="readonly-field-card">
+        <view class="readonly-field-label">{{item.label}}</view>
+        <view class="readonly-field-value">{{item.displayValue}}</view>
       </view>
     </view>
     <view class="street-stack" style="margin-top: 20rpx;">

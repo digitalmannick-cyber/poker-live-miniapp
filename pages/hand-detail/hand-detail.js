@@ -351,7 +351,8 @@ Page({
       mode: this.data.editMode ? 'edit' : 'readonly',
       backfilled: true,
       positions: settings.positions,
-      session
+      session,
+      excludeRowKeys: this.data.editMode ? [] : ['heroCardsInput', 'streetSummary', 'mindJourney']
     })
     this.setData({
       hand: Object.assign({}, hand, {

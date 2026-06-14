@@ -1143,7 +1143,8 @@ function buildDetailHandView(hand, chipUnit) {
   const detailView = handDetailFields.buildHandDetailViewModel(hand, {
     mode: 'readonly',
     backfilled: !!hand.detailBackfilled,
-    positions: dataService.getAppSettings().positions || []
+    positions: dataService.getAppSettings().positions || [],
+    excludeRowKeys: ['heroCardsInput', 'streetSummary', 'mindJourney']
   })
   const boardVisual = buildBoardVisual(hand.board)
   const streetItems = buildStreetItems(hand.streetInputs, hand.board)

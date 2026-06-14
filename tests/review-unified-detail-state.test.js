@@ -72,6 +72,12 @@ test('read-only detail is gated while voice confirmation is expanded', () => {
   assert.ok(wxml.includes('wx:if="{{detailHand.shouldShowFullDetails && !voicePanelVisible}}"'))
 })
 
+test('backfilled read-only detail uses read-only cards and excludes duplicated summary fields', () => {
+  assert.ok(wxml.includes('wx:for="{{detailHand.detailRows}}" wx:key="key" class="readonly-field-card"'))
+  assert.ok(wxml.includes('readonly-field-value'))
+  assert.ok(js.includes("excludeRowKeys: ['heroCardsInput', 'streetSummary', 'mindJourney']"))
+})
+
 test('voice patch preserves current street fields and straddle when voice extraction is blank', () => {
   const helpers = loadReviewListHelpers()
   const currentHand = {

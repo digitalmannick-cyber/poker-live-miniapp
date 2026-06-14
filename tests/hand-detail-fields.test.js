@@ -68,6 +68,24 @@ test('read-only rows show all canonical fields and use dash for empty values aft
   )
 })
 
+test('read-only rows can exclude fields that are rendered elsewhere on the detail page', () => {
+  const view = fields.buildHandDetailViewModel({
+    heroCardsInput: 'AhKd',
+    streetSummary: 'PF: Hero raise, BB call',
+    mindJourney: 'I was unsure about the river call',
+    heroQuestion: 'Should I fold turn?'
+  }, {
+    mode: 'readonly',
+    backfilled: true,
+    excludeRowKeys: ['heroCardsInput', 'streetSummary', 'mindJourney']
+  })
+
+  assert.equal(view.rows.some(item => item.key === 'heroCardsInput'), false)
+  assert.equal(view.rows.some(item => item.key === 'streetSummary'), false)
+  assert.equal(view.rows.some(item => item.key === 'mindJourney'), false)
+  assert.equal(view.rows.some(item => item.key === 'heroQuestion'), true)
+})
+
 test('quick-entry-only hands hide full details before AI confirmation', () => {
   const view = fields.buildHandDetailViewModel({
     heroCardsInput: 'AhAd',
