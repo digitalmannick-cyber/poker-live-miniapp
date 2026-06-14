@@ -202,12 +202,15 @@
 
 .compact-card-trigger {
   min-height: 54rpx;
+  height: 54rpx;
   margin-top: 8rpx;
   padding: 8rpx 6rpx;
   border-radius: 0;
   background: rgba(0,0,0,0.10);
   border: 0;
   border-bottom: 2rpx solid rgba(0, 209, 255, 0.30);
+  justify-content: flex-start;
+  overflow: hidden;
 }
 
 .full-span {

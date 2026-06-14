@@ -340,7 +340,7 @@
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">对手手牌</view>
                 <view class="review-edit-hint">编辑</view>
-                <view class="review-card-select-area" bindtap="openVoiceShowdownPicker">
+                <view class="review-card-select-area compact-card-select" bindtap="openVoiceShowdownPicker">
                   <view wx:if="{{parsedVoice.showdownCardsVisual.length}}" class="cards-inline tight review-voice-hero-cards">
                     <view wx:for="{{parsedVoice.showdownCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
                       <text class="mini-card-rank">{{card.rank}}</text>

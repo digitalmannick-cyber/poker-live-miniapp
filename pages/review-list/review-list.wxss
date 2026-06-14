@@ -1522,6 +1522,7 @@
 .review-field-input {
   width: 100%;
   min-height: 54rpx;
+  height: 54rpx;
   margin-top: 8rpx;
   padding: 0 6rpx;
   color: #f8fafc;
@@ -1610,6 +1611,36 @@
   justify-content: center;
   padding-left: 132rpx;
   padding-right: 132rpx;
+}
+
+.review-card-select-area.compact-card-select {
+  min-height: 54rpx;
+  height: 54rpx;
+  margin-top: 8rpx;
+  padding: 0 104rpx 0 6rpx;
+  justify-content: flex-start;
+  border-radius: 0;
+  background: rgba(0,0,0,0.10);
+  border: 0;
+  border-bottom: 2rpx solid rgba(0, 209, 255, 0.30);
+}
+
+.review-card-select-area.compact-card-select .cards-inline {
+  min-width: 0;
+}
+
+.review-card-select-area.compact-card-select .board-empty-text {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-card-select-area.compact-card-select .review-select-affordance {
+  right: 6rpx;
+  padding: 4rpx 10rpx;
+  font-size: 18rpx;
 }
 
 .review-voice-hero-cards {

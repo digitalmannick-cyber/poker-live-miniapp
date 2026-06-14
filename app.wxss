@@ -168,7 +168,10 @@ page {
 }
 
 .unified-field-value {
+  display: flex;
+  align-items: center;
   min-height: 54rpx;
+  height: 54rpx;
   margin-top: 8rpx;
   padding: 0 6rpx;
   color: #f8fafc;
@@ -182,6 +185,7 @@ page {
 
 .detail-checkbox-group {
   min-height: 54rpx;
+  height: 54rpx;
   margin-top: 8rpx;
   display: flex;
   align-items: center;
@@ -194,10 +198,34 @@ page {
 .detail-checkbox {
   display: flex;
   align-items: center;
-  gap: 14rpx;
+  gap: 12rpx;
   color: #f8fafc;
   font-size: 28rpx;
   font-weight: 900;
+  line-height: 1;
+}
+
+.detail-checkbox checkbox {
+  transform: scale(0.72);
+  transform-origin: left center;
+  margin-right: -8rpx;
+}
+
+.detail-checkbox .wx-checkbox-input {
+  width: 34rpx !important;
+  height: 34rpx !important;
+  border-radius: 8rpx !important;
+  border-color: rgba(0, 209, 255, 0.52) !important;
+  background: rgba(0, 0, 0, 0.18) !important;
+}
+
+.detail-checkbox .wx-checkbox-input.wx-checkbox-input-checked {
+  background: rgba(0, 209, 255, 0.18) !important;
+  border-color: rgba(0, 209, 255, 0.92) !important;
+}
+
+.detail-checkbox .wx-checkbox-input.wx-checkbox-input-checked::before {
+  color: #00d1ff !important;
 }
 
 .readonly-field-grid {
