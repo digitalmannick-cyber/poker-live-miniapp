@@ -822,6 +822,8 @@ function buildContext(hand, session, actions, event) {
       effectiveStack: hand && hand.effectiveStack || 0,
       potSize: hand && hand.potSize || 0,
       currentProfit: hand && hand.currentProfit || 0,
+      hasStraddle: !!(hand && hand.hasStraddle),
+      straddleAmount: Number(hand && hand.straddleAmount) || 0,
       opponentType: hand && hand.opponentType || '',
       opponentName: hand && hand.opponentName || '',
       villainPosition: hand && hand.villainPosition || '',
@@ -830,6 +832,7 @@ function buildContext(hand, session, actions, event) {
       streetInputs: hand && hand.streetInputs || {},
       streetSummary: hand && hand.streetSummary || '',
       showdown: hand && hand.showdown || '',
+      heroQuestion: hand && hand.heroQuestion || '',
       tags: hand && hand.tags || [],
       notes: hand && hand.notes || ''
     },
