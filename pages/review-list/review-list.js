@@ -839,10 +839,11 @@ function buildVoicePatch(detailHand, parsedVoice, voiceNote) {
     .concat(inferReviewTagsFromReview(lockedParsedVoice, lockedParsedVoice.aiReview || current.aiReview))
   )
   const streetInputs = mergeBlankStreetInputs(lockedParsedVoice.streetInputs, current.streetInputs)
+  const hasParsedStraddle = Object.prototype.hasOwnProperty.call(lockedParsedVoice, 'hasStraddle')
 
   return {
     playerCount: Number(lockedParsedVoice.playerCount) || current.playerCount || 0,
-    hasStraddle: !!lockedParsedVoice.hasStraddle,
+    hasStraddle: hasParsedStraddle ? !!lockedParsedVoice.hasStraddle : !!current.hasStraddle,
     playedDate: lockedParsedVoice.playedDate || current.playedDate,
     stakeLevel: lockedParsedVoice.stakeLevel || current.stakeLevel,
     heroPosition: lockedParsedVoice.heroPosition || current.heroPosition,
