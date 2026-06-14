@@ -976,6 +976,7 @@ function normalizeExtractedHand(record, context, cleanedTranscript) {
   const streetInputs = source.streetInputs || source.street_inputs || {}
   const normalizedStakeLevel = normalizeStakeLevel(source.stakeLevel, currentHand.stakeLevel || session.stakeLevel || fallback.stakeLevel || '')
   const hasStraddle = normalizeBoolean(currentHand.hasStraddle)
+  const straddleStakeLevel = normalizeStakeLevel(currentHand.stakeLevel, session.stakeLevel || fallback.stakeLevel || normalizedStakeLevel)
 
   return {
     playerCount: resolvePlayerCount(toNumber(source.playerCount || source.tableSize || source.table_size, 0), fallback.playerCount, currentHand.playerCount, session.playerCount),
@@ -985,7 +986,7 @@ function normalizeExtractedHand(record, context, cleanedTranscript) {
     straddleAmount: getStraddleAmountFromHand({
       hasStraddle,
       straddleAmount: currentHand.straddleAmount,
-      stakeLevel: normalizedStakeLevel
+      stakeLevel: straddleStakeLevel
     }, session),
     heroPosition: String(source.heroPosition || fallback.heroPosition || currentHand.heroPosition || '').toUpperCase(),
     heroCardsInput: toHeroCardsInput(source.heroCardsInput || fallback.heroCardsInput || currentHand.heroCardsInput || ''),

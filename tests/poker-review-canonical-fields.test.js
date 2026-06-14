@@ -126,6 +126,25 @@ test('normalizeExtractedHand does not infer straddle from AI output', () => {
   assert.equal(extracted.straddleAmount, 0)
 })
 
+test('normalizeExtractedHand computes straddle from current stake, not AI stake', () => {
+  const api = loadCloudReviewTestApi()
+  const context = api.buildContext({
+    stakeLevel: '300/600',
+    hasStraddle: true,
+    straddleAmount: 0
+  }, { smallBlind: 300, bigBlind: 600 }, [])
+
+  const extracted = api.normalizeExtractedHand({
+    stakeLevel: '100/200',
+    hasStraddle: true,
+    straddleAmount: 400
+  }, context, '')
+
+  assert.equal(extracted.stakeLevel, '100/200')
+  assert.equal(extracted.hasStraddle, true)
+  assert.equal(extracted.straddleAmount, 1200)
+})
+
 test('normalizer preserves hero question and straddle fields', () => {
   assert.ok(normalizer.includes('heroQuestion'))
   assert.ok(normalizer.includes('hasStraddle'))
