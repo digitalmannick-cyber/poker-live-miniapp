@@ -761,6 +761,12 @@ function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote,
   const settings = dataService.getAppSettings()
   const profile = dataService.getCurrentProfile ? dataService.getCurrentProfile() : {}
   const config = options || {}
+  const bigBlind = handDetailFields.getBigBlindFromLevel(
+    detailHand && detailHand.stakeLevel,
+    detailSession
+  )
+  const hasStraddle = !!(detailHand && detailHand.hasStraddle)
+  const straddleAmount = hasStraddle ? bigBlind * 2 : 0
   return {
     mode: config.mode || 'extract',
     transcript: voiceNote,
@@ -773,6 +779,8 @@ function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote,
       playerCount: Number(detailHand && detailHand.playerCount) || 0,
       playedDate: (detailHand && detailHand.playedDate) || '',
       stakeLevel: (detailHand && detailHand.stakeLevel) || '',
+      hasStraddle,
+      straddleAmount,
       heroPosition: (detailHand && detailHand.heroPosition) || '',
       heroCardsInput: (detailHand && detailHand.heroCardsInput) || '',
       effectiveStack: (detailHand && detailHand.effectiveStack) || 0,
@@ -786,6 +794,8 @@ function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote,
       streetInputs: (detailHand && detailHand.streetInputs) || {},
       streetSummary: (detailHand && detailHand.streetSummary) || '',
       notes: (detailHand && detailHand.notes) || '',
+      heroQuestion: (detailHand && detailHand.heroQuestion) || '',
+      showdown: (detailHand && detailHand.showdown) || '',
       voiceNote: (detailHand && detailHand.voiceNote) || ''
     },
     session: detailSession
