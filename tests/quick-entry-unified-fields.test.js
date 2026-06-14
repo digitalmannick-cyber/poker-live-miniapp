@@ -32,3 +32,39 @@ test('save payload includes new canonical fields', () => {
   assert.ok(js.includes('heroQuestion: form.heroQuestion'))
   assert.ok(js.includes('opponentName: form.opponentName'))
 })
+
+test('straddle toggle filters STR out of position selectors when unchecked', () => {
+  const toggleStart = js.indexOf('toggleStraddle()')
+  const toggleEnd = js.indexOf('noop() {}', toggleStart)
+  const toggleBody = toggleStart >= 0 && toggleEnd > toggleStart ? js.slice(toggleStart, toggleEnd) : ''
+
+  assert.ok(toggleBody.includes('const hasStraddle = !this.data.form.hasStraddle'))
+  assert.ok(toggleBody.includes('handDetailFields.getPositionOptions(this.data.positions, hasStraddle)'))
+  assert.ok(toggleBody.includes("this.data.form.heroPosition === 'STR'"))
+  assert.ok(toggleBody.includes("this.data.form.villainPosition === 'STR'"))
+  assert.ok(toggleBody.includes("patch['form.heroPosition'] = positionOptions[0] || ''"))
+  assert.ok(toggleBody.includes("patch['form.villainPosition'] = positionOptions[positionOptions.length - 1] || ''"))
+})
+
+test('position selector methods use straddle-aware option lists', () => {
+  const heroStart = js.indexOf('openPositionSelector()')
+  const heroEnd = js.indexOf('openOpponentTypeSelector()', heroStart)
+  const heroBody = heroStart >= 0 && heroEnd > heroStart ? js.slice(heroStart, heroEnd) : ''
+  const villainStart = js.indexOf('openVillainPositionSelector()')
+  const villainEnd = js.indexOf('openLevelSelector()', villainStart)
+  const villainBody = villainStart >= 0 && villainEnd > villainStart ? js.slice(villainStart, villainEnd) : ''
+
+  assert.ok(heroBody.includes('handDetailFields.getPositionOptions(this.data.positions, this.data.form.hasStraddle)'))
+  assert.ok(heroBody.includes('selectorOptions: buildSelectorOptions(positionOptions, this.data.form.heroPosition)'))
+  assert.ok(villainBody.includes('handDetailFields.getPositionOptions(this.data.positions, this.data.form.hasStraddle)'))
+  assert.ok(villainBody.includes('selectorOptions: buildSelectorOptions(positionOptions, this.data.form.villainPosition)'))
+})
+
+test('expanded field controls are bound to the canonical form keys', () => {
+  assert.ok(wxml.includes('bindtap="toggleStraddle"'))
+  assert.ok(wxml.includes('data-key="playerCount"'))
+  assert.ok(wxml.includes('data-key="opponentName"'))
+  assert.ok(wxml.includes('data-key="showdown"'))
+  assert.ok(wxml.includes('data-key="heroQuestion"'))
+  assert.ok(wxml.includes('maxlength="160"'))
+})
