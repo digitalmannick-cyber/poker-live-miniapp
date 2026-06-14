@@ -1,6 +1,7 @@
 const dataService = require('../../services/data-service')
 const cardUi = require('../../utils/card-ui')
 const handDetailFields = require('../../utils/hand-detail-fields')
+const reviewTags = require('../../utils/review-tags')
 const tabBar = require('../../utils/tab-bar')
 
 const REVIEW_PENDING_FILTER_KEY = 'pokerReviewPendingFilters'
@@ -268,6 +269,17 @@ function formatResultBb(value, levelText, session) {
   return (rounded > 0 ? '+' : '') + text + ' BB'
 }
 
+function buildTagOptions(tagsInput) {
+  const selected = reviewTags.normalizeReviewTags(tagsInput)
+  return reviewTags.REVIEW_TAG_OPTIONS.map(function (item) {
+    return {
+      key: item.key,
+      label: item.label,
+      active: selected.indexOf(item.label) > -1
+    }
+  })
+}
+
 function getEmptyHandFormPatch(session, settings) {
   const positionOptions = handDetailFields.getPositionOptions(settings.positions, false)
   return {
@@ -311,6 +323,7 @@ function getEmptyHandFormPatch(session, settings) {
       turn: '',
       river: ''
     }),
+    tagOptions: buildTagOptions(''),
     resultBbDisplay: '-'
   }
 }
@@ -376,6 +389,7 @@ Page({
     showdownPickerDeck: [],
     showdownCardsVisual: [],
     boardEditorVisual: [],
+    tagOptions: buildTagOptions(''),
     boardPickerVisible: false,
     boardPickerKey: 'flop',
     boardPickerTitle: '翻牌',
@@ -447,6 +461,9 @@ Page({
     }
     const nextForm = Object.assign({}, this.data.form, { [key]: value })
     const patch = { ['form.' + key]: value }
+    if (key === 'tagsInput') {
+      patch.tagOptions = buildTagOptions(value)
+    }
     if (key === 'currentProfit' || key === 'stakeLevel') {
       patch.resultBbDisplay = formatResultBb(nextForm.currentProfit, nextForm.stakeLevel, this.data.session)
     }
@@ -564,6 +581,20 @@ Page({
     this.setData(patch)
   },
   noop() {},
+  toggleTag(e) {
+    const label = String(e.currentTarget.dataset.label || '')
+    if (!label) return
+    const current = reviewTags.normalizeReviewTags(this.data.form.tagsInput)
+    const index = current.indexOf(label)
+    const next = index > -1
+      ? current.filter(item => item !== label)
+      : current.concat(label)
+    const tagsInput = next.join(', ')
+    this.setData({
+      'form.tagsInput': tagsInput,
+      tagOptions: buildTagOptions(tagsInput)
+    })
+  },
   openHeroPicker() {
     this.syncHeroCardsState(this.data.form.heroCardsInput)
     this.setData({ heroPickerVisible: true })

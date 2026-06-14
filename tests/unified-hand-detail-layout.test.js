@@ -63,3 +63,21 @@ test('editable unified inputs override global rounded input chrome', () => {
   assert.match(appWxss, /\.input\.unified-field-value,[\s\S]*?border-radius:\s*0;/)
   assert.match(appWxss, /\.input\.unified-field-value,[\s\S]*?border-bottom:\s*2rpx solid rgba\(0, 209, 255, 0\.30\);/)
 })
+
+test('quick entry and detail edit use the screenshot edit detail sequence', () => {
+  ;['quick', 'detail'].forEach(name => {
+    const source = files[name]
+    const main = source.indexOf('edit-detail-main')
+    const analysis = source.indexOf('edit-detail-analysis')
+    const streets = source.indexOf('edit-detail-streets')
+    assert.ok(main > -1, `${name} should render the main editable detail panel`)
+    assert.ok(analysis > main, `${name} should render analysis after main fields`)
+    assert.ok(streets > analysis || appWxss.includes('.edit-detail-streets'), `${name} should place streets after analysis by layout order`)
+    assert.ok(source.includes('edit-hero-trigger') || source.includes('bindtap="openHeroPicker"'), `${name} should show Hero hand in the edit detail surface`)
+    assert.ok(source.includes('edit-detail-section-label'), `${name} should show the street recognition label`)
+    assert.ok(source.includes('edit-tag-chip'), `${name} should render fixed tag chips`)
+  })
+  assert.ok(appWxss.includes('.edit-detail-main'))
+  assert.ok(appWxss.includes('.edit-detail-analysis'))
+  assert.ok(appWxss.includes('.edit-detail-streets'))
+})

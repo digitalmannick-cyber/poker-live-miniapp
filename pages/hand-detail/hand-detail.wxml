@@ -90,7 +90,7 @@
   </view>
 
   <block wx:if="{{editMode}}">
-  <view class="card">
+  <view class="card edit-detail-card edit-detail-main">
     <view class="section-title">基础信息</view>
     <view class="unified-field-grid">
       <view class="unified-field-card">
@@ -181,7 +181,7 @@
     </view>
   </view>
 
-  <view class="card">
+  <view class="card edit-detail-card edit-detail-streets">
     <view class="section-title">牌局流程</view>
     <view class="label">公牌选择</view>
     <view class="board-editor-list">
@@ -208,6 +208,7 @@
       </view>
     </view>
 
+    <view class="label edit-detail-section-label">逐街识别</view>
     <view class="street-stack">
       <view class="street-block">
         <view class="street-title">翻前</view>
@@ -264,7 +265,7 @@
     </view>
   </view>
 
-  <view class="card">
+  <view class="card edit-detail-card edit-detail-analysis">
     <view class="section-title">复盘分析</view>
     <view class="label">行动总结</view>
     <textarea class="textarea analysis-textarea" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput"></textarea>
@@ -272,17 +273,27 @@
     <textarea class="textarea analysis-textarea" value="{{form.mindJourney}}" data-key="mindJourney" bindinput="onInput"></textarea>
     <view class="label">Hero 疑问点</view>
     <textarea class="textarea analysis-textarea hero-question-textarea" value="{{form.heroQuestion}}" data-key="heroQuestion" bindinput="onInput"></textarea>
-    <view class="grid-2">
+    <view class="grid-2 edit-tag-input-hidden">
       <view>
         <view class="label">标签（逗号分隔）</view>
         <input class="input" value="{{form.tagsInput}}" data-key="tagsInput" bindinput="onInput" />
       </view>
     </view>
+    <view class="label">标签</view>
+    <view class="edit-tag-list">
+      <view
+        wx:for="{{tagOptions}}"
+        wx:key="key"
+        class="edit-tag-chip {{item.active ? 'active' : ''}}"
+        data-label="{{item.label}}"
+        bindtap="toggleTag"
+      >{{item.label}}</view>
+    </view>
     <button class="primary-btn" bindtap="saveDetail">保存详情</button>
     <button class="danger-btn" style="margin-top: 16rpx;" bindtap="deleteHand">删除本手</button>
   </view>
 
-  <view class="card">
+  <view class="card edit-detail-extra">
     <view class="section-title">复盘阶段语音复盘</view>
     <view class="muted small">这里是 MVP 中唯一的语音入口。先手动记牌，复盘时再口述补全。</view>
     <view class="label" style="margin-top: 16rpx;">口述内容</view>

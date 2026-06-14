@@ -259,6 +259,114 @@ page {
   word-break: break-word;
 }
 
+.edit-detail-card {
+  margin-top: 0;
+  margin-bottom: 0;
+  border-radius: 0;
+  border-color: rgba(0, 209, 255, 0.22);
+  background: rgba(11, 24, 30, 0.78);
+}
+
+.edit-detail-main {
+  order: 10;
+  border-top-left-radius: 16rpx;
+  border-top-right-radius: 16rpx;
+  border-bottom-color: rgba(0, 209, 255, 0.08);
+}
+
+.edit-detail-analysis {
+  order: 20;
+  border-top-color: rgba(0, 209, 255, 0.08);
+  border-bottom-color: rgba(0, 209, 255, 0.08);
+}
+
+.edit-detail-streets {
+  order: 30;
+  border-top-color: rgba(0, 209, 255, 0.08);
+  border-bottom-left-radius: 16rpx;
+  border-bottom-right-radius: 16rpx;
+}
+
+.edit-detail-extra {
+  order: 40;
+}
+
+.edit-detail-card .section-title {
+  display: none;
+}
+
+.edit-detail-streets > .label:not(.edit-detail-section-label),
+.edit-detail-streets > .board-editor-list {
+  display: none;
+}
+
+.edit-detail-label,
+.edit-detail-section-label {
+  margin-top: 20rpx;
+}
+
+.edit-hero-trigger {
+  min-height: 86rpx;
+  position: relative;
+  justify-content: center;
+  border-radius: 14rpx;
+  border-color: rgba(0, 209, 255, 0.34);
+  background: rgba(0, 209, 255, 0.06);
+}
+
+.edit-select-affordance {
+  position: absolute;
+  right: 16rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 5rpx 12rpx;
+  border-radius: 999rpx;
+  color: rgba(0, 209, 255, 0.94);
+  font-size: 20rpx;
+  font-weight: 900;
+  background: rgba(0, 209, 255, 0.10);
+  border: 1rpx solid rgba(0, 209, 255, 0.26);
+}
+
+.edit-detail-card .analysis-textarea {
+  min-height: 96rpx;
+  margin-bottom: 16rpx;
+  border-radius: 14rpx;
+  background: rgba(255,255,255,0.035);
+  border: 1rpx solid rgba(255,255,255,0.10);
+}
+
+.edit-detail-card .hero-question-textarea {
+  min-height: 86rpx;
+}
+
+.edit-tag-input-hidden {
+  display: none;
+}
+
+.edit-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.edit-tag-chip {
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  color: rgba(0, 209, 255, 0.92);
+  font-size: 22rpx;
+  font-weight: 900;
+  background: rgba(0, 209, 255, 0.09);
+  border: 1rpx solid rgba(0, 209, 255, 0.28);
+}
+
+.edit-tag-chip.active {
+  color: #071116;
+  background: #00d1ff;
+  border-color: #00d1ff;
+}
+
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

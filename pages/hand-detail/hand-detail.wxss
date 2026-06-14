@@ -32,6 +32,11 @@
   box-sizing: border-box;
 }
 
+.container {
+  display: flex;
+  flex-direction: column;
+}
+
 .hero-editor-trigger {
   min-height: 88rpx;
   display: flex;

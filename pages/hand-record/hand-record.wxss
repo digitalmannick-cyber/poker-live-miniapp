@@ -299,11 +299,17 @@
 }
 
 .record-advanced-body {
+  display: flex;
+  flex-direction: column;
   margin-top: 18rpx;
 }
 
 .advanced-card {
   margin-bottom: 18rpx;
+}
+
+.record-advanced-body .edit-detail-card {
+  margin-bottom: 0;
 }
 
 .advanced-card:last-child {

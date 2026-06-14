@@ -3,6 +3,7 @@ const voiceParser = require('../../utils/voice-parser')
 const cardUi = require('../../utils/card-ui')
 const display = require('../../utils/display')
 const handDetailFields = require('../../utils/hand-detail-fields')
+const reviewTags = require('../../utils/review-tags')
 
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = [
@@ -46,6 +47,17 @@ function buildBoardEditorVisual(form) {
       shortLabel: meta.shortLabel,
       cards: cardUi.parseCardsInput(form[key], meta.limit),
       emptyText: meta.emptyText
+    }
+  })
+}
+
+function buildTagOptions(tagsInput) {
+  const selected = reviewTags.normalizeReviewTags(tagsInput)
+  return reviewTags.REVIEW_TAG_OPTIONS.map(function (item) {
+    return {
+      key: item.key,
+      label: item.label,
+      active: selected.indexOf(item.label) > -1
     }
   })
 }
@@ -273,6 +285,7 @@ Page({
     showdownPickerPreview: [],
     showdownPickerDeck: [],
     boardEditorVisual: [],
+    tagOptions: buildTagOptions(''),
     boardPickerVisible: false,
     boardPickerKey: 'flop',
     boardPickerTitle: '翻牌',
@@ -386,6 +399,7 @@ Page({
       showdownPickerPreview: [],
       showdownPickerDeck: [],
       boardEditorVisual: buildBoardEditorVisual(form),
+      tagOptions: buildTagOptions(form.tagsInput),
       boardPickerVisible: false,
       loading: false
     })
@@ -395,6 +409,9 @@ Page({
     const value = e.detail.value
     const nextForm = Object.assign({}, this.data.form, { [key]: value })
     const patch = { ['form.' + key]: value }
+    if (key === 'tagsInput') {
+      patch.tagOptions = buildTagOptions(value)
+    }
     if (key === 'currentProfit' || key === 'stakeLevel') {
       patch.resultBbDisplay = formatResultBb(nextForm.currentProfit, nextForm.stakeLevel, this.data.session)
     }
@@ -421,6 +438,21 @@ Page({
     this.setData(patch)
   },
   noop() {},
+  toggleTag(e) {
+    if (!this.data.editMode) return
+    const label = String(e.currentTarget.dataset.label || '')
+    if (!label) return
+    const current = reviewTags.normalizeReviewTags(this.data.form.tagsInput)
+    const index = current.indexOf(label)
+    const next = index > -1
+      ? current.filter(item => item !== label)
+      : current.concat(label)
+    const tagsInput = next.join(', ')
+    this.setData({
+      'form.tagsInput': tagsInput,
+      tagOptions: buildTagOptions(tagsInput)
+    })
+  },
   openHeroPicker() {
     this.setData({
       heroPickerVisible: true,

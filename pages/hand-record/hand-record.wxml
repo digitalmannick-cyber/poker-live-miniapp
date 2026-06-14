@@ -92,7 +92,7 @@
       </view>
 
       <view wx:if="{{advancedOpen}}" class="record-advanced-body">
-        <view class="card advanced-card">
+        <view class="card advanced-card edit-detail-card edit-detail-main">
           <view class="section-title">基础信息</view>
           <view class="unified-field-grid">
             <view class="unified-field-card">
@@ -171,10 +171,22 @@
               </view>
             </view>
           </view>
+          <view class="label edit-detail-label">Hero 手牌</view>
+          <view class="hero-editor-trigger edit-hero-trigger" bindtap="openHeroPicker">
+            <view wx:if="{{heroCardsVisual.length}}" class="cards-inline tight">
+              <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{heroCardsVisual}}" wx:for-item="card" wx:key="index">
+                <text class="mini-card-rank">{{card.rank}}</text>
+                <text class="mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
+            </view>
+            <text wx:else class="board-empty-text">点击选择 Hero 手牌</text>
+            <text class="edit-select-affordance">点选修改</text>
+          </view>
         </view>
 
-        <view class="card advanced-card">
+        <view class="card advanced-card edit-detail-card edit-detail-streets">
           <view class="section-title">牌局流程</view>
+          <view class="label edit-detail-section-label">逐街识别</view>
           <view class="street-stack">
             <view class="street-block">
               <view class="street-title">翻前</view>
@@ -282,7 +294,7 @@
           </view>
         </view>
 
-        <view class="card advanced-card">
+        <view class="card advanced-card edit-detail-card edit-detail-analysis">
           <view class="section-title">复盘分析</view>
           <view class="label">行动总结</view>
           <textarea class="textarea analysis-textarea" placeholder="例如 open 30, BB call; flop bet 80 call" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput"></textarea>
@@ -290,11 +302,15 @@
           <textarea class="textarea analysis-textarea" value="{{form.notes}}" data-key="notes" bindinput="onInput"></textarea>
           <view class="label">Hero 疑问点</view>
           <textarea class="textarea analysis-textarea hero-question-textarea" maxlength="160" value="{{form.heroQuestion}}" data-key="heroQuestion" bindinput="onInput"></textarea>
-          <view class="grid-2 compact-grid">
-            <view>
-              <view class="label">标签（逗号分隔）</view>
-              <input class="input compact-input" placeholder="例如 3bet_pot, hero_call_down" value="{{form.tagsInput}}" data-key="tagsInput" bindinput="onInput" />
-            </view>
+          <view class="label">标签</view>
+          <view class="edit-tag-list">
+            <view
+              wx:for="{{tagOptions}}"
+              wx:key="key"
+              class="edit-tag-chip {{item.active ? 'active' : ''}}"
+              data-label="{{item.label}}"
+              bindtap="toggleTag"
+            >{{item.label}}</view>
           </view>
         </view>
 
