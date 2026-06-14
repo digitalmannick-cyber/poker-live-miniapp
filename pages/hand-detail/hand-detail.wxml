@@ -60,6 +60,16 @@
     <view class="empty" wx:else>暂无动作明细</view>
   </view>
 
+  <view wx:if="{{!editMode}}" class="card">
+    <view class="section-title">统一详情</view>
+    <view class="grid-2">
+      <view wx:for="{{detailRows}}" wx:key="key">
+        <view class="label">{{item.label}}</view>
+        <view class="picker readonly-display">{{item.displayValue}}</view>
+      </view>
+    </view>
+  </view>
+
   <view class="card">
     <view class="section-title">基础信息</view>
     <view class="grid-2">
@@ -72,6 +82,14 @@
       <view>
         <view class="label">级别</view>
         <view class="picker preset-trigger" bindtap="openLevelSelector">{{form.stakeLevel || '请选择级别'}}</view>
+      </view>
+      <view>
+        <view class="label">是否 Straddle</view>
+        <view class="picker preset-trigger" bindtap="toggleStraddle">{{form.hasStraddle ? '是' : '否'}}</view>
+      </view>
+      <view>
+        <view class="label">人数</view>
+        <input class="input" type="number" value="{{form.playerCount}}" data-key="playerCount" bindinput="onInput" />
       </view>
       <view>
         <view class="label">Hero 座位</view>
@@ -132,6 +150,14 @@
       <view>
         <view class="label">对手类型</view>
         <view class="picker preset-trigger" bindtap="openVillainTypeSelector">{{form.villainType || '请选择对手类型'}}</view>
+      </view>
+      <view>
+        <view class="label">对手昵称</view>
+        <input class="input" value="{{form.opponentName}}" data-key="opponentName" bindinput="onInput" />
+      </view>
+      <view>
+        <view class="label">对手手牌</view>
+        <input class="input" value="{{form.showdown}}" data-key="showdown" bindinput="onInput" />
       </view>
       <view>
         <view class="label">有效筹码</view>
@@ -224,6 +250,8 @@
     <textarea class="textarea analysis-textarea" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput"></textarea>
     <view class="label">心路历程</view>
     <textarea class="textarea analysis-textarea" value="{{form.mindJourney}}" data-key="mindJourney" bindinput="onInput"></textarea>
+    <view class="label">Hero 疑问点</view>
+    <textarea class="textarea analysis-textarea hero-question-textarea" value="{{form.heroQuestion}}" data-key="heroQuestion" bindinput="onInput"></textarea>
     <view class="grid-2">
       <view>
         <view class="label">标签（逗号分隔）</view>

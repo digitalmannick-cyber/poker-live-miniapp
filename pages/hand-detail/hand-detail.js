@@ -2,6 +2,7 @@ const dataService = require('../../services/data-service')
 const voiceParser = require('../../utils/voice-parser')
 const cardUi = require('../../utils/card-ui')
 const display = require('../../utils/display')
+const handDetailFields = require('../../utils/hand-detail-fields')
 
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = [
@@ -198,6 +199,8 @@ Page({
     form: {
       playedDate: '',
       stakeLevel: '',
+      playerCount: '',
+      hasStraddle: false,
       heroSeat: '',
       heroPosition: '',
       villainPosition: '',
@@ -207,6 +210,7 @@ Page({
       effectiveStack: '',
       potSize: '',
       currentProfit: '',
+      opponentName: '',
       showdown: '',
       streetSummary: '',
       preflopActionLine: '',
@@ -223,8 +227,12 @@ Page({
       river: '',
       ev: '',
       mindJourney: '',
+      heroQuestion: '',
       voiceNote: ''
     },
+    detailRows: [],
+    detailStreetItems: [],
+    positionOptions: [],
     resultBbDisplay: '-',
     heroEditorVisual: [],
     heroPickerVisible: false,
@@ -273,6 +281,8 @@ Page({
     const form = {
       playedDate: hand.playedDate || getSessionDate(session),
       stakeLevel: hand.stakeLevel || getSessionLevel(session),
+      playerCount: String(hand.playerCount || ''),
+      hasStraddle: !!hand.hasStraddle,
       heroSeat: String(hand.heroSeat || ''),
       heroPosition: hand.heroPosition || '',
       villainPosition: hand.villainPosition || '',
@@ -282,6 +292,7 @@ Page({
       effectiveStack: String(hand.effectiveStack || ''),
       potSize: String(hand.potSize || ''),
       currentProfit: String(hand.currentProfit || 0),
+      opponentName: hand.opponentName || '',
       showdown: hand.showdown || '',
       streetSummary: hand.streetSummary || '',
       preflopActionLine: preflopInput.actionLine || '',
@@ -298,8 +309,15 @@ Page({
       river: normalizeCardsValue(handBoard.river, 1),
       ev: hand.ev || '',
       mindJourney: hand.mindJourney || hand.notes || '',
+      heroQuestion: hand.heroQuestion || '',
       voiceNote: hand.voiceNote || ''
     }
+    const detailView = handDetailFields.buildHandDetailViewModel(hand, {
+      mode: this.data.editMode ? 'edit' : 'readonly',
+      backfilled: true,
+      positions: settings.positions,
+      session
+    })
     this.setData({
       hand: Object.assign({}, hand, {
         currentProfitDisplay: display.formatAmount(hand.currentProfit, chipUnit),
@@ -315,6 +333,9 @@ Page({
       opponentTypes: settings.opponentTypes,
       blindPresets: settings.blindPresets,
       form: form,
+      detailRows: detailView.rows,
+      detailStreetItems: detailView.streetItems,
+      positionOptions: detailView.positionOptions,
       resultBbDisplay: formatResultBb(form.currentProfit, form.stakeLevel, session),
       heroEditorVisual: cardUi.parseHeroCardsInput(form.heroCardsInput),
       heroPickerVisible: false,
@@ -333,6 +354,21 @@ Page({
     const patch = { ['form.' + key]: value }
     if (key === 'currentProfit' || key === 'stakeLevel') {
       patch.resultBbDisplay = formatResultBb(nextForm.currentProfit, nextForm.stakeLevel, this.data.session)
+    }
+    this.setData(patch)
+  },
+  toggleStraddle() {
+    const hasStraddle = !this.data.form.hasStraddle
+    const positionOptions = handDetailFields.getPositionOptions(this.data.positions, hasStraddle)
+    const patch = {
+      'form.hasStraddle': hasStraddle,
+      positionOptions
+    }
+    if (!hasStraddle && this.data.form.heroPosition === 'STR') {
+      patch['form.heroPosition'] = positionOptions[0] || ''
+    }
+    if (!hasStraddle && this.data.form.villainPosition === 'STR') {
+      patch['form.villainPosition'] = positionOptions[positionOptions.length - 1] || ''
     }
     this.setData(patch)
   },
@@ -483,14 +519,14 @@ Page({
     this.syncBoardField(key, next.join(''))
   },
   pickPosition(e) {
-    this.setData({ 'form.heroPosition': this.data.positions[e.detail.value] })
+    this.setData({ 'form.heroPosition': this.data.positionOptions[e.detail.value] })
   },
   openPositionSelector() {
     this.setData({
       selectorVisible: true,
       selectorTitle: '选择位置',
       selectorKey: 'heroPosition',
-      selectorOptions: buildSelectorOptions(this.data.positions, this.data.form.heroPosition)
+      selectorOptions: buildSelectorOptions(this.data.positionOptions, this.data.form.heroPosition)
     })
   },
   openVillainPositionSelector() {
@@ -498,7 +534,7 @@ Page({
       selectorVisible: true,
       selectorTitle: '选择对手位置',
       selectorKey: 'villainPosition',
-      selectorOptions: buildSelectorOptions(this.data.positions, this.data.form.villainPosition)
+      selectorOptions: buildSelectorOptions(this.data.positionOptions, this.data.form.villainPosition)
     })
   },
   openVillainTypeSelector() {
@@ -541,6 +577,8 @@ Page({
     await dataService.updateHand(this.data.handId, {
       playedDate: this.data.form.playedDate,
       stakeLevel: this.data.form.stakeLevel,
+      playerCount: this.data.form.playerCount,
+      hasStraddle: this.data.form.hasStraddle,
       heroSeat: this.data.form.heroSeat,
       heroPosition: this.data.form.heroPosition,
       villainPosition: this.data.form.villainPosition,
@@ -552,6 +590,7 @@ Page({
       currentProfit: this.data.form.currentProfit,
       resultBB: formatResultBb(this.data.form.currentProfit, this.data.form.stakeLevel, this.data.session),
       opponentType: this.data.form.villainType,
+      opponentName: this.data.form.opponentName,
       showdown: this.data.form.showdown,
       streetSummary: this.data.form.streetSummary,
       streetInputs: {
@@ -585,6 +624,8 @@ Page({
       ev: this.data.form.ev,
       notes: this.data.form.mindJourney,
       mindJourney: this.data.form.mindJourney,
+      heroQuestion: this.data.form.heroQuestion,
+      detailBackfilled: true,
       voiceNote: this.data.form.voiceNote
     })
     wx.showToast({ title: '详情已保存', icon: 'success' })
