@@ -667,6 +667,13 @@ function normalizeStakeLevel(value, fallback) {
   return /^\d+\/\d+$/.test(backup) ? backup : ''
 }
 
+function normalizeBoolean(value) {
+  if (value === true || value === 1) return true
+  if (value === false || value === 0 || value == null) return false
+  const text = String(value).trim().toLowerCase()
+  return ['true', '1', 'yes', 'y', 'on', '\u662f', '\u6709'].includes(text)
+}
+
 function getBigBlindFromLevel(levelText, session) {
   const text = String(levelText || '').trim()
   const match = text.match(/^(\d+)\s*\/\s*(\d+)$/)
@@ -675,7 +682,7 @@ function getBigBlindFromLevel(levelText, session) {
 }
 
 function getStraddleAmountFromHand(hand, session) {
-  if (!hand || !hand.hasStraddle) return 0
+  if (!hand || !normalizeBoolean(hand.hasStraddle)) return 0
   const explicit = toNumber(hand.straddleAmount, 0)
   if (explicit) return explicit
   return getBigBlindFromLevel(hand.stakeLevel, session) * 2
@@ -822,7 +829,7 @@ function buildContext(hand, session, actions, event) {
       effectiveStack: hand && hand.effectiveStack || 0,
       potSize: hand && hand.potSize || 0,
       currentProfit: hand && hand.currentProfit || 0,
-      hasStraddle: !!(hand && hand.hasStraddle),
+      hasStraddle: normalizeBoolean(hand && hand.hasStraddle),
       straddleAmount: Number(hand && hand.straddleAmount) || 0,
       opponentType: hand && hand.opponentType || '',
       opponentName: hand && hand.opponentName || '',
@@ -968,8 +975,7 @@ function normalizeExtractedHand(record, context, cleanedTranscript) {
   const board = source.board || {}
   const streetInputs = source.streetInputs || source.street_inputs || {}
   const normalizedStakeLevel = normalizeStakeLevel(source.stakeLevel, currentHand.stakeLevel || session.stakeLevel || fallback.stakeLevel || '')
-  const hasSourceStraddle = Object.prototype.hasOwnProperty.call(source, 'hasStraddle')
-  const hasStraddle = hasSourceStraddle ? !!source.hasStraddle : !!currentHand.hasStraddle
+  const hasStraddle = normalizeBoolean(currentHand.hasStraddle)
 
   return {
     playerCount: resolvePlayerCount(toNumber(source.playerCount || source.tableSize || source.table_size, 0), fallback.playerCount, currentHand.playerCount, session.playerCount),
@@ -978,7 +984,7 @@ function normalizeExtractedHand(record, context, cleanedTranscript) {
     hasStraddle,
     straddleAmount: getStraddleAmountFromHand({
       hasStraddle,
-      straddleAmount: source.straddleAmount || currentHand.straddleAmount,
+      straddleAmount: currentHand.straddleAmount,
       stakeLevel: normalizedStakeLevel
     }, session),
     heroPosition: String(source.heroPosition || fallback.heroPosition || currentHand.heroPosition || '').toUpperCase(),
@@ -1747,6 +1753,8 @@ exports.main = async event => {
 module.exports.__test = {
   getEnvConfig,
   normalizeMode,
+  normalizeBoolean,
+  buildContext,
   normalizeChatIntent,
   buildChatAgentContext,
   getPokerAgentChatTask,
