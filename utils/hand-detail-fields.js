@@ -217,6 +217,7 @@ module.exports = {
   getBigBlindFromLevel,
   getStraddleAmount,
   getPositionOptions,
+  normalizeBoolean,
   normalizeHandDetailForm,
   hasOnlyQuickEntryDetails,
   buildHandDetailViewModel

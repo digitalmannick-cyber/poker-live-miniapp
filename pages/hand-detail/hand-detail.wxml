@@ -68,8 +68,26 @@
         <view class="picker readonly-display">{{item.displayValue}}</view>
       </view>
     </view>
+    <view class="street-stack" style="margin-top: 20rpx;">
+      <view class="street-block" wx:for="{{detailStreetItems}}" wx:key="key">
+        <view class="street-title">{{item.label}}</view>
+        <view class="grid-2 compact-grid">
+          <view>
+            <view class="label">公牌</view>
+            <view class="picker readonly-display">{{item.boardDisplay}}</view>
+          </view>
+          <view>
+            <view class="label">底池</view>
+            <view class="picker readonly-display">{{item.potDisplay}}</view>
+          </view>
+        </view>
+        <view class="label">动作线</view>
+        <view class="picker readonly-display">{{item.actionLineDisplay}}</view>
+      </view>
+    </view>
   </view>
 
+  <block wx:if="{{editMode}}">
   <view class="card">
     <view class="section-title">基础信息</view>
     <view class="grid-2">
@@ -257,11 +275,6 @@
         <view class="label">标签（逗号分隔）</view>
         <input class="input" value="{{form.tagsInput}}" data-key="tagsInput" bindinput="onInput" />
       </view>
-      <view>
-        <view class="label">对手 showdown</view>
-        <input class="input" value="{{form.showdown}}" data-key="showdown" bindinput="onInput" />
-        <view class="small muted inline-note">例如：对手 AQ / Villain AhQd / 对手 77</view>
-      </view>
     </view>
     <button class="primary-btn" bindtap="saveDetail">保存详情</button>
     <button class="danger-btn" style="margin-top: 16rpx;" bindtap="deleteHand">删除本手</button>
@@ -303,6 +316,8 @@
       <button class="primary-btn" style="margin-top: 16rpx;" bindtap="applyVoice">确认回填</button>
     </view>
   </view>
+
+  </block>
 
   <view wx:if="{{boardPickerVisible}}" class="board-picker-modal">
     <view class="board-picker-mask" bindtap="closeBoardPicker"></view>

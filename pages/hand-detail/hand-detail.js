@@ -251,10 +251,14 @@ Page({
     selectorKey: '',
     selectorOptions: [],
     parsedVoice: null,
+    editMode: false,
     loading: false
   },
   onLoad(options) {
-    this.setData({ handId: options.id || '' })
+    this.setData({
+      handId: options.id || '',
+      editMode: options.edit === '1'
+    })
     this.refresh()
   },
   onShow() {
@@ -282,7 +286,7 @@ Page({
       playedDate: hand.playedDate || getSessionDate(session),
       stakeLevel: hand.stakeLevel || getSessionLevel(session),
       playerCount: String(hand.playerCount || ''),
-      hasStraddle: !!hand.hasStraddle,
+      hasStraddle: handDetailFields.normalizeBoolean(hand.hasStraddle),
       heroSeat: String(hand.heroSeat || ''),
       heroPosition: hand.heroPosition || '',
       villainPosition: hand.villainPosition || '',
@@ -571,6 +575,10 @@ Page({
     this.setData(patch)
   },
   async saveDetail() {
+    if (!this.data.editMode) {
+      wx.showToast({ title: '只读模式不可编辑', icon: 'none' })
+      return
+    }
     const tags = this.data.form.tagsInput
       ? this.data.form.tagsInput.split(',').map(item => item.trim()).filter(Boolean)
       : []
@@ -667,6 +675,10 @@ Page({
     this.refresh()
   },
   deleteHand() {
+    if (!this.data.editMode) {
+      wx.showToast({ title: '只读模式不可删除', icon: 'none' })
+      return
+    }
     wx.showModal({
       title: '删除手牌',
       content: '删除后本手动作链也会一起移除，是否继续？',
