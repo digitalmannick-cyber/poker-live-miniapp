@@ -2,6 +2,11 @@ const { CLOUD_ENV_ID, PREFER_CLOUD } = require('../config/cloud')
 
 let hasInitialized = false
 
+function formatError(error) {
+  if (!error) return 'unknown error'
+  return error.errMsg || error.message || String(error)
+}
+
 function initCloud() {
   if (hasInitialized) return true
   if (!wx.cloud) return false
@@ -19,7 +24,7 @@ function initCloud() {
     hasInitialized = true
     return true
   } catch (error) {
-    console.warn('cloud init failed', error)
+    console.warn('cloud init failed: ' + formatError(error))
     return false
   }
 }
@@ -33,7 +38,7 @@ function getDb() {
   try {
     return wx.cloud.database()
   } catch (error) {
-    console.warn('get cloud db failed', error)
+    console.warn('get cloud db failed: ' + formatError(error))
     return null
   }
 }

@@ -20,6 +20,32 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+function normalizePlayerId(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function getCurrentPlayerId() {
+  return normalizePlayerId(store.getProfile().playerId)
+}
+
+function requireCurrentPlayerId() {
+  const playerId = getCurrentPlayerId()
+  if (!playerId) {
+    throw new Error('missing current playerId')
+  }
+  return playerId
+}
+
+function withPlayerScope(doc, playerId) {
+  return Object.assign({}, doc || {}, {
+    playerId: normalizePlayerId(playerId)
+  })
+}
+
+function isOwnedByCurrentPlayer(doc, playerId) {
+  return normalizePlayerId(doc && doc.playerId) === normalizePlayerId(playerId)
+}
+
 function parseDateTimeValue(value) {
   const text = String(value || '').trim()
   if (!text) return null
@@ -107,7 +133,7 @@ async function fetchAll(buildQuery) {
 }
 
 function formatSession(doc) {
-  return Object.assign(
+  const session = Object.assign(
     {
       title: '',
       date: '',
@@ -122,6 +148,7 @@ function formatSession(doc) {
       endingChips: null,
       totalProfit: 0,
       durationMinutes: 0,
+      timerPausedAt: '',
       handCount: 0,
       status: 'active',
       notes: '',
@@ -130,6 +157,11 @@ function formatSession(doc) {
     },
     doc
   )
+  if (session.status !== 'finished') {
+    session.totalProfit = 0
+    session.endingChips = null
+  }
+  return session
 }
 
 function formatHand(doc) {
@@ -161,6 +193,9 @@ function formatHand(doc) {
       heroQuestion: '',
       detailBackfilled: false,
       voiceNote: '',
+      voiceExtract: null,
+      aiReview: null,
+      reviewStatus: 'idle',
       createdAt: 0,
       updatedAt: 0
     },
@@ -174,6 +209,7 @@ function buildSessionDoc(base, patch) {
   const bigBlind = Number(merged.bigBlind) || 0
   const buyIn = Number(merged.buyIn) || 0
   const cashOut = Number(merged.cashOut) || 0
+  const status = merged.status || 'active'
   const title = ((merged.venue || '') + ' ' + smallBlind + '/' + bigBlind).trim()
   return stripUndefined({
     title,
@@ -186,11 +222,12 @@ function buildSessionDoc(base, patch) {
     tableSize: Number(merged.tableSize) || 8,
     buyIn,
     cashOut,
-    endingChips: cashOut || null,
-    totalProfit: cashOut - buyIn,
+    endingChips: status === 'finished' && cashOut ? cashOut : null,
+    totalProfit: status === 'finished' ? (cashOut - buyIn) : 0,
     durationMinutes: calculateDurationMinutes(merged.startTime, merged.endTime),
+    timerPausedAt: merged.timerPausedAt || '',
     handCount: Number(merged.handCount) || 0,
-    status: merged.status || 'active',
+    status: status,
     notes: merged.notes || '',
     createdAt: merged.createdAt || now(),
     updatedAt: now()
@@ -206,16 +243,16 @@ function buildHandDoc(base, patch) {
     heroSeat: Number(merged.heroSeat) || 0,
     heroPosition: merged.heroPosition || '',
     villainPosition: merged.villainPosition || '',
-    hasStraddle: !!merged.hasStraddle,
     villainType: merged.villainType || merged.opponentType || '',
+    hasStraddle: !!merged.hasStraddle,
     buttonSeat: Number(merged.buttonSeat) || 0,
     heroCardsInput: merged.heroCardsInput || '',
     effectiveStack: Number(merged.effectiveStack) || 0,
     potSize: Number(merged.potSize) || 0,
     currentProfit: Number(merged.currentProfit) || 0,
     resultBB: merged.resultBB || '',
-    opponentName: merged.opponentName || '',
     opponentType: merged.opponentType || '',
+    opponentName: merged.opponentName || '',
     board: Object.assign({ flop: '', turn: '', river: '' }, merged.board || {}, {
       flop: merged.flop != null ? merged.flop : undefined,
       turn: merged.turn != null ? merged.turn : undefined,
@@ -227,10 +264,13 @@ function buildHandDoc(base, patch) {
     tags: Array.isArray(merged.tags) ? merged.tags : [],
     notes: merged.notes || '',
     mindJourney: merged.mindJourney || merged.notes || '',
+    streetSummary: merged.streetSummary || '',
     heroQuestion: merged.heroQuestion || '',
     detailBackfilled: !!merged.detailBackfilled,
-    streetSummary: merged.streetSummary || '',
     voiceNote: merged.voiceNote || '',
+    voiceExtract: merged.voiceExtract || null,
+    aiReview: merged.aiReview || null,
+    reviewStatus: ['idle', 'extracted', 'reviewed'].indexOf(merged.reviewStatus) > -1 ? merged.reviewStatus : 'idle',
     createdAt: merged.createdAt || now(),
     updatedAt: now()
   })
@@ -286,37 +326,40 @@ function mergeSettingsDoc(doc) {
   return merged
 }
 
-async function collectionHasAny(collectionName) {
+async function collectionHasAny(collectionName, playerIdOverride) {
   const db = getDbOrThrow()
+  const playerId = normalizePlayerId(playerIdOverride) || requireCurrentPlayerId()
   try {
-    const result = await db.collection(collectionName).limit(1).get()
+    const result = await db.collection(collectionName).where({ playerId }).limit(1).get()
     return !!((result.data || []).length)
   } catch (error) {
     return false
   }
 }
 
-async function upsertMany(collectionName, list) {
+async function upsertMany(collectionName, list, playerIdOverride) {
   const db = getDbOrThrow()
+  const playerId = normalizePlayerId(playerIdOverride) || requireCurrentPlayerId()
   const items = Array.isArray(list) ? list : []
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index]
     if (!item || !item._id) continue
     await db.collection(collectionName).doc(item._id).set({
-      data: omitId(item)
+      data: omitId(withPlayerScope(item, playerId))
     })
   }
 }
 
-async function listCollectionDocs(collectionName) {
+async function listCollectionDocs(collectionName, playerIdOverride) {
+  const playerId = normalizePlayerId(playerIdOverride) || requireCurrentPlayerId()
   return fetchAll(offset =>
-    getDbOrThrow().collection(collectionName).skip(offset).limit(PAGE_SIZE)
+    getDbOrThrow().collection(collectionName).where({ playerId }).skip(offset).limit(PAGE_SIZE)
   )
 }
 
-async function clearCollection(collectionName) {
+async function clearCollection(collectionName, playerIdOverride) {
   const db = getDbOrThrow()
-  const docs = await listCollectionDocs(collectionName)
+  const docs = await listCollectionDocs(collectionName, playerIdOverride)
   for (let index = 0; index < docs.length; index += 1) {
     await db.collection(collectionName).doc(docs[index]._id).remove()
   }
@@ -355,50 +398,53 @@ async function saveSettings(playerId, settings) {
 
 async function seedBusinessData(backup) {
   const data = backup || {}
+  const playerId = normalizePlayerId(data.profile && data.profile.playerId) || requireCurrentPlayerId()
   const hasCloudData = await Promise.all([
-    collectionHasAny(COLLECTIONS.sessions),
-    collectionHasAny(COLLECTIONS.hands),
-    collectionHasAny(COLLECTIONS.handActions),
-    collectionHasAny(COLLECTIONS.bankrollLogs)
+    collectionHasAny(COLLECTIONS.sessions, playerId),
+    collectionHasAny(COLLECTIONS.hands, playerId),
+    collectionHasAny(COLLECTIONS.handActions, playerId),
+    collectionHasAny(COLLECTIONS.bankrollLogs, playerId)
   ])
 
   if (hasCloudData.some(Boolean)) {
     return false
   }
 
-  await upsertMany(COLLECTIONS.sessions, data.sessions)
-  await upsertMany(COLLECTIONS.hands, data.hands)
-  await upsertMany(COLLECTIONS.handActions, data.handActions)
-  await upsertMany(COLLECTIONS.bankrollLogs, data.bankrollLogs)
+  await upsertMany(COLLECTIONS.sessions, data.sessions, playerId)
+  await upsertMany(COLLECTIONS.hands, data.hands, playerId)
+  await upsertMany(COLLECTIONS.handActions, data.handActions, playerId)
+  await upsertMany(COLLECTIONS.bankrollLogs, data.bankrollLogs, playerId)
   return true
 }
 
 async function replaceBusinessData(backup) {
   const data = backup || {}
-  await clearCollection(COLLECTIONS.handActions)
-  await clearCollection(COLLECTIONS.hands)
-  await clearCollection(COLLECTIONS.bankrollLogs)
-  await clearCollection(COLLECTIONS.sessions)
-  await upsertMany(COLLECTIONS.sessions, data.sessions)
-  await upsertMany(COLLECTIONS.hands, data.hands)
-  await upsertMany(COLLECTIONS.handActions, data.handActions)
-  await upsertMany(COLLECTIONS.bankrollLogs, data.bankrollLogs)
+  const playerId = normalizePlayerId(data.profile && data.profile.playerId) || requireCurrentPlayerId()
+  await clearCollection(COLLECTIONS.handActions, playerId)
+  await clearCollection(COLLECTIONS.hands, playerId)
+  await clearCollection(COLLECTIONS.bankrollLogs, playerId)
+  await clearCollection(COLLECTIONS.sessions, playerId)
+  await upsertMany(COLLECTIONS.sessions, data.sessions, playerId)
+  await upsertMany(COLLECTIONS.hands, data.hands, playerId)
+  await upsertMany(COLLECTIONS.handActions, data.handActions, playerId)
+  await upsertMany(COLLECTIONS.bankrollLogs, data.bankrollLogs, playerId)
   return true
 }
 
 async function clearAllData(playerId) {
-  await clearCollection(COLLECTIONS.handActions)
-  await clearCollection(COLLECTIONS.hands)
-  await clearCollection(COLLECTIONS.bankrollLogs)
-  await clearCollection(COLLECTIONS.sessions)
+  const targetPlayerId = normalizePlayerId(playerId) || requireCurrentPlayerId()
+  await clearCollection(COLLECTIONS.handActions, targetPlayerId)
+  await clearCollection(COLLECTIONS.hands, targetPlayerId)
+  await clearCollection(COLLECTIONS.bankrollLogs, targetPlayerId)
+  await clearCollection(COLLECTIONS.sessions, targetPlayerId)
 
-  if (playerId) {
+  if (targetPlayerId) {
     const db = getDbOrThrow()
     try {
-      await db.collection(COLLECTIONS.profiles).doc(getProfileDocId(playerId)).remove()
+      await db.collection(COLLECTIONS.profiles).doc(getProfileDocId(targetPlayerId)).remove()
     } catch (error) {}
     try {
-      await db.collection(COLLECTIONS.userSettings).doc(getSettingsDocId(playerId)).remove()
+      await db.collection(COLLECTIONS.userSettings).doc(getSettingsDocId(targetPlayerId)).remove()
     } catch (error) {}
   }
 
@@ -407,17 +453,19 @@ async function clearAllData(playerId) {
 
 async function getSessions() {
   const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
   const list = await fetchAll(offset =>
-    db.collection(COLLECTIONS.sessions).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
+    db.collection(COLLECTIONS.sessions).where({ playerId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
   return list.map(formatSession)
 }
 
 async function getSessionById(sessionId) {
   const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
   try {
     const result = await db.collection(COLLECTIONS.sessions).doc(sessionId).get()
-    return result.data ? formatSession(result.data) : null
+    return result.data && isOwnedByCurrentPlayer(result.data, playerId) ? formatSession(result.data) : null
   } catch (error) {
     return null
   }
@@ -425,23 +473,26 @@ async function getSessionById(sessionId) {
 
 async function getHandsBySessionId(sessionId) {
   const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
   const list = await fetchAll(offset =>
-    db.collection(COLLECTIONS.hands).where({ sessionId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
+    db.collection(COLLECTIONS.hands).where({ playerId, sessionId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
   return list.map(formatHand)
 }
 
 async function getRecentHands(limit) {
   const db = getDbOrThrow()
-  const result = await db.collection(COLLECTIONS.hands).orderBy('updatedAt', 'desc').limit(limit || 5).get()
+  const playerId = requireCurrentPlayerId()
+  const result = await db.collection(COLLECTIONS.hands).where({ playerId }).orderBy('updatedAt', 'desc').limit(limit || 5).get()
   return (result.data || []).map(formatHand)
 }
 
 async function getHandById(handId) {
   const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
   try {
     const result = await db.collection(COLLECTIONS.hands).doc(handId).get()
-    return result.data ? formatHand(result.data) : null
+    return result.data && isOwnedByCurrentPlayer(result.data, playerId) ? formatHand(result.data) : null
   } catch (error) {
     return null
   }
@@ -449,15 +500,17 @@ async function getHandById(handId) {
 
 async function getActionsByHandId(handId) {
   const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
   const list = await fetchAll(offset =>
-    db.collection(COLLECTIONS.handActions).where({ handId }).orderBy('sequence', 'asc').skip(offset).limit(PAGE_SIZE)
+    db.collection(COLLECTIONS.handActions).where({ playerId, handId }).orderBy('sequence', 'asc').skip(offset).limit(PAGE_SIZE)
   )
   return list
 }
 
 async function createSession(payload) {
   const db = getDbOrThrow()
-  const doc = buildSessionDoc(null, Object.assign({}, payload, { createdAt: now() }))
+  const playerId = requireCurrentPlayerId()
+  const doc = withPlayerScope(buildSessionDoc(null, Object.assign({}, payload, { createdAt: now() })), playerId)
   const result = await db.collection(COLLECTIONS.sessions).add({ data: doc })
   return Object.assign({ _id: result._id }, doc)
 }
@@ -466,7 +519,7 @@ async function updateSession(sessionId, patch) {
   const db = getDbOrThrow()
   const current = await getSessionById(sessionId)
   if (!current) return null
-  const data = buildSessionDoc(current, patch)
+  const data = withPlayerScope(buildSessionDoc(current, patch), current.playerId)
   await db.collection(COLLECTIONS.sessions).doc(sessionId).update({ data })
   return getSessionById(sessionId)
 }
@@ -482,8 +535,9 @@ async function finishSession(sessionId, payload) {
   })
   const stats = await getStatsSummary()
   const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
   await db.collection(COLLECTIONS.bankrollLogs).add({
-    data: {
+    data: withPlayerScope({
       sessionId,
       type: 'session_settlement',
       amount: Number(updated.totalProfit) || 0,
@@ -491,13 +545,14 @@ async function finishSession(sessionId, payload) {
       note: (updated ? updated.title : 'Session') + ' 结算',
       createdAt: now(),
       updatedAt: now()
-    }
+    }, playerId)
   })
   return updated
 }
 
 async function replaceActions(handId, sessionId, actions) {
   const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
   const existing = await getActionsByHandId(handId)
   const removals = existing.map(item => db.collection(COLLECTIONS.handActions).doc(item._id).remove())
   if (removals.length) {
@@ -506,7 +561,7 @@ async function replaceActions(handId, sessionId, actions) {
   for (let index = 0; index < actions.length; index += 1) {
     const action = actions[index]
     await db.collection(COLLECTIONS.handActions).add({
-      data: {
+      data: withPlayerScope({
         handId,
         sessionId,
         street: action.street,
@@ -518,14 +573,15 @@ async function replaceActions(handId, sessionId, actions) {
         sequence: index + 1,
         createdAt: now(),
         updatedAt: now()
-      }
+      }, playerId)
     })
   }
 }
 
 async function createHand(payload) {
   const db = getDbOrThrow()
-  const handDoc = buildHandDoc(null, Object.assign({}, payload, { createdAt: now() }))
+  const playerId = requireCurrentPlayerId()
+  const handDoc = withPlayerScope(buildHandDoc(null, Object.assign({}, payload, { createdAt: now() })), playerId)
   const handResult = await db.collection(COLLECTIONS.hands).add({ data: handDoc })
   const handId = handResult._id
   await replaceActions(handId, payload.sessionId, payload.actions || [])
@@ -544,7 +600,7 @@ async function updateHand(handId, patch) {
   const db = getDbOrThrow()
   const current = await getHandById(handId)
   if (!current) return null
-  const data = buildHandDoc(current, patch)
+  const data = withPlayerScope(buildHandDoc(current, patch), current.playerId)
   delete data.sessionId
   await db.collection(COLLECTIONS.hands).doc(handId).update({ data })
 
@@ -579,14 +635,15 @@ async function deleteHand(handId) {
 
 async function getReviewHands(filters) {
   const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
   if (filters && filters.sessionId) {
     const list = await fetchAll(offset =>
-      db.collection(COLLECTIONS.hands).where({ sessionId: filters.sessionId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
+      db.collection(COLLECTIONS.hands).where({ playerId, sessionId: filters.sessionId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
     )
     return list.map(formatHand)
   }
   const list = await fetchAll(offset =>
-    db.collection(COLLECTIONS.hands).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
+    db.collection(COLLECTIONS.hands).where({ playerId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
   return list.map(formatHand)
 }
@@ -631,6 +688,9 @@ module.exports = {
   getReviewHands,
   getStatsSummary,
   __test: {
-    buildHandDoc
+    buildHandDoc,
+    normalizePlayerId,
+    withPlayerScope,
+    isOwnedByCurrentPlayer
   }
 }

@@ -17,7 +17,6 @@ Page({
   },
   async refresh() {
     this.setData({ loading: true })
-    await dataService.bootstrapCloudSync()
     const data = await dataService.getDashboardData()
     const settings = dataService.getAppSettings()
     const chipUnit = settings.chipUnit
@@ -55,12 +54,7 @@ Page({
     }
     wx.navigateTo({ url: '/pages/session-detail/session-detail?id=' + active._id })
   },
-  async goQuickRecord() {
-    const active = (await dataService.getDashboardData()).activeSession
-    if (!active) {
-      wx.showToast({ title: '请先创建牌局', icon: 'none' })
-      return
-    }
+  goQuickRecord() {
     wx.switchTab({ url: '/pages/hand-record/hand-record' })
   },
   goSessionList() {

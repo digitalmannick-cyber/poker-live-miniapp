@@ -1,24 +1,205 @@
 {
   "description": "Poker Live Recorder",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "value": ".cc-connect",
+        "type": "folder"
+      },
+      {
+        "value": "_local-artifacts",
+        "type": "prefix"
+      },
+      {
+        "value": "assets",
+        "type": "prefix"
+      },
+      {
+        "value": "batch3",
+        "type": "prefix"
+      },
+      {
+        "value": "cloudfunctions",
+        "type": "prefix"
+      },
+      {
+        "value": "docs",
+        "type": "prefix"
+      },
+      {
+        "value": "logs",
+        "type": "prefix"
+      },
+      {
+        "value": "tests",
+        "type": "prefix"
+      },
+      {
+        "value": "tools",
+        "type": "prefix"
+      },
+      {
+        "value": "upload",
+        "type": "prefix"
+      },
+      {
+        "value": "web-preview",
+        "type": "prefix"
+      },
+      {
+        "value": "CLOUD_SETUP",
+        "type": "prefix"
+      },
+      {
+        "value": "split-upload",
+        "type": "prefix"
+      },
+      {
+        "value": ".codex",
+        "type": "folder"
+      },
+      {
+        "value": ".git",
+        "type": "folder"
+      },
+      {
+        "value": ".codex-remote-attachments",
+        "type": "folder"
+      },
+      {
+        "value": ".superpowers",
+        "type": "folder"
+      },
+      {
+        "value": "_local-artifacts",
+        "type": "folder"
+      },
+      {
+        "value": "assets",
+        "type": "folder"
+      },
+      {
+        "value": "cloudfunctions",
+        "type": "folder"
+      },
+      {
+        "value": "docs",
+        "type": "folder"
+      },
+      {
+        "value": "logs",
+        "type": "folder"
+      },
+      {
+        "value": "tests",
+        "type": "folder"
+      },
+      {
+        "value": "tools",
+        "type": "folder"
+      },
+      {
+        "value": "web-preview",
+        "type": "folder"
+      },
+      {
+        "value": "batch3-upload.json",
+        "type": "file"
+      },
+      {
+        "value": "batch3-gen.ps1",
+        "type": "file"
+      },
+      {
+        "value": "debug.log",
+        "type": "file"
+      },
+      {
+        "value": "desktop-after-toolbox-click.png",
+        "type": "file"
+      },
+      {
+        "value": "desktop-devtools-max.png",
+        "type": "file"
+      },
+      {
+        "value": "desktop-hover-toolbox.png",
+        "type": "file"
+      },
+      {
+        "value": "desktop-screenshot-devtools.png",
+        "type": "file"
+      },
+      {
+        "value": "desktop-screenshot.png",
+        "type": "file"
+      },
+      {
+        "value": "desktop-tools-menu-alt.png",
+        "type": "file"
+      },
+      {
+        "value": "desktop-tools-menu.png",
+        "type": "file"
+      },
+      {
+        "value": "desktop-top-ellipsis.png",
+        "type": "file"
+      },
+      {
+        "value": "CLOUD_SETUP.md",
+        "type": "file"
+      },
+      {
+        "value": "cloudbaserc.json",
+        "type": "file"
+      },
+      {
+        "value": "split-upload-manifest.ps1",
+        "type": "file"
+      },
+      {
+        "value": "upload-batch-a.json",
+        "type": "file"
+      },
+      {
+        "value": "upload-batch-b.json",
+        "type": "file"
+      },
+      {
+        "value": "upload-batch-c.json",
+        "type": "file"
+      },
+      {
+        "value": "upload-batch-d.json",
+        "type": "file"
+      },
+      {
+        "value": "upload-manifest-gen.ps1",
+        "type": "file"
+      },
+      {
+        "value": "upload-manifest.json",
+        "type": "file"
+      }
+    ],
     "include": []
   },
   "setting": {
     "bundle": false,
     "es6": true,
     "postcss": true,
-    "minified": true,
-    "enhance": true,
+    "minified": false,
+    "enhance": false,
     "showShadowRootInWxmlPanel": true,
     "urlCheck": false,
     "compileWorklet": false,
     "uglifyFileName": false,
-    "uploadWithSourceMap": true,
+    "uploadWithSourceMap": false,
     "packNpmManually": false,
     "packNpmRelationList": [],
-    "minifyWXSS": true,
-    "minifyWXML": true,
+    "minifyWXSS": false,
+    "minifyWXML": false,
     "localPlugins": false,
     "disableUseStrict": false,
     "useCompilerPlugins": false,
@@ -33,7 +214,7 @@
   },
   "compileType": "miniprogram",
   "cloudfunctionRoot": "cloudfunctions/",
-  "libVersion": "3.6.4",
+  "libVersion": "3.15.2",
   "appid": "wxaefcdacf2d4eb6d0",
   "projectname": "poker-live-miniapp",
   "simulatorPluginLibVersion": {},

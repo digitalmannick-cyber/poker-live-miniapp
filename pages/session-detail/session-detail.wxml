@@ -1,5 +1,4 @@
 <view class="app-bg"></view>
-<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
 <view class="container">
   <view class="card">
     <view class="row">
@@ -66,19 +65,22 @@
         </view>
         <view>
           <view class="label">当前输赢</view>
-          <view class="picker session-profit-preview {{profitPreviewTone}}">{{profitPreviewDisplay}}</view>
+          <view class="picker session-profit-preview {{profitPreviewTone}}">{{profitPreviewDisplay || '未结算'}}</view>
         </view>
       </view>
 
       <view class="label">备注</view>
       <textarea class="textarea session-notes-textarea" value="{{form.notes}}" data-key="notes" bindinput="onInput"></textarea>
 
-      <view class="session-action-row">
-        <button class="primary-btn session-action-main" bindtap="saveSession">
+      <view class="session-action-row {{session && session.status === 'active' ? 'session-action-grid' : ''}}">
+        <view class="session-action-btn session-action-main" role="button" hover-class="session-action-pressed" bindtap="saveSession">
           {{session && session.status === 'active' ? '更新牌局信息' : (mode === 'create' ? '开始牌局' : '保存牌局信息')}}
-        </button>
-        <button wx:if="{{session && session.status === 'active'}}" class="session-record-btn session-action-side" bindtap="goAddHand">快速记录手牌</button>
-        <button class="danger-btn session-action-side" disabled="{{!session || session.status !== 'active'}}" bindtap="finishSession">结束牌局</button>
+        </view>
+        <view wx:if="{{session && session.status === 'active'}}" class="session-action-btn session-action-side session-pause-btn {{session.timerPausedAt ? 'paused' : ''}}" role="button" hover-class="session-action-pressed" bindtap="toggleTimerPause">
+          {{session.timerPausedAt ? '继续计时' : '暂停计时'}}
+        </view>
+        <view wx:if="{{session && session.status === 'active'}}" class="session-record-btn session-action-btn session-action-side" role="button" hover-class="session-action-pressed" bindtap="goAddHand">快速记录手牌</view>
+        <view class="session-finish-btn session-action-btn session-action-side {{!session || session.status !== 'active' ? 'disabled' : ''}}" role="button" hover-class="session-action-pressed" bindtap="finishSession">结束牌局</view>
       </view>
     </view>
   </view>
@@ -90,7 +92,7 @@
         <view class="kpi-label">本场手数</view>
       </view>
       <view>
-        <view class="kpi-value {{(session.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{session.totalProfitDisplay}}</view>
+        <view class="kpi-value {{session.totalProfitTone}}">{{session.totalProfitDisplay}}</view>
         <view class="kpi-label">当前盈亏</view>
       </view>
     </view>

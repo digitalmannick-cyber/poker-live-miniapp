@@ -1,5 +1,4 @@
 <view class="app-bg"></view>
-<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
 <view class="container">
   <view class="card">
     <view class="row">
@@ -15,16 +14,27 @@
     <view wx:if="{{sessions.length}}">
       <view wx:for="{{sessions}}" wx:key="_id" class="list-item" bindtap="goSessionDetail" data-id="{{item._id}}">
         <view class="row">
-          <view>
+          <view class="session-list-main">
             <view>{{item.title}}</view>
             <view class="small muted">{{item.date}}</view>
           </view>
-          <view class="badge-outline session-status-badge {{item.status === 'active' ? 'active' : 'finished'}}">
-            {{item.status === 'active' ? '进行中' : '已结束'}}
+          <view class="session-list-actions">
+            <view
+              wx:if="{{item.summaryEligible}}"
+              class="session-summary-trigger"
+              catchtap="openSessionSummary"
+              data-id="{{item._id}}"
+              aria-label="查看 AI Session 总结"
+            >
+              AI总结
+            </view>
+            <view class="badge-outline session-status-badge {{item.status === 'active' ? 'active' : 'finished'}}">
+              {{item.status === 'active' ? '进行中' : '已结束'}}
+            </view>
           </view>
         </view>
         <view class="row" style="margin-top: 14rpx;">
-          <view class="small muted">买入 {{item.buyIn}} · 手数 {{item.handCount}}</view>
+          <view class="small muted">买入 {{item.buyIn}} · 手牌 {{item.handCount}}</view>
           <view class="small {{(item.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{item.totalProfitDisplay}}</view>
         </view>
       </view>
@@ -33,3 +43,83 @@
   </view>
   <view class="tab-bar-spacer"></view>
 </view>
+
+<view wx:if="{{sessionSummaryVisible}}" class="session-summary-layer">
+  <view class="session-summary-mask" bindtap="closeSessionSummary"></view>
+  <view class="session-summary-modal">
+    <view class="session-summary-head">
+      <view>
+        <view class="session-summary-title">{{sessionSummaryView.title}}</view>
+        <view class="session-summary-subtitle">Poker Agent Session 总结</view>
+      </view>
+      <view class="session-summary-close" bindtap="closeSessionSummary">关闭</view>
+    </view>
+
+    <scroll-view class="session-summary-body" scroll-y>
+      <view wx:if="{{sessionSummaryLoading}}" class="session-summary-loading">正在汇总本场所有 AI 建议...</view>
+      <view wx:if="{{sessionSummaryError}}" class="session-summary-error">{{sessionSummaryError}}</view>
+
+      <view wx:if="{{sessionSummaryView}}">
+        <view class="session-summary-section">
+          <view class="session-summary-section-title">总览</view>
+          <view class="session-summary-text">{{sessionSummaryView.overview}}</view>
+        </view>
+
+        <view class="session-summary-count-grid">
+          <view class="session-summary-count good">
+            <view class="session-summary-count-value">{{sessionSummaryView.counts.good}}</view>
+            <view class="session-summary-count-label">精彩手</view>
+          </view>
+          <view class="session-summary-count mistake">
+            <view class="session-summary-count-value">{{sessionSummaryView.counts.mistakes}}</view>
+            <view class="session-summary-count-label">错误手</view>
+          </view>
+          <view class="session-summary-count optimize">
+            <view class="session-summary-count-value">{{sessionSummaryView.counts.optimizations}}</view>
+            <view class="session-summary-count-label">可优化</view>
+          </view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.goodHands.length}}" class="session-summary-section">
+          <view class="session-summary-section-title">打得好的地方</view>
+          <view wx:for="{{sessionSummaryView.goodHands}}" wx:key="index" class="session-summary-item">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.mistakeHands.length}}" class="session-summary-section">
+          <view class="session-summary-section-title">有问题的地方</view>
+          <view wx:for="{{sessionSummaryView.mistakeHands}}" wx:key="index" class="session-summary-item danger">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.optimizationHands.length}}" class="session-summary-section">
+          <view class="session-summary-section-title">可以优化</view>
+          <view wx:for="{{sessionSummaryView.optimizationHands}}" wx:key="index" class="session-summary-item warn">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.handSummaries.length}}" class="session-summary-section">
+          <view class="session-summary-section-title">逐手摘要</view>
+          <view wx:for="{{sessionSummaryView.handSummaries}}" wx:key="index" class="session-summary-item">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.tendency}}" class="session-summary-section">
+          <view class="session-summary-section-title">Session 倾向</view>
+          <view class="session-summary-text">{{sessionSummaryView.tendency}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.recommendations.length}}" class="session-summary-section">
+          <view class="session-summary-section-title">合理建议</view>
+          <view wx:for="{{sessionSummaryView.recommendations}}" wx:key="index" class="session-summary-item">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.trainingPlan.length}}" class="session-summary-section">
+          <view class="session-summary-section-title">训练计划</view>
+          <view wx:for="{{sessionSummaryView.trainingPlan}}" wx:key="index" class="session-summary-item">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.oneLiner}}" class="session-summary-one-liner">{{sessionSummaryView.oneLiner}}</view>
+        <view wx:if="{{sessionSummaryView.answer}}" class="session-summary-text">{{sessionSummaryView.answer}}</view>
+      </view>
+    </scroll-view>
+  </view>
+</view>
+
+<agent-chat />

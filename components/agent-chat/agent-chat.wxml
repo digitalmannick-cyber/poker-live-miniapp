@@ -1,0 +1,76 @@
+﻿<view class="agent-chat-root">
+  <view wx:if="{{!displayVisible}}" class="agent-chat-fab" bindtap="openChat">
+    <image
+      class="agent-chat-fab-icon"
+      src="/components/agent-chat/poker-agent-fab-96.png"
+      mode="aspectFill"
+    />
+  </view>
+
+  <view wx:if="{{displayVisible}}" class="agent-chat-mask {{visible ? 'open' : 'closing'}}" bindtap="closeChat"></view>
+  <view wx:if="{{displayVisible}}" class="agent-chat-panel {{visible ? 'open' : 'closing'}}" catchtap="noop">
+    <view class="agent-chat-head">
+      <view>
+        <view class="agent-chat-title">Poker Agent</view>
+        <view class="agent-chat-subtitle">范围、复盘、训练和状态检查</view>
+      </view>
+      <view class="agent-chat-close" bindtap="closeChat" aria-label="收起 Poker Agent">
+        <view class="agent-chat-collapse-icon"></view>
+      </view>
+    </view>
+
+    <scroll-view class="agent-chat-messages" scroll-y scroll-into-view="{{scrollAnchor}}">
+      <view class="agent-chat-quick">
+        <view
+          wx:for="{{quickActions}}"
+          wx:key="key"
+          class="agent-chat-chip"
+          data-intent="{{item.key}}"
+          data-prompt="{{item.prompt}}"
+          bindtap="useQuickAction"
+        >{{item.title}}</view>
+      </view>
+
+      <view
+        wx:for="{{messages}}"
+        wx:key="id"
+        id="{{item.id}}"
+        class="agent-chat-message {{item.role === 'user' ? 'user' : 'assistant'}}"
+      >
+        <view class="agent-chat-message-role">{{item.role === 'user' ? '你' : 'Agent'}}</view>
+        <view class="agent-chat-message-text">{{item.text}}</view>
+        <image
+          wx:if="{{item.imageUrl}}"
+          class="agent-chat-message-image"
+          src="{{item.imageUrl}}"
+          mode="widthFix"
+          bindtap="previewMessageImage"
+          data-url="{{item.imageUrl}}"
+        />
+      </view>
+
+      <view wx:if="{{busy}}" class="agent-chat-message assistant">
+        <view class="agent-chat-message-role">Agent</view>
+        <view class="agent-chat-thinking">
+          <view class="agent-chat-dot"></view>
+          <view class="agent-chat-dot"></view>
+          <view class="agent-chat-dot"></view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="agent-chat-input-wrap">
+      <textarea
+        class="agent-chat-input"
+        value="{{inputText}}"
+        bindinput="onInput"
+        auto-height
+        maxlength="-1"
+        cursor-spacing="120"
+        placeholder="点这里用手机语音输入法说牌谱、问范围或做状态检查"
+        placeholder-class="agent-chat-placeholder"
+      ></textarea>
+      <view class="agent-chat-send {{busy || !inputText ? 'disabled' : ''}}" bindtap="sendMessage">发送</view>
+    </view>
+  </view>
+</view>

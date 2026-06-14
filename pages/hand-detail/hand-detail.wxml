@@ -1,5 +1,4 @@
 <view class="app-bg"></view>
-<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
 <view class="container" wx:if="{{hand}}">
   <view class="card">
     <view class="row">
@@ -19,8 +18,6 @@
         <text wx:if="{{hand.stakeLevelDisplay}}"> · {{hand.stakeLevelDisplay}}</text>
         <text> · 本手输赢 {{hand.currentProfitDisplay}}</text>
         <text wx:if="{{hand.opponentType}}"> · {{hand.opponentType}}</text>
-          <text wx:if="{{form.heroSeat}}"> · Hero Seat {{form.heroSeat}}</text>
-          <text wx:if="{{form.buttonSeat}}"> · BTN {{form.buttonSeat}}</text>
         </view>
       </view>
     </view>
@@ -47,6 +44,11 @@
       </view>
     </view>
     <view class="muted small" style="margin-top: 16rpx;">{{hand.streetSummary}}</view>
+  </view>
+
+  <view wx:if="{{editMode}}" class="card edit-mode-card">
+    <view class="section-title">编辑模式</view>
+    <view class="small muted">本页字段均可修改，包括手牌、公牌、输赢、底池、位置、对手、行动线和复盘内容。修改后点“保存详情”。</view>
   </view>
 
   <view class="card">
@@ -110,16 +112,8 @@
         <input class="input" type="number" value="{{form.playerCount}}" data-key="playerCount" bindinput="onInput" />
       </view>
       <view>
-        <view class="label">Hero 座位</view>
-        <input class="input" type="number" value="{{form.heroSeat}}" data-key="heroSeat" bindinput="onInput" />
-      </view>
-      <view>
         <view class="label">Hero 位置</view>
         <view class="picker preset-trigger" bindtap="openPositionSelector">{{form.heroPosition || '请选择位置'}}</view>
-      </view>
-      <view>
-        <view class="label">Button 座位</view>
-        <input class="input" type="number" value="{{form.buttonSeat}}" data-key="buttonSeat" bindinput="onInput" />
       </view>
       <view>
         <view class="label">Hero 手牌</view>
@@ -174,7 +168,7 @@
         <input class="input" value="{{form.opponentName}}" data-key="opponentName" bindinput="onInput" />
       </view>
       <view>
-        <view class="label">对手手牌</view>
+        <view class="label">对手手牌 / Showdown</view>
         <input class="input" value="{{form.showdown}}" data-key="showdown" bindinput="onInput" />
       </view>
       <view>
@@ -196,7 +190,16 @@
         <view class="board-editor-label">{{item.label}}</view>
         <view class="board-editor-trigger" bindtap="openBoardPicker" data-key="{{item.key}}">
           <view wx:if="{{item.cards.length}}" class="cards-inline tight">
-            <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{item.cards}}" wx:for-item="card" wx:key="index">
+            <view
+              class="mini-card mini-card-{{card.suitClass}} review-board-card-editable"
+              wx:for="{{item.cards}}"
+              wx:for-item="card"
+              wx:for-index="cardIndex"
+              wx:key="index"
+              data-key="{{item.key}}"
+              data-replace-index="{{cardIndex}}"
+              catchtap="openBoardPicker"
+            >
               <text class="mini-card-rank">{{card.rank}}</text>
               <text class="mini-card-suit">{{card.suitSymbol}}</text>
             </view>
@@ -316,7 +319,6 @@
       <button class="primary-btn" style="margin-top: 16rpx;" bindtap="applyVoice">确认回填</button>
     </view>
   </view>
-
   </block>
 
   <view wx:if="{{boardPickerVisible}}" class="board-picker-modal">
@@ -332,7 +334,14 @@
       <view class="hero-picked-preview">
         <view class="badge-outline">{{boardPickerHint}}</view>
         <view class="hero-picked-center cards-inline tight">
-          <view class="quick-picked-card mini-card mini-card-{{card.suitClass}}" wx:for="{{boardPickerPreview}}" wx:for-item="card" wx:key="index">
+          <view
+            class="quick-picked-card mini-card mini-card-{{card.suitClass}} {{boardReplaceIndex === index ? 'replace-active' : ''}}"
+            wx:for="{{boardPickerPreview}}"
+            wx:for-item="card"
+            wx:key="index"
+            data-index="{{index}}"
+            bindtap="selectBoardReplaceCard"
+          >
             <text class="quick-picked-rank">{{card.rank}}</text>
             <text class="quick-picked-suit">{{card.suitSymbol}}</text>
           </view>

@@ -1,6 +1,8 @@
 const dataService = require('../../services/data-service')
 const tabBar = require('../../utils/tab-bar')
 
+const WECHAT_PROFILE_PROMPT_SEEN_KEY = 'pokerLiveWechatProfilePromptSeen'
+
 function formatProfit(value, unit) {
   const amount = Number(value) || 0
   const sign = amount > 0 ? '+' : amount < 0 ? '-' : ''
@@ -55,6 +57,21 @@ function saveAvatarFile(tempFilePath) {
   })
 }
 
+function getAvatarText(name) {
+  const text = String(name || '').trim()
+  return text ? text.slice(0, 2) : 'PL'
+}
+
+function shouldShowWechatProfilePrompt(profile) {
+  if (wx.getStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)) {
+    return false
+  }
+  const name = String(profile && profile.name || '').trim()
+  const avatarUrl = String(profile && profile.avatarUrl || '').trim()
+  const needsNickname = !name || name === '玩家'
+  return needsNickname || !avatarUrl
+}
+
 Page({
   data: {
     version: 'v1.0.0',
@@ -82,6 +99,12 @@ Page({
     settingsEditorPlaceholder: '',
     settingsEditorItems: [],
     settingsEditorNewValue: '',
+    profileEditorVisible: false,
+    profileEditorName: '',
+    profileEditorTitle: '',
+    wechatProfilePromptVisible: false,
+    wechatProfileDialogVisible: false,
+    syncingWechatProfile: false,
     totalProfitDisplay: '0 BB',
     unitLabel: 'BB',
     unitOptions: [
@@ -103,6 +126,7 @@ Page({
       profile: data.profile,
       settings: data.settings,
       stats: data.stats,
+      wechatProfilePromptVisible: shouldShowWechatProfilePrompt(data.profile),
       totalProfitDisplay: formatProfit(data.stats.totalProfit, data.settings.chipUnit),
       unitLabel: getUnitLabel(data.settings.chipUnit)
     })
@@ -144,44 +168,114 @@ Page({
     this.refresh()
   },
 
-  async syncWechatProfile() {
+  openProfileEditor() {
+    this.setData({
+      profileEditorVisible: true,
+      profileEditorName: this.data.profile.name || '',
+      profileEditorTitle: this.data.profile.title || ''
+    })
+  },
+
+  closeProfileEditor() {
+    this.setData({
+      profileEditorVisible: false,
+      profileEditorName: '',
+      profileEditorTitle: ''
+    })
+  },
+
+  onProfileEditorNameInput(e) {
+    this.setData({ profileEditorName: e.detail.value || '' })
+  },
+
+  onProfileEditorTitleInput(e) {
+    this.setData({ profileEditorTitle: e.detail.value || '' })
+  },
+
+  async saveProfileEditor() {
+    const name = String(this.data.profileEditorName || '').trim()
+    const title = String(this.data.profileEditorTitle || '').trim()
+    if (!name) {
+      wx.showToast({ title: '昵称不能为空', icon: 'none' })
+      return
+    }
+    await dataService.updateProfile({
+      name,
+      title: title || this.data.profile.title || '怪盗团新兵',
+      avatarText: getAvatarText(name)
+    })
+    this.closeProfileEditor()
+    wx.showToast({ title: '资料已保存', icon: 'success' })
+    this.refresh()
+  },
+
+  syncWechatProfile() {
+    wx.showModal({
+      title: '同步微信资料',
+      content: '微信现在需要分别授权头像和昵称：点头像选择微信头像，再点昵称输入框选择或输入微信昵称。',
+      showCancel: false,
+      confirmText: '知道了'
+    })
+  },
+
+  openWechatProfilePrompt() {
+    this.setData({
+      wechatProfileDialogVisible: true
+    })
+  },
+
+  closeWechatProfilePrompt() {
+    wx.setStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY, true)
+    this.setData({
+      wechatProfilePromptVisible: false,
+      wechatProfileDialogVisible: false
+    })
+  },
+
+  syncWechatProfileByFramework() {
+    if (this.data.syncingWechatProfile) return
+    if (typeof wx.getUserProfile !== 'function') {
+      wx.showToast({ title: '当前微信版本不支持同步', icon: 'none' })
+      return
+    }
+    this.setData({ syncingWechatProfile: true })
     wx.getUserProfile({
-      desc: '用于同步微信头像和昵称',
+      desc: '用于同步头像和昵称',
       success: async res => {
-        const userInfo = res.userInfo || {}
-        const avatarUrl = userInfo.avatarUrl || ''
-        const nickName = String(userInfo.nickName || '').trim()
-        const patch = {}
-        if (nickName) {
-          patch.name = nickName
-          patch.avatarText = nickName.slice(0, 2)
-        }
-        if (avatarUrl) {
-          patch.avatarUrl = avatarUrl
-        }
-        if (!Object.keys(patch).length) {
+        const userInfo = res && res.userInfo || {}
+        const name = String(userInfo.nickName || '').trim()
+        const avatarUrl = String(userInfo.avatarUrl || '').trim()
+        if (!name && !avatarUrl) {
           wx.showToast({ title: '未获取到微信资料', icon: 'none' })
           return
         }
-        await dataService.updateProfile(patch)
-        wx.showToast({ title: '已同步微信资料', icon: 'success' })
+        await dataService.updateProfile({
+          name: name || this.data.profile.name,
+          avatarText: getAvatarText(name || this.data.profile.name),
+          avatarUrl: avatarUrl || this.data.profile.avatarUrl
+        })
+        wx.setStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY, true)
+        this.setData({
+          wechatProfilePromptVisible: false,
+          wechatProfileDialogVisible: false
+        })
+        wx.showToast({ title: '微信资料已同步', icon: 'success' })
         this.refresh()
       },
       fail: () => {
-        wx.showToast({ title: '未授权同步微信资料', icon: 'none' })
+        wx.showToast({ title: '已取消同步', icon: 'none' })
+      },
+      complete: () => {
+        this.setData({ syncingWechatProfile: false })
       }
     })
   },
 
-  chooseAvatar() {
+  chooseLocalAvatar() {
     wx.showActionSheet({
-      itemList: ['同步微信头像和昵称', '从相册选择头像', '拍照更换头像'],
+      itemList: ['从相册选择头像', '拍照更换头像'],
       success: res => {
-        if (res.tapIndex === 0) {
-          this.syncWechatProfile()
-          return
-        }
-        const sourceType = res.tapIndex === 2 ? ['camera'] : ['album']
+        const sourceType = res.tapIndex === 1 ? ['camera'] : ['album']
         wx.chooseImage({
           count: 1,
           sizeType: ['compressed'],
@@ -359,6 +453,7 @@ Page({
       success: async res => {
         if (!res.confirm) return
         await dataService.clearAllData()
+        wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
         wx.showToast({ title: '已重置', icon: 'success' })
         this.refresh()
       }

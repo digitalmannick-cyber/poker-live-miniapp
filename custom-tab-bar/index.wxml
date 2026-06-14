@@ -3,7 +3,7 @@
     <view
       wx:for="{{list}}"
       wx:key="pagePath"
-      class="tab-item {{selected === item.pagePath ? 'active' : ''}}"
+      class="tab-item {{item.active ? 'active' : ''}}"
       data-path="{{item.pagePath}}"
       bindtap="switchTab"
     >

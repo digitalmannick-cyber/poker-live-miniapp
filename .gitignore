@@ -11,3 +11,12 @@ Thumbs.db
 project.private.config.json
 
 *.log
+.superpowers/
+_local-artifacts/
+.codex-tools/
+.env.local
+.cloudbase/
+.codex/
+.codex-remote-attachments/
+.pytest-tmp-agent/
+logs/

@@ -1,29 +1,88 @@
+const tabState = require('../utils/tab-state')
+
 Component({
   data: {
     selected: '',
-    list: [
-      { pagePath: '/pages/session-list/session-list', text: '场次', short: 'SESS' },
-      { pagePath: '/pages/hand-record/hand-record', text: '记牌', short: 'REC' },
-      { pagePath: '/pages/review-list/review-list', text: '复盘', short: 'REVIEW' },
-      { pagePath: '/pages/stats/stats', text: '统计', short: 'STATS' },
-      { pagePath: '/pages/profile/profile', text: '我的', short: 'ME' }
-    ]
+    list: tabState.buildTabItems('')
   },
-  methods: {
-    switchTab(event) {
-      const pagePath = event.currentTarget.dataset.path
-      if (!pagePath || pagePath === this.data.selected) return
-      wx.switchTab({ url: pagePath })
+  lifetimes: {
+    attached() {
+      this.startRoutePolling()
+    },
+    detached() {
+      this.stopRoutePolling()
     }
   },
   pageLifetimes: {
     show() {
+      this.startRoutePolling()
+    },
+    hide() {
+      this.stopRoutePolling()
+    }
+  },
+  methods: {
+    normalizePagePath(value) {
+      return tabState.normalizePagePath(value)
+    },
+    setSelectedTab(pagePath) {
+      const selected = tabState.getSelectedTabPath(pagePath)
+      if (!selected || selected === this.data.selected) return
+      this.setData({
+        selected,
+        list: tabState.buildTabItems(selected)
+      })
+    },
+    syncSelectedFromRoute() {
       const pages = getCurrentPages()
       const currentPage = pages[pages.length - 1]
-      const route = currentPage ? '/' + currentPage.route : ''
-      if (route && route !== this.data.selected) {
-        this.setData({ selected: route })
+      const route = currentPage ? (currentPage.route || currentPage.__route__ || '') : ''
+      const normalized = tabState.getSelectedTabPath(route)
+      this.setSelectedTab(normalized)
+    },
+    safeSyncSelectedFromRoute() {
+      try {
+        this.syncSelectedFromRoute()
+      } catch (error) {
+        console.warn('[PLR_TAB] sync failed: ' + (error && (error.stack || error.message || error.errMsg) || error))
       }
+    },
+    scheduleRouteSync() {
+      this.safeSyncSelectedFromRoute()
+      ;[80, 180, 360, 720].forEach((delay) => {
+        setTimeout(() => {
+          this.safeSyncSelectedFromRoute()
+        }, delay)
+      })
+    },
+    startRoutePolling() {
+      this.safeSyncSelectedFromRoute()
+      if (this.routePollTimer) return
+      this.routePollTimer = setInterval(() => {
+        this.safeSyncSelectedFromRoute()
+      }, 300)
+    },
+    stopRoutePolling() {
+      if (!this.routePollTimer) return
+      clearInterval(this.routePollTimer)
+      this.routePollTimer = null
+    },
+    switchTab(event) {
+      const dataset = event && event.currentTarget && event.currentTarget.dataset || {}
+      const pagePath = this.normalizePagePath(dataset.path)
+      if (!pagePath || pagePath === this.data.selected) return
+      console.info('[PLR_TAB] switchTab ' + pagePath)
+      this.setSelectedTab(pagePath)
+      wx.switchTab({
+        url: pagePath,
+        success: () => {
+          this.scheduleRouteSync()
+        },
+        fail: (error) => {
+          console.warn('[PLR_TAB] switchTab failed: ' + (error && (error.errMsg || error.message) || error))
+          this.scheduleRouteSync()
+        }
+      })
     }
   }
 })

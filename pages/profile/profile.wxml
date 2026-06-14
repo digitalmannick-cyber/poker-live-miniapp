@@ -1,37 +1,91 @@
 <view class="app-bg"></view>
-<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
 <view class="container">
   <view class="profile-hero">
     <view class="profile-hero-glow"></view>
     <view class="profile-hero-main">
-      <view class="profile-avatar-wrap" bindtap="chooseAvatar">
-        <image wx:if="{{profile.avatarUrl}}" class="profile-avatar" src="{{profile.avatarUrl}}" mode="aspectFill"></image>
-        <view wx:else class="profile-avatar profile-avatar-fallback">{{profile.avatarText}}</view>
-        <view class="profile-avatar-edit">改头像</view>
-      </view>
-      <view class="profile-main">
-        <view class="profile-primary-copy">
-          <view class="profile-name-trigger" bindtap="editName">{{profile.name}}</view>
-          <view class="profile-id-block">
-            <view class="profile-id-trigger" bindtap="copyPlayerId">UID: {{profile.playerId}}</view>
+      <view class="profile-identity">
+        <view class="profile-avatar-wrap" bindtap="openProfileEditor">
+          <image wx:if="{{profile.avatarUrl}}" class="profile-avatar" src="{{profile.avatarUrl}}" mode="aspectFill"></image>
+          <view wx:else class="profile-avatar profile-avatar-fallback">{{profile.avatarText}}</view>
+          <view class="profile-avatar-edit-icon" bindtap="openProfileEditor" aria-label="编辑资料">
+            <view class="icon-pencil"></view>
           </view>
-          <view class="profile-tag-trigger" bindtap="editTitle">{{profile.title}}</view>
         </view>
-        <view class="profile-hero-meta">
-          <view class="profile-hero-chip profile-hero-chip-hands">
-            <view class="profile-hero-chip-kicker">手数</view>
-            <view class="profile-hero-chip-value">{{stats.handCount || 0}}</view>
-            <view class="profile-hero-chip-sub">已记录总手数</view>
+        <view class="profile-primary-copy">
+          <view class="profile-name-row">
+            <view class="profile-name-display">{{profile.name || '玩家'}}</view>
           </view>
-          <view class="profile-hero-chip profile-hero-chip-profit">
-            <view class="profile-hero-chip-kicker">结果</view>
-            <view class="profile-hero-chip-value {{(stats.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{totalProfitDisplay}}</view>
-            <view class="profile-hero-chip-sub">累计净结果</view>
-          </view>
+          <view class="profile-tag-trigger">{{profile.title}}</view>
+        </view>
+      </view>
+      <view class="profile-hero-meta">
+        <view class="profile-hero-chip profile-hero-chip-hands">
+          <view class="profile-hero-chip-kicker">手数</view>
+          <view class="profile-hero-chip-value">{{stats.handCount || 0}}</view>
+          <view class="profile-hero-chip-sub">总手数</view>
+        </view>
+        <view class="profile-hero-chip profile-hero-chip-profit">
+          <view class="profile-hero-chip-kicker">战绩</view>
+          <view class="profile-hero-chip-value {{(stats.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{totalProfitDisplay}}</view>
+          <view class="profile-hero-chip-sub">累计</view>
         </view>
       </view>
     </view>
     <view class="profile-hero-art"></view>
+  </view>
+
+  <view wx:if="{{wechatProfilePromptVisible}}" class="wechat-sync-card">
+    <view class="wechat-sync-card-main">
+      <view class="wechat-sync-card-title">同步微信头像和昵称</view>
+      <view class="wechat-sync-card-desc">首次使用建议同步一次，之后可手动编辑。</view>
+    </view>
+    <view class="wechat-sync-card-action" bindtap="openWechatProfilePrompt">同步</view>
+  </view>
+
+  <view wx:if="{{profileEditorVisible}}" class="wechat-profile-mask" bindtap="closeProfileEditor">
+    <view class="profile-editor-dialog" catchtap="noop">
+      <view class="profile-editor-head">
+        <view>
+          <view class="profile-editor-title">编辑资料</view>
+          <view class="profile-editor-subtitle">头像和昵称之后都可以手动修改。</view>
+        </view>
+        <view class="profile-editor-close" bindtap="closeProfileEditor">关闭</view>
+      </view>
+      <view class="profile-editor-body">
+        <view class="profile-editor-avatar-col">
+          <view class="profile-editor-avatar" bindtap="chooseLocalAvatar">
+            <image wx:if="{{profile.avatarUrl}}" class="profile-editor-avatar-img" src="{{profile.avatarUrl}}" mode="aspectFill"></image>
+            <view wx:else class="profile-editor-avatar-fallback">{{profile.avatarText}}</view>
+            <view class="profile-editor-avatar-badge">改</view>
+          </view>
+          <view class="profile-editor-avatar-tip">相册/拍照更换</view>
+        </view>
+        <view class="profile-editor-fields">
+          <view class="profile-editor-label">昵称</view>
+          <input
+            class="profile-editor-input"
+            value="{{profileEditorName}}"
+            placeholder="输入你的玩家昵称"
+            placeholder-class="profile-editor-placeholder"
+            bindinput="onProfileEditorNameInput"
+            confirm-type="done"
+          />
+          <view class="profile-editor-label profile-editor-label-gap">称号</view>
+          <input
+            class="profile-editor-input"
+            value="{{profileEditorTitle}}"
+            placeholder="例如 怪盗团新兵"
+            placeholder-class="profile-editor-placeholder"
+            bindinput="onProfileEditorTitleInput"
+            confirm-type="done"
+          />
+        </view>
+      </view>
+      <view class="profile-editor-actions">
+        <view class="profile-editor-action profile-editor-action-secondary" bindtap="closeProfileEditor">取消</view>
+        <view class="profile-editor-action profile-editor-action-primary" bindtap="saveProfileEditor">保存</view>
+      </view>
+    </view>
   </view>
 
   <view class="section-label">牌局管理</view>
@@ -137,6 +191,32 @@
     <view class="small muted">The poker is life.</view>
   </view>
 
+  <view wx:if="{{wechatProfileDialogVisible}}" class="wechat-profile-mask">
+    <view class="wechat-profile-dialog">
+      <view class="wechat-profile-title">同步微信昵称和头像</view>
+      <view class="wechat-profile-desc">首次登录时可使用微信小程序框架同步一次资料。之后头像和昵称都在“编辑资料”里手动修改。</view>
+      <view class="wechat-sync-panel">
+        <view class="wechat-sync-preview">
+          <view class="wechat-sync-avatar-box">
+            <image wx:if="{{profile.avatarUrl}}" class="wechat-sync-avatar-img" src="{{profile.avatarUrl}}" mode="aspectFill"></image>
+            <view wx:else class="wechat-sync-avatar-fallback">{{profile.avatarText}}</view>
+          </view>
+          <view class="wechat-sync-preview-copy">
+            <view class="wechat-sync-preview-label">当前资料</view>
+            <view class="wechat-sync-preview-name">{{profile.name || '玩家'}}</view>
+          </view>
+        </view>
+        <view class="wechat-sync-note">
+          微信授权窗口会由小程序框架弹出，本页面不再嵌入头像和昵称原生控件，避免真机样式错乱。
+        </view>
+      </view>
+      <view class="wechat-profile-actions">
+        <view class="wechat-profile-action wechat-profile-action-secondary" bindtap="closeWechatProfilePrompt">暂不</view>
+        <view class="wechat-profile-action wechat-profile-action-primary" bindtap="syncWechatProfileByFramework">同步微信资料</view>
+      </view>
+    </view>
+  </view>
+
   <view wx:if="{{settingsEditorVisible}}" class="settings-editor-mask" bindtap="onSettingsEditorMaskTap">
     <view class="settings-editor-sheet" catchtap="noop">
       <view class="settings-editor-head">
@@ -200,3 +280,4 @@
 
   <view class="tab-bar-spacer"></view>
 </view>
+<agent-chat />

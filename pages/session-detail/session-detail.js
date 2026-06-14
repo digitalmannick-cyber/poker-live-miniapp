@@ -43,10 +43,33 @@ function combineDateTime(datePart, timePart) {
   return date + ' ' + time
 }
 
+function parseDateTimeValue(value) {
+  const text = String(value || '').trim()
+  if (!text) return null
+  const normalized = text.replace(' ', 'T')
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function shiftDateTime(value, minutes) {
+  const date = parseDateTimeValue(value)
+  if (!date) return value
+  const next = new Date(date.getTime() + (Number(minutes) || 0) * 60000)
+  return combineDateTime(formatDatePart(next), formatTimePart(next))
+}
+
+function diffMinutes(startValue, endValue) {
+  const start = parseDateTimeValue(startValue)
+  const end = parseDateTimeValue(endValue)
+  if (!start || !end) return 0
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
+}
+
 function calculateSessionProfit(buyIn, cashOut) {
+  if (String(cashOut || '').trim() === '') return null
   const buy = Number(buyIn)
   const cash = Number(cashOut)
-  if (!Number.isFinite(buy) || !Number.isFinite(cash)) return 0
+  if (!Number.isFinite(buy) || !Number.isFinite(cash)) return null
   return cash - buy
 }
 
@@ -57,12 +80,33 @@ function formatSessionProfit(value) {
   return sign + abs
 }
 
+function getDisplaySessionProfit(session) {
+  if (!session || session.status !== 'finished') return null
+  return Number(session.totalProfit) || 0
+}
+
+function buildSessionProfitView(session) {
+  const profit = getDisplaySessionProfit(session)
+  if (profit == null) {
+    return {
+      totalProfitDisplay: '未结算',
+      totalProfitTone: 'empty'
+    }
+  }
+  return {
+    totalProfitDisplay: formatSessionProfit(profit),
+    totalProfitTone: profit >= 0 ? 'positive' : 'negative'
+  }
+}
+
 function buildProfitDisplay(buyIn, cashOut) {
-  return formatSessionProfit(calculateSessionProfit(buyIn, cashOut))
+  const profit = calculateSessionProfit(buyIn, cashOut)
+  return profit == null ? '' : formatSessionProfit(profit)
 }
 
 function getProfitTone(buyIn, cashOut) {
   const profit = calculateSessionProfit(buyIn, cashOut)
+  if (profit == null) return 'empty'
   return profit >= 0 ? 'positive' : 'negative'
 }
 
@@ -149,7 +193,6 @@ Page({
     this.refresh()
   },
   async refresh() {
-    await dataService.bootstrapCloudSync()
     const settings = dataService.getAppSettings()
     const chipUnit = settings.chipUnit
     const venueOptions = settings.venues.slice()
@@ -182,9 +225,7 @@ Page({
     const form = buildForm(detail.session, settings)
     this.setData({
       session: detail.session
-        ? Object.assign({}, detail.session, {
-            totalProfitDisplay: formatSessionProfit(detail.session.totalProfit)
-          })
+        ? Object.assign({}, detail.session, buildSessionProfitView(detail.session))
         : null,
       hands: (detail.hands || []).map(item => Object.assign({}, item, {
         currentProfitDisplay: display.formatAmount(item.currentProfit, chipUnit),
@@ -294,7 +335,7 @@ Page({
       date: form.startDate,
       startTime: combineDateTime(form.startDate, form.startTime),
       endTime: combineDateTime(form.endDate, form.endTime),
-      totalProfit: calculateSessionProfit(form.buyIn, form.cashOut)
+      totalProfit: calculateSessionProfit(form.buyIn, form.cashOut) || 0
     })
     dataService.updateSettings({ lastBlindPreset: payload.blindPreset })
     if (this.data.mode === 'create') {
@@ -307,6 +348,41 @@ Page({
     wx.showToast({ title: '已更新牌局', icon: 'success' })
     this.refresh()
   },
+  async toggleTimerPause() {
+    if (!this.data.sessionId || !this.data.session || this.data.session.status !== 'active') return
+    const now = getNowParts()
+    const nowText = combineDateTime(now.date, now.time)
+    const session = this.data.session
+    if (session.timerPausedAt) {
+      const pauseMinutes = diffMinutes(session.timerPausedAt, nowText)
+      const currentStartTime = combineDateTime(this.data.form.startDate, this.data.form.startTime) || session.startTime
+      const nextStartTime = shiftDateTime(currentStartTime, pauseMinutes)
+      const startParts = splitDateTime(nextStartTime)
+      await dataService.updateSession(this.data.sessionId, {
+        startTime: nextStartTime,
+        date: startParts.date,
+        timerPausedAt: ''
+      })
+      this.setData({
+        'form.startDate': startParts.date,
+        'form.startTime': startParts.time,
+        'session.startTime': nextStartTime,
+        'session.date': startParts.date,
+        'session.timerPausedAt': ''
+      })
+      wx.showToast({ title: '已继续计时', icon: 'success' })
+      this.refresh()
+      return
+    }
+    await dataService.updateSession(this.data.sessionId, {
+      timerPausedAt: nowText
+    })
+    this.setData({
+      'session.timerPausedAt': nowText
+    })
+    wx.showToast({ title: '已暂停计时', icon: 'success' })
+    this.refresh()
+  },
   goAddHand() {
     if (!this.data.sessionId) return
     wx.switchTab({ url: '/pages/hand-record/hand-record' })
@@ -316,6 +392,7 @@ Page({
   },
   finishSession() {
     if (!this.data.sessionId) return
+    if (!this.data.session || this.data.session.status !== 'active') return
     const form = this.data.form
     if (!form.venue || !form.buyIn) {
       wx.showToast({ title: '请先填写场地和买入', icon: 'none' })
@@ -330,12 +407,15 @@ Page({
       return
     }
     const now = getNowParts()
-    const endTime = combineDateTime(now.date, now.time)
+    const endTime = this.data.session && this.data.session.timerPausedAt
+      ? this.data.session.timerPausedAt
+      : combineDateTime(now.date, now.time)
     const payload = Object.assign({}, form, {
       date: form.startDate,
       startTime: combineDateTime(form.startDate, form.startTime),
       endTime: endTime,
-      totalProfit: calculateSessionProfit(form.buyIn, form.cashOut)
+      timerPausedAt: '',
+      totalProfit: calculateSessionProfit(form.buyIn, form.cashOut) || 0
     })
     dataService.updateSettings({ lastBlindPreset: payload.blindPreset })
     dataService.updateSession(this.data.sessionId, payload).then(() => {

@@ -219,6 +219,23 @@
 
 .quick-save-btn {
   width: 100%;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ff2538, #e60012);
+  border-color: rgba(255,255,255,0.18);
+  box-shadow:
+    0 16rpx 34rpx rgba(230, 0, 18, 0.34),
+    inset 0 1rpx 0 rgba(255,255,255,0.22);
+}
+
+.quick-save-btn::after {
+  border: none;
+}
+
+.quick-save-btn:active {
+  transform: translateY(1rpx);
+  box-shadow:
+    0 8rpx 18rpx rgba(230, 0, 18, 0.26),
+    inset 0 1rpx 0 rgba(255,255,255,0.18);
 }
 
 .profit-trigger {
@@ -370,13 +387,13 @@
 
 .hero-picker-panel {
   position: absolute;
-  left: 22rpx;
-  right: 22rpx;
+  left: 18rpx;
+  right: 18rpx;
   top: 72rpx;
   bottom: auto;
   max-height: calc(100vh - 264rpx - env(safe-area-inset-bottom));
   border-radius: 28rpx;
-  padding: 22rpx 24rpx 20rpx;
+  padding: 20rpx 14rpx 18rpx;
   background: linear-gradient(180deg, rgba(18, 23, 34, 0.98), rgba(7, 10, 16, 0.98));
   border: 1rpx solid rgba(255,255,255,0.12);
   box-shadow: 0 22rpx 60rpx rgba(0,0,0,0.34);
@@ -439,19 +456,20 @@
 .hero-picker-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10rpx;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 12rpx;
 }
 
 .hero-picker-card {
-  width: 48rpx;
-  height: 68rpx;
-  border-radius: 14rpx;
+  width: 80rpx;
+  height: 108rpx;
+  border-radius: 18rpx;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 7rpx 7rpx 8rpx;
+  padding: 10rpx 10rpx 12rpx;
   box-sizing: border-box;
   color: #ffffff;
   border: 1rpx solid transparent;
@@ -488,13 +506,13 @@
 }
 
 .hero-picker-rank {
-  font-size: 30rpx;
+  font-size: 42rpx;
   font-weight: 900;
   line-height: 1;
 }
 
 .hero-picker-suit {
-  font-size: 20rpx;
+  font-size: 30rpx;
   line-height: 1;
   align-self: flex-end;
   margin: 0;
@@ -509,6 +527,16 @@
 
 .picker-tool-main {
   flex: 1;
+  min-width: 0;
+  padding-left: 8rpx;
+  padding-right: 8rpx;
+  white-space: nowrap;
+}
+
+.profit-more-btn {
+  color: #dff5ff;
+  background: rgba(0, 209, 255, 0.10);
+  border-color: rgba(0, 209, 255, 0.26);
 }
 
 .profit-editor-panel {
@@ -662,7 +690,8 @@
   }
 
   .hero-picker-card {
-    width: 44rpx;
-    height: 64rpx;
+    width: 72rpx;
+    height: 100rpx;
+    padding: 9rpx 9rpx 10rpx;
   }
 }

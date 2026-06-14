@@ -1,8 +1,47 @@
 const store = require('../utils/store')
 const cloudRepo = require('./cloud-repo')
 const cloudUtils = require('../utils/cloud')
+const { AUTO_CLOUD_BOOTSTRAP } = require('../config/cloud')
 
 let bootstrapPromise = null
+let businessSyncPromise = Promise.resolve()
+const CLOUD_TIMEOUT_MS = 1500
+const CLOUD_RETRY_COOLDOWN_MS = 30000
+let cloudRetryAfter = 0
+
+function resolveAfter(ms, value) {
+  return new Promise(resolve => setTimeout(() => resolve(value), ms))
+}
+
+async function withTimeout(promise, ms, fallbackValue) {
+  return Promise.race([promise, resolveAfter(ms, fallbackValue)])
+}
+
+function isTimeoutError(error) {
+  const message = String(error && (error.message || error.errMsg || error) || '').toLowerCase()
+  return message.indexOf('timeout') > -1 || message.indexOf('timed out') > -1
+}
+
+function formatCloudError(error) {
+  if (!error) return 'unknown error'
+  return error.errMsg || error.message || String(error)
+}
+
+function markCloudRetryCooldown(error) {
+  if (isTimeoutError(error)) {
+    cloudRetryAfter = Date.now() + CLOUD_RETRY_COOLDOWN_MS
+  }
+}
+
+function canStartCloudTask() {
+  return Date.now() >= cloudRetryAfter
+}
+
+function logCloudBackgroundFailure(label, error) {
+  markCloudRetryCooldown(error)
+  const message = formatCloudError(error)
+  console.warn((label || 'cloud background task failed') + ': ' + message)
+}
 
 function writeLocalDataPatch(patch) {
   const next = Object.assign({}, store.exportBackup(), patch || {})
@@ -64,23 +103,71 @@ function getLocalAdapter() {
 async function withAdapter(callback) {
   if (cloudUtils.canUseCloud()) {
     try {
-      return await callback(cloudRepo)
+      return await Promise.race([
+        callback(cloudRepo),
+        resolveAfter(CLOUD_TIMEOUT_MS, null).then(() => {
+          throw new Error('cloud adapter timeout')
+        })
+      ])
     } catch (error) {
-      console.warn('cloud fallback to local', error)
+      logCloudBackgroundFailure('cloud fallback to local', error)
     }
   }
   return callback(getLocalAdapter())
 }
 
-async function bootstrapCloudSync(forceRefresh) {
-  if (!cloudUtils.canUseCloud()) {
+function shouldAwaitCloudBootstrap(options) {
+  const config = options || {}
+  return !!(config.forceRefresh || config.waitForCloud)
+}
+
+function runCloudTask(task, label) {
+  if (!canStartCloudTask() || !cloudUtils.canUseCloud()) {
+    return Promise.resolve(false)
+  }
+  return Promise.resolve()
+    .then(task)
+    .catch(error => {
+      logCloudBackgroundFailure(label, error)
+      return false
+    })
+}
+
+function scheduleCloudBootstrap(forceRefresh) {
+  if (!AUTO_CLOUD_BOOTSTRAP && !forceRefresh) return
+  if (!canStartCloudTask()) return
+  bootstrapCloudSync(forceRefresh, { waitForCloud: false }).catch(error => {
+    logCloudBackgroundFailure('schedule cloud bootstrap failed', error)
+  })
+}
+
+function scheduleBusinessDataSync(label) {
+  if (!AUTO_CLOUD_BOOTSTRAP) {
+    return Promise.resolve(false)
+  }
+  businessSyncPromise = businessSyncPromise
+    .catch(() => false)
+    .then(() => runCloudTask(
+      () => cloudRepo.replaceBusinessData(store.exportBackup()),
+      label || 'sync business data failed'
+    ))
+  return businessSyncPromise
+}
+
+async function bootstrapCloudSync(forceRefresh, options) {
+  if (!AUTO_CLOUD_BOOTSTRAP && !forceRefresh) {
+    return false
+  }
+  if (!canStartCloudTask() || !cloudUtils.canUseCloud()) {
     return false
   }
   if (bootstrapPromise && !forceRefresh) {
-    return bootstrapPromise
+    return shouldAwaitCloudBootstrap(options)
+      ? withTimeout(bootstrapPromise, CLOUD_TIMEOUT_MS, false)
+      : false
   }
 
-  bootstrapPromise = (async () => {
+  const task = (async () => {
     const localBackup = store.exportBackup()
     const localProfile = localBackup.profile
     const localSettings = localBackup.settings
@@ -112,79 +199,101 @@ async function bootstrapCloudSync(forceRefresh) {
     return true
   })()
     .catch(error => {
-      console.warn('bootstrap cloud sync failed', error)
+      logCloudBackgroundFailure('bootstrap cloud sync failed', error)
       return false
     })
     .finally(() => {
       bootstrapPromise = null
     })
 
-  return bootstrapPromise
+  bootstrapPromise = task
+
+  if (!shouldAwaitCloudBootstrap(Object.assign({}, options, { forceRefresh }))) {
+    return false
+  }
+
+  return withTimeout(task, CLOUD_TIMEOUT_MS, false)
 }
 
 async function getDashboardData() {
-  await bootstrapCloudSync()
-  return withAdapter(async adapter => {
-    const stats = await adapter.getStatsSummary()
-    const sessions = await adapter.getSessions()
-    const activeSession = sessions.find(item => item.status === 'active') || null
-    const recentHands = await adapter.getRecentHands(4)
-    return {
-      stats,
-      activeSession,
-      recentHands
-    }
-  })
+  scheduleCloudBootstrap()
+  const adapter = getLocalAdapter()
+  const stats = await adapter.getStatsSummary()
+  const sessions = await adapter.getSessions()
+  const activeSession = sessions.find(item => item.status === 'active') || null
+  const recentHands = await adapter.getRecentHands(4)
+  return {
+    stats,
+    activeSession,
+    recentHands
+  }
 }
 
 async function getSessionListData() {
-  await bootstrapCloudSync()
-  return withAdapter(async adapter => {
-    const sessions = await adapter.getSessions()
-    return { sessions }
-  })
+  scheduleCloudBootstrap()
+  const adapter = getLocalAdapter()
+  const sessions = await adapter.getSessions()
+  const sessionsWithSummaryState = await Promise.all((sessions || []).map(async session => {
+    const hands = await adapter.getHandsBySessionId(session._id)
+    return Object.assign({}, session, getSessionSummaryReadiness(session, hands))
+  }))
+  return { sessions: sessionsWithSummaryState }
+}
+
+function getSessionSummaryReadiness(session, hands) {
+  const sessionHands = Array.isArray(hands) ? hands : []
+  const reviewedHands = sessionHands.filter(hand => !!(hand && hand.aiReview))
+  const allHandsReviewed = sessionHands.length > 0 && reviewedHands.length === sessionHands.length
+  const summaryEligible = !!(session && session.status === 'finished' && allHandsReviewed)
+  return {
+    summaryEligible,
+    allHandsReviewed,
+    reviewedHandCount: reviewedHands.length,
+    totalHandCount: sessionHands.length
+  }
 }
 
 async function getSessionDetailData(sessionId) {
-  await bootstrapCloudSync()
-  return withAdapter(async adapter => {
-    const session = await adapter.getSessionById(sessionId)
-    const hands = session ? await adapter.getHandsBySessionId(session._id) : []
-    return {
-      session,
-      hands
-    }
-  })
+  scheduleCloudBootstrap()
+  const adapter = getLocalAdapter()
+  const session = await adapter.getSessionById(sessionId)
+  const hands = session ? await adapter.getHandsBySessionId(session._id) : []
+  return {
+    session,
+    hands
+  }
 }
 
 async function getReviewData(filters) {
-  await bootstrapCloudSync()
-  return withAdapter(async adapter => {
-    const sessions = await adapter.getSessions()
-    const hands = await adapter.getReviewHands(filters || {})
-    const totalHands = hands.length
-    const totalProfit = hands.reduce((sum, item) => sum + (Number(item.currentProfit) || 0), 0)
-    return {
-      sessions,
-      hands,
-      summary: {
-        totalHands,
-        totalProfit
-      }
+  scheduleCloudBootstrap()
+  const adapter = getLocalAdapter()
+  const sessions = await adapter.getSessions()
+  const hands = await adapter.getReviewHands(filters || {})
+  const totalHands = hands.length
+  const totalProfit = hands.reduce((sum, item) => sum + (Number(item.currentProfit) || 0), 0)
+  return {
+    sessions,
+    hands,
+    summary: {
+      totalHands,
+      totalProfit
     }
-  })
+  }
 }
 
 async function getStatsData() {
-  await bootstrapCloudSync()
-  return withAdapter(async adapter => {
-    const stats = await adapter.getStatsSummary()
-    return { stats }
-  })
+  scheduleCloudBootstrap()
+  const stats = await getLocalAdapter().getStatsSummary()
+  return { stats }
+}
+
+async function getRecentHands(limit) {
+  scheduleCloudBootstrap()
+  return getLocalAdapter().getRecentHands(limit || 50)
 }
 
 async function getProfilePageData() {
-  await bootstrapCloudSync()
+  scheduleCloudBootstrap()
   const stats = await getStatsData()
   return {
     stats: stats.stats,
@@ -197,6 +306,10 @@ function getAppSettings() {
   return store.getSettings()
 }
 
+function getCurrentProfile() {
+  return store.getProfile()
+}
+
 function updateProfile(patch) {
   const profile = store.updateProfile(patch)
   if (cloudUtils.canUseCloud()) {
@@ -207,7 +320,7 @@ function updateProfile(patch) {
         }
       })
       .catch(error => {
-        console.warn('sync profile failed', error)
+        logCloudBackgroundFailure('sync profile failed', error)
       })
   }
   return profile
@@ -224,7 +337,7 @@ function updateSettings(patch) {
         }
       })
       .catch(error => {
-        console.warn('sync settings failed', error)
+        logCloudBackgroundFailure('sync settings failed', error)
       })
   }
   return settings
@@ -243,7 +356,7 @@ async function importBackup(payload) {
       await cloudRepo.saveProfile(result.profile)
       await cloudRepo.saveSettings(playerId, result.settings)
     } catch (error) {
-      console.warn('sync import backup failed', error)
+      logCloudBackgroundFailure('sync import backup failed', error)
     }
   } else {
     await bootstrapCloudSync(true)
@@ -260,55 +373,61 @@ async function clearAllData() {
       await cloudRepo.clearAllData(playerId)
       await bootstrapCloudSync(true)
     } catch (error) {
-      console.warn('clear cloud data failed', error)
+      logCloudBackgroundFailure('clear cloud data failed', error)
     }
   }
   return result
 }
 
 async function getSessionById(sessionId) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.getSessionById(sessionId))
+  scheduleCloudBootstrap()
+  return getLocalAdapter().getSessionById(sessionId)
 }
 
 async function getHandById(handId) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.getHandById(handId))
+  scheduleCloudBootstrap()
+  return getLocalAdapter().getHandById(handId)
 }
 
 async function getActionsByHandId(handId) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.getActionsByHandId(handId))
+  scheduleCloudBootstrap()
+  return getLocalAdapter().getActionsByHandId(handId)
 }
 
 async function createSession(payload) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.createSession(payload))
+  const result = await getLocalAdapter().createSession(payload)
+  scheduleBusinessDataSync('sync create session failed')
+  return result
 }
 
 async function updateSession(sessionId, patch) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.updateSession(sessionId, patch))
+  const result = await getLocalAdapter().updateSession(sessionId, patch)
+  scheduleBusinessDataSync('sync update session failed')
+  return result
 }
 
 async function finishSession(sessionId, endingChips) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.finishSession(sessionId, endingChips))
+  const result = await getLocalAdapter().finishSession(sessionId, endingChips)
+  scheduleBusinessDataSync('sync finish session failed')
+  return result
 }
 
 async function createHand(payload) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.createHand(payload))
+  const result = await getLocalAdapter().createHand(payload)
+  scheduleBusinessDataSync('sync create hand failed')
+  return result
 }
 
 async function updateHand(handId, patch) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.updateHand(handId, patch))
+  const result = await getLocalAdapter().updateHand(handId, patch)
+  scheduleBusinessDataSync('sync update hand failed')
+  return result
 }
 
 async function deleteHand(handId) {
-  await bootstrapCloudSync()
-  return withAdapter(adapter => adapter.deleteHand(handId))
+  const result = await getLocalAdapter().deleteHand(handId)
+  scheduleBusinessDataSync('sync delete hand failed')
+  return result
 }
 
 module.exports = {
@@ -318,6 +437,7 @@ module.exports = {
   getSessionDetailData,
   getReviewData,
   getStatsData,
+  getRecentHands,
   getProfilePageData,
   createSession,
   updateSession,
@@ -329,9 +449,17 @@ module.exports = {
   getHandById,
   getActionsByHandId,
   getAppSettings,
+  getCurrentPlayerId,
+  getCurrentProfile,
   updateProfile,
   updateSettings,
   exportBackup,
   importBackup,
-  clearAllData
+  clearAllData,
+  __test: {
+    shouldAwaitCloudBootstrap,
+    isTimeoutError,
+    scheduleBusinessDataSync,
+    getSessionSummaryReadiness
+  }
 }

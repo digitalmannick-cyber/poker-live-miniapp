@@ -13,10 +13,11 @@ function safeJsonParse(value, fallback) {
 
 function getEnvConfig() {
   return {
-    endpoint: process.env.DOUBAO_ASR_URL || '',
-    bearerToken: process.env.DOUBAO_ASR_BEARER_TOKEN || '',
-    extraHeaders: safeJsonParse(process.env.DOUBAO_ASR_HEADERS || '{}', {}),
-    extraPayload: safeJsonParse(process.env.DOUBAO_ASR_PAYLOAD || '{}', {})
+    endpoint: process.env.VOICE_ASR_URL || process.env.KIMI_AUDIO_ASR_URL || process.env.DOUBAO_ASR_URL || '',
+    bearerToken: process.env.VOICE_ASR_BEARER_TOKEN || process.env.KIMI_AUDIO_ASR_BEARER_TOKEN || process.env.DOUBAO_ASR_BEARER_TOKEN || '',
+    extraHeaders: safeJsonParse(process.env.VOICE_ASR_HEADERS || process.env.KIMI_AUDIO_ASR_HEADERS || process.env.DOUBAO_ASR_HEADERS || '{}', {}),
+    extraPayload: safeJsonParse(process.env.VOICE_ASR_PAYLOAD || process.env.KIMI_AUDIO_ASR_PAYLOAD || process.env.DOUBAO_ASR_PAYLOAD || '{}', {}),
+    provider: process.env.VOICE_ASR_PROVIDER || process.env.KIMI_AUDIO_ASR_PROVIDER || process.env.DOUBAO_ASR_PROVIDER || 'doubao'
   }
 }
 
@@ -98,7 +99,7 @@ exports.main = async event => {
   if (!config.endpoint) {
     return {
       code: 'MISSING_DOUBAO_CONFIG',
-      message: '请先在云函数环境变量中配置 DOUBAO_ASR_URL'
+      message: '请先在云函数环境变量中配置 VOICE_ASR_URL / KIMI_AUDIO_ASR_URL / DOUBAO_ASR_URL'
     }
   }
 
@@ -136,7 +137,7 @@ exports.main = async event => {
 
   return {
     code: 0,
-    provider: 'doubao',
+    provider: config.provider,
     text,
     raw: response
   }

@@ -1,5 +1,4 @@
 <view class="app-bg"></view>
-<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
 <view class="container">
   <view class="card home-hero-card">
     <view class="home-hero-head">

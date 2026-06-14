@@ -145,6 +145,20 @@ function buildBoardPickerHint(form, activeKey) {
   return '已选 ' + count + ' / ' + meta.limit + ' 张'
 }
 
+function replaceTokenAt(selected, replaceIndex, token, limit) {
+  const next = (selected || []).slice(0, limit)
+  if (replaceIndex < 0 || replaceIndex >= limit) return next
+  const existingIndex = next.indexOf(token)
+  if (existingIndex > -1 && existingIndex !== replaceIndex) {
+    const old = next[replaceIndex]
+    next[replaceIndex] = token
+    next[existingIndex] = old
+    return next.filter(Boolean).slice(0, limit)
+  }
+  next[replaceIndex] = token
+  return next.filter(Boolean).slice(0, limit)
+}
+
 function getSessionDate(session) {
   if (!session) return ''
   return session.date || String(session.startTime || '').split(' ')[0] || ''
@@ -246,6 +260,7 @@ Page({
     boardPickerHint: '',
     boardPickerPreview: [],
     boardPickerDeck: [],
+    boardReplaceIndex: -1,
     selectorVisible: false,
     selectorTitle: '',
     selectorKey: '',
@@ -266,7 +281,6 @@ Page({
   },
   async refresh() {
     this.setData({ loading: true })
-    await dataService.bootstrapCloudSync()
     const settings = dataService.getAppSettings()
     const chipUnit = settings.chipUnit
     const hand = await dataService.getHandById(this.data.handId)
@@ -287,11 +301,9 @@ Page({
       stakeLevel: hand.stakeLevel || getSessionLevel(session),
       playerCount: String(hand.playerCount || ''),
       hasStraddle: handDetailFields.normalizeBoolean(hand.hasStraddle),
-      heroSeat: String(hand.heroSeat || ''),
       heroPosition: hand.heroPosition || '',
       villainPosition: hand.villainPosition || '',
       villainType: hand.villainType || hand.opponentType || '',
-      buttonSeat: String(hand.buttonSeat || ''),
       heroCardsInput: normalizeCardsValue(hand.heroCardsInput, 2),
       effectiveStack: String(hand.effectiveStack || ''),
       potSize: String(hand.potSize || ''),
@@ -449,17 +461,24 @@ Page({
     const key = e.currentTarget.dataset.key
     const meta = BOARD_FIELD_META[key]
     if (!meta) return
+    const replaceIndex = Number(e.currentTarget.dataset.replaceIndex)
+    const normalizedReplaceIndex = !Number.isNaN(replaceIndex) && replaceIndex >= 0 && replaceIndex < meta.limit
+      ? replaceIndex
+      : -1
     this.setData({
       boardPickerVisible: true,
       boardPickerKey: key,
       boardPickerTitle: meta.label,
-      boardPickerHint: buildBoardPickerHint(this.data.form, key),
+      boardReplaceIndex: normalizedReplaceIndex,
+      boardPickerHint: normalizedReplaceIndex >= 0
+        ? '正在替换第 ' + (normalizedReplaceIndex + 1) + ' 张'
+        : buildBoardPickerHint(this.data.form, key),
       boardPickerPreview: buildBoardPickerPreview(this.data.form, key),
       boardPickerDeck: buildBoardPickerDeck(this.data.form, key)
     })
   },
   closeBoardPicker() {
-    this.setData({ boardPickerVisible: false })
+    this.setData({ boardPickerVisible: false, boardReplaceIndex: -1 })
   },
   syncBoardField(key, rawValue) {
     const meta = BOARD_FIELD_META[key]
@@ -493,16 +512,26 @@ Page({
         return card.rank + card.suit
       })
     const existsIndex = selected.indexOf(token)
+    const replaceIndex = Number(this.data.boardReplaceIndex)
     let next = []
-    if (existsIndex > -1) {
+    if (replaceIndex >= 0 && replaceIndex < meta.limit) {
+      next = replaceTokenAt(selected, replaceIndex, token, meta.limit)
+    } else if (existsIndex > -1) {
       next = selected.filter(function (item) { return item !== token })
     } else {
       next = selected.concat(token).slice(0, meta.limit)
     }
     this.syncBoardField(key, next.join(''))
-    if (next.length >= meta.limit) {
-      this.setData({ boardPickerVisible: false })
+    if (replaceIndex >= 0 || next.length >= meta.limit) {
+      this.setData({ boardPickerVisible: false, boardReplaceIndex: -1 })
     }
+  },
+  selectBoardReplaceCard(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    this.setData({
+      boardReplaceIndex: Number.isNaN(index) ? -1 : index,
+      boardPickerHint: '正在替换第 ' + (index + 1) + ' 张'
+    })
   },
   handleBoardPickerTool(e) {
     const action = e.currentTarget.dataset.action
@@ -587,11 +616,9 @@ Page({
       stakeLevel: this.data.form.stakeLevel,
       playerCount: this.data.form.playerCount,
       hasStraddle: this.data.form.hasStraddle,
-      heroSeat: this.data.form.heroSeat,
       heroPosition: this.data.form.heroPosition,
       villainPosition: this.data.form.villainPosition,
       villainType: this.data.form.villainType,
-      buttonSeat: this.data.form.buttonSeat,
       heroCardsInput: this.data.form.heroCardsInput,
       effectiveStack: this.data.form.effectiveStack,
       potSize: this.data.form.potSize,

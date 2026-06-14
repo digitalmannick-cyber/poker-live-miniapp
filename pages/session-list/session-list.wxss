@@ -18,3 +18,195 @@
   border-color: rgba(148, 163, 184, 0.24);
   color: rgba(255,255,255,0.78);
 }
+
+.session-list-main {
+  min-width: 0;
+}
+
+.session-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex: 0 0 auto;
+}
+
+.session-summary-trigger {
+  min-width: 92rpx;
+  height: 54rpx;
+  padding: 0 14rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 20rpx;
+  font-weight: 950;
+  letter-spacing: 0;
+  background: linear-gradient(135deg, rgba(0, 209, 255, 0.92), rgba(230, 0, 18, 0.88));
+  border: 1rpx solid rgba(255,255,255,0.18);
+  box-shadow: 0 10rpx 24rpx rgba(0, 209, 255, 0.18);
+  box-sizing: border-box;
+}
+
+.session-summary-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 23000;
+}
+
+.session-summary-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 5, 9, 0.62);
+}
+
+.session-summary-modal {
+  position: absolute;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: calc(42rpx + env(safe-area-inset-bottom));
+  height: 78vh;
+  border-radius: 26rpx;
+  padding: 24rpx;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: linear-gradient(180deg, rgba(20, 24, 34, 0.99), rgba(7, 10, 16, 0.99));
+  border: 1rpx solid rgba(255,255,255,0.14);
+  box-shadow: 0 24rpx 80rpx rgba(0,0,0,0.5);
+  box-sizing: border-box;
+}
+
+.session-summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.session-summary-title {
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 950;
+  line-height: 1.22;
+}
+
+.session-summary-subtitle {
+  margin-top: 6rpx;
+  color: rgba(255,255,255,0.54);
+  font-size: 22rpx;
+}
+
+.session-summary-close {
+  flex: 0 0 auto;
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  color: rgba(255,255,255,0.78);
+  font-size: 22rpx;
+  font-weight: 850;
+  background: rgba(255,255,255,0.07);
+  border: 1rpx solid rgba(255,255,255,0.12);
+}
+
+.session-summary-body {
+  min-height: 0;
+  margin-top: 20rpx;
+}
+
+.session-summary-section {
+  padding: 20rpx 0;
+  border-top: 1rpx solid rgba(255,255,255,0.08);
+}
+
+.session-summary-section-title {
+  margin-bottom: 12rpx;
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 950;
+}
+
+.session-summary-text,
+.session-summary-item,
+.session-summary-loading,
+.session-summary-error,
+.session-summary-one-liner {
+  color: rgba(255,255,255,0.84);
+  font-size: 24rpx;
+  line-height: 1.55;
+}
+
+.session-summary-item {
+  margin-top: 10rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 16rpx;
+  background: rgba(255,255,255,0.055);
+  border: 1rpx solid rgba(255,255,255,0.09);
+}
+
+.session-summary-item.danger {
+  background: rgba(230, 0, 18, 0.12);
+  border-color: rgba(230, 0, 18, 0.24);
+}
+
+.session-summary-item.warn {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.22);
+}
+
+.session-summary-error {
+  color: #ffb4b9;
+}
+
+.session-summary-count-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+  margin: 18rpx 0;
+}
+
+.session-summary-count {
+  min-height: 104rpx;
+  border-radius: 18rpx;
+  padding: 14rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: rgba(255,255,255,0.055);
+  border: 1rpx solid rgba(255,255,255,0.1);
+  box-sizing: border-box;
+}
+
+.session-summary-count.good {
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.session-summary-count.mistake {
+  border-color: rgba(230, 0, 18, 0.28);
+}
+
+.session-summary-count.optimize {
+  border-color: rgba(0, 209, 255, 0.24);
+}
+
+.session-summary-count-value {
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+.session-summary-count-label {
+  margin-top: 8rpx;
+  color: rgba(255,255,255,0.58);
+  font-size: 21rpx;
+  font-weight: 800;
+}
+
+.session-summary-one-liner {
+  margin: 18rpx 0;
+  padding: 18rpx;
+  border-radius: 18rpx;
+  color: #ffffff;
+  font-weight: 850;
+  background: rgba(0, 209, 255, 0.1);
+  border: 1rpx solid rgba(0, 209, 255, 0.22);
+}

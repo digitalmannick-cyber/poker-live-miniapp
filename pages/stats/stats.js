@@ -10,7 +10,6 @@ Page({
   async onShow() {
     tabBar.syncCustomTabBar('/pages/stats/stats')
     this.setData({ loading: true })
-    await dataService.bootstrapCloudSync()
     const data = await dataService.getStatsData()
     const settings = dataService.getAppSettings()
     const stats = Object.assign({}, data.stats, {

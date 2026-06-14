@@ -1,7 +1,7 @@
 {
   "pages": [
-    "pages/hand-record/hand-record",
     "pages/session-list/session-list",
+    "pages/hand-record/hand-record",
     "pages/review-list/review-list",
     "pages/stats/stats",
     "pages/profile/profile",
@@ -15,6 +15,9 @@
     "navigationBarTitleText": "Poker Live Recorder",
     "navigationBarTextStyle": "white",
     "backgroundColor": "#0b0b0f"
+  },
+  "usingComponents": {
+    "agent-chat": "/components/agent-chat/agent-chat"
   },
   "tabBar": {
     "custom": true,

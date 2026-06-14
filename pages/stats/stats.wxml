@@ -1,5 +1,4 @@
 <view class="app-bg"></view>
-<image class="app-bg-char" src="/assets/p5-reference-character.svg" mode="aspectFit"></image>
 <view class="container">
   <view class="card">
     <view class="card-title">统计概览</view>
@@ -28,3 +27,4 @@
   </view>
   <view class="tab-bar-spacer"></view>
 </view>
+<agent-chat />

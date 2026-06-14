@@ -1,5 +1,3 @@
-@import '../app.wxss';
-
 .tab-shell {
   position: relative;
   padding: 0 22rpx calc(18rpx + env(safe-area-inset-bottom));
