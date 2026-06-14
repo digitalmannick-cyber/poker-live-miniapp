@@ -9,6 +9,7 @@ const files = {
   review: fs.readFileSync(path.join(root, 'pages/review-list/review-list.wxml'), 'utf8'),
   detail: fs.readFileSync(path.join(root, 'pages/hand-detail/hand-detail.wxml'), 'utf8')
 }
+const appWxss = fs.readFileSync(path.join(root, 'app.wxss'), 'utf8')
 
 const orderedLabels = [
   '日期',
@@ -55,4 +56,10 @@ test('straddle is rendered as checkbox and opponent hand uses card picker surfac
   assert.equal(files.quick.includes('data-key="showdown"'), false)
   assert.equal(files.review.includes('data-field="showdown"'), false)
   assert.equal(files.detail.includes('data-key="showdown"'), false)
+})
+
+test('editable unified inputs override global rounded input chrome', () => {
+  assert.ok(appWxss.includes('.input.unified-field-value'))
+  assert.match(appWxss, /\.input\.unified-field-value,[\s\S]*?border-radius:\s*0;/)
+  assert.match(appWxss, /\.input\.unified-field-value,[\s\S]*?border-bottom:\s*2rpx solid rgba\(0, 209, 255, 0\.30\);/)
 })
