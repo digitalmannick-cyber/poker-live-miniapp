@@ -42,8 +42,11 @@ test('hand detail readonly view renders canonical rows and street details', () =
   assert.ok(wxml.includes('wx:for="{{detailStreetItems}}"'))
 })
 
-test('hand detail has one canonical showdown editor', () => {
-  assert.equal((wxml.match(/data-key="showdown"/g) || []).length, 1)
+test('hand detail showdown editor uses card picker', () => {
+  assert.equal((wxml.match(/data-key="showdown"/g) || []).length, 0)
+  assert.ok(wxml.includes('bindtap="openShowdownPicker"'))
+  assert.ok(wxml.includes('showdownPickerVisible'))
+  assert.ok(js.includes('pickShowdownCard(e)'))
 })
 
 test('hand detail refresh uses canonical boolean normalization', () => {

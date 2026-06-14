@@ -50,8 +50,9 @@ function buildBoardEditorVisual(form) {
   })
 }
 
-function buildHeroPickerDeck(form) {
-  const selected = cardUi.parseHeroCardsInput(form.heroCardsInput)
+function buildTwoCardPickerDeck(form, targetKey) {
+  const activeKey = targetKey || 'heroCardsInput'
+  const selected = cardUi.parseHeroCardsInput(form[activeKey])
     .map(function (card) {
       return card.rank + card.suit
     })
@@ -65,6 +66,12 @@ function buildHeroPickerDeck(form) {
         })
       )
     }, [])
+    .concat(
+      cardUi.parseHeroCardsInput(activeKey === 'heroCardsInput' ? form.showdown : form.heroCardsInput)
+        .map(function (card) {
+          return card.rank + card.suit
+        })
+    )
 
   return SUITS.map(function (suit) {
     return {
@@ -82,6 +89,14 @@ function buildHeroPickerDeck(form) {
       })
     }
   })
+}
+
+function buildHeroPickerDeck(form) {
+  return buildTwoCardPickerDeck(form, 'heroCardsInput')
+}
+
+function buildShowdownPickerDeck(form) {
+  return buildTwoCardPickerDeck(form, 'showdown')
 }
 
 function buildHeroPickerPreview(form) {
@@ -253,6 +268,10 @@ Page({
     heroPickerHint: '',
     heroPickerPreview: [],
     heroPickerDeck: [],
+    showdownPickerVisible: false,
+    showdownPickerHint: '',
+    showdownPickerPreview: [],
+    showdownPickerDeck: [],
     boardEditorVisual: [],
     boardPickerVisible: false,
     boardPickerKey: 'flop',
@@ -354,10 +373,17 @@ Page({
       positionOptions: detailView.positionOptions,
       resultBbDisplay: formatResultBb(form.currentProfit, form.stakeLevel, session),
       heroEditorVisual: cardUi.parseHeroCardsInput(form.heroCardsInput),
+      showdownPickerHint: '已选 ' + cardUi.parseHeroCardsInput(form.showdown).length + ' / 2 张',
+      showdownPickerPreview: cardUi.parseHeroCardsInput(form.showdown),
+      showdownPickerDeck: buildShowdownPickerDeck(form),
       heroPickerVisible: false,
       heroPickerHint: '',
       heroPickerPreview: [],
       heroPickerDeck: [],
+      showdownPickerVisible: false,
+      showdownPickerHint: '',
+      showdownPickerPreview: [],
+      showdownPickerDeck: [],
       boardEditorVisual: buildBoardEditorVisual(form),
       boardPickerVisible: false,
       loading: false
@@ -374,7 +400,12 @@ Page({
     this.setData(patch)
   },
   toggleStraddle() {
-    const hasStraddle = !this.data.form.hasStraddle
+    this.setStraddleValue(!this.data.form.hasStraddle)
+  },
+  onStraddleCheckboxChange(e) {
+    this.setStraddleValue((e.detail.value || []).indexOf('1') > -1)
+  },
+  setStraddleValue(hasStraddle) {
     const positionOptions = handDetailFields.getPositionOptions(this.data.positions, hasStraddle)
     const patch = {
       'form.hasStraddle': hasStraddle,
@@ -407,7 +438,8 @@ Page({
     })
     const patch = {
       'form.heroCardsInput': normalized,
-      heroEditorVisual: cardUi.parseHeroCardsInput(normalized)
+      heroEditorVisual: cardUi.parseHeroCardsInput(normalized),
+      showdownPickerDeck: buildShowdownPickerDeck(nextForm)
     }
     if (this.data.hand) {
       patch['hand.heroCardsVisual'] = cardUi.parseHeroCardsInput(normalized)
@@ -421,6 +453,67 @@ Page({
       patch.boardPickerDeck = buildBoardPickerDeck(nextForm, this.data.boardPickerKey)
     }
     this.setData(patch)
+  },
+  openShowdownPicker() {
+    if (!this.data.editMode) return
+    this.setData({
+      showdownPickerVisible: true,
+      showdownPickerHint: '已选 ' + cardUi.parseHeroCardsInput(this.data.form.showdown).length + ' / 2 张',
+      showdownPickerPreview: cardUi.parseHeroCardsInput(this.data.form.showdown),
+      showdownPickerDeck: buildShowdownPickerDeck(this.data.form)
+    })
+  },
+  closeShowdownPicker() {
+    this.setData({ showdownPickerVisible: false })
+  },
+  syncShowdownField(rawValue) {
+    const normalized = normalizeCardsValue(rawValue, 2)
+    const nextForm = Object.assign({}, this.data.form, {
+      showdown: normalized
+    })
+    const patch = {
+      'form.showdown': normalized,
+      showdownPickerHint: '已选 ' + cardUi.parseHeroCardsInput(normalized).length + ' / 2 张',
+      showdownPickerPreview: cardUi.parseHeroCardsInput(normalized),
+      showdownPickerDeck: buildShowdownPickerDeck(nextForm),
+      heroPickerDeck: buildHeroPickerDeck(nextForm)
+    }
+    if (this.data.boardPickerVisible && this.data.boardPickerKey) {
+      patch.boardPickerDeck = buildBoardPickerDeck(nextForm, this.data.boardPickerKey)
+    }
+    this.setData(patch)
+  },
+  pickShowdownCard(e) {
+    const token = e.currentTarget.dataset.token
+    const disabled = !!e.currentTarget.dataset.disabled
+    if (!token || disabled) return
+    const selected = cardUi.parseHeroCardsInput(this.data.form.showdown)
+      .map(function (card) {
+        return card.rank + card.suit
+      })
+    const existsIndex = selected.indexOf(token)
+    const next = existsIndex > -1
+      ? selected.filter(function (item) { return item !== token })
+      : selected.concat(token).slice(0, 2)
+    this.syncShowdownField(next.join(''))
+    if (next.length >= 2) {
+      this.setData({ showdownPickerVisible: false })
+    }
+  },
+  handleShowdownPickerTool(e) {
+    const action = e.currentTarget.dataset.action
+    const selected = cardUi.parseHeroCardsInput(this.data.form.showdown)
+      .map(function (card) {
+        return card.rank + card.suit
+      })
+    let next = selected
+    if (action === 'backspace') {
+      next = selected.slice(0, -1)
+    }
+    if (action === 'clear') {
+      next = []
+    }
+    this.syncShowdownField(next.join(''))
   },
   pickHeroCard(e) {
     const token = e.currentTarget.dataset.token
@@ -498,6 +591,9 @@ Page({
       patch.boardPickerHint = buildBoardPickerHint(nextForm, this.data.boardPickerKey)
       patch.boardPickerPreview = buildBoardPickerPreview(nextForm, this.data.boardPickerKey)
       patch.boardPickerDeck = buildBoardPickerDeck(nextForm, this.data.boardPickerKey)
+    }
+    if (this.data.showdownPickerVisible) {
+      patch.showdownPickerDeck = buildShowdownPickerDeck(nextForm)
     }
     this.setData(patch)
   },

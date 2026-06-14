@@ -92,93 +92,92 @@
   <block wx:if="{{editMode}}">
   <view class="card">
     <view class="section-title">基础信息</view>
-    <view class="grid-2">
-      <view>
+    <view class="unified-field-grid">
+      <view class="unified-field-card">
         <view class="label">日期</view>
+        <view class="unified-field-action">编辑</view>
         <picker mode="date" value="{{form.playedDate}}" bindchange="onInput" data-key="playedDate">
-          <view class="picker preset-trigger">{{form.playedDate || '请选择日期'}}</view>
+          <view class="unified-field-value preset-trigger">{{form.playedDate || '请选择日期'}}</view>
         </picker>
       </view>
-      <view>
+      <view class="unified-field-card">
         <view class="label">级别</view>
-        <view class="picker preset-trigger" bindtap="openLevelSelector">{{form.stakeLevel || '请选择级别'}}</view>
+        <view class="unified-field-action">选择</view>
+        <view class="unified-field-value preset-trigger" bindtap="openLevelSelector">{{form.stakeLevel || '请选择级别'}}</view>
       </view>
-      <view>
-        <view class="label">是否 Straddle</view>
-        <view class="picker preset-trigger" bindtap="toggleStraddle">{{form.hasStraddle ? '是' : '否'}}</view>
-      </view>
-      <view>
+      <view class="unified-field-card">
         <view class="label">人数</view>
-        <input class="input" type="number" value="{{form.playerCount}}" data-key="playerCount" bindinput="onInput" />
+        <view class="unified-field-action">编辑</view>
+        <input class="input unified-field-value" type="number" value="{{form.playerCount}}" data-key="playerCount" bindinput="onInput" />
       </view>
-      <view>
+      <view class="unified-field-card">
+        <view class="label">是否 Straddle</view>
+        <view class="unified-field-action">勾选</view>
+        <checkbox-group class="detail-checkbox-group" bindchange="onStraddleCheckboxChange">
+          <label class="detail-checkbox">
+            <checkbox value="1" checked="{{form.hasStraddle}}" color="#00d1ff" />
+            <text>{{form.hasStraddle ? '是' : '否'}}</text>
+          </label>
+        </checkbox-group>
+      </view>
+      <view class="unified-field-card">
         <view class="label">Hero 位置</view>
-        <view class="picker preset-trigger" bindtap="openPositionSelector">{{form.heroPosition || '请选择位置'}}</view>
+        <view class="unified-field-action">选择</view>
+        <view class="unified-field-value preset-trigger" bindtap="openPositionSelector">{{form.heroPosition || '请选择位置'}}</view>
       </view>
-      <view>
-        <view class="label">Hero 手牌</view>
-        <view class="hero-editor-trigger" bindtap="openHeroPicker">
-          <view wx:if="{{heroEditorVisual.length}}" class="cards-inline tight">
-            <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{heroEditorVisual}}" wx:for-item="card" wx:key="index">
+      <view class="unified-field-card">
+        <view class="label">对手位置</view>
+        <view class="unified-field-action">选择</view>
+        <view class="unified-field-value preset-trigger" bindtap="openVillainPositionSelector">{{form.villainPosition || '请选择对手位置'}}</view>
+      </view>
+      <view class="unified-field-card">
+        <view class="label">对手类型</view>
+        <view class="unified-field-action">选择</view>
+        <view class="unified-field-value preset-trigger" bindtap="openVillainTypeSelector">{{form.villainType || '请选择对手类型'}}</view>
+      </view>
+      <view class="unified-field-card">
+        <view class="label">有效筹码</view>
+        <view class="unified-field-action">编辑</view>
+        <input class="input unified-field-value" type="number" value="{{form.effectiveStack}}" data-key="effectiveStack" bindinput="onInput" />
+      </view>
+      <view class="unified-field-card">
+        <view class="label">当前底池</view>
+        <view class="unified-field-action">编辑</view>
+        <input class="input unified-field-value" type="number" value="{{form.potSize}}" data-key="potSize" bindinput="onInput" />
+      </view>
+      <view class="unified-field-card">
+        <view class="label">本手输赢</view>
+        <view class="unified-field-action">编辑</view>
+        <input class="input unified-field-value" type="number" value="{{form.currentProfit}}" data-key="currentProfit" bindinput="onInput" />
+      </view>
+      <view class="unified-field-card">
+        <view class="label">对手昵称</view>
+        <view class="unified-field-action">编辑</view>
+        <input class="input unified-field-value" value="{{form.opponentName}}" data-key="opponentName" bindinput="onInput" />
+      </view>
+      <view class="unified-field-card">
+        <view class="label">对手手牌</view>
+        <view class="unified-field-action">编辑</view>
+        <view class="hero-editor-trigger compact-card-trigger" bindtap="openShowdownPicker">
+          <view wx:if="{{showdownPickerPreview.length}}" class="cards-inline tight">
+            <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{showdownPickerPreview}}" wx:for-item="card" wx:key="index">
               <text class="mini-card-rank">{{card.rank}}</text>
               <text class="mini-card-suit">{{card.suitSymbol}}</text>
             </view>
           </view>
-          <text wx:else class="board-empty-text">点击选择 Hero 手牌</text>
+          <text wx:else class="board-empty-text">例如 AQ / AhQd / 77</text>
         </view>
       </view>
     </view>
-  </view>
-
-  <view class="card">
-    <view class="section-title">盈亏记录</view>
-    <view class="grid-2">
-      <view>
-        <view class="label">输或赢</view>
-        <input class="input" type="number" value="{{form.currentProfit}}" data-key="currentProfit" bindinput="onInput" />
+    <view class="label" style="margin-top: 20rpx;">Hero 手牌</view>
+    <view class="hero-editor-trigger" bindtap="openHeroPicker">
+      <view wx:if="{{heroEditorVisual.length}}" class="cards-inline tight">
+        <view class="mini-card mini-card-{{card.suitClass}}" wx:for="{{heroEditorVisual}}" wx:for-item="card" wx:key="index">
+          <text class="mini-card-rank">{{card.rank}}</text>
+          <text class="mini-card-suit">{{card.suitSymbol}}</text>
+        </view>
       </view>
-      <view>
-        <view class="label">结果(BB)</view>
-        <view class="picker readonly-display">{{resultBbDisplay}}</view>
-      </view>
-      <view>
-        <view class="label">EV</view>
-        <input class="input" value="{{form.ev}}" data-key="ev" bindinput="onInput" />
-      </view>
-      <view>
-        <view class="label">当前底池</view>
-        <input class="input" type="number" value="{{form.potSize}}" data-key="potSize" bindinput="onInput" />
-      </view>
-    </view>
-  </view>
-
-  <view class="card">
-    <view class="section-title">位置与对手</view>
-    <view class="grid-2">
-      <view>
-        <view class="label">对手位置</view>
-        <view class="picker preset-trigger" bindtap="openVillainPositionSelector">{{form.villainPosition || '请选择对手位置'}}</view>
-      </view>
-      <view>
-        <view class="label">对手类型</view>
-        <view class="picker preset-trigger" bindtap="openVillainTypeSelector">{{form.villainType || '请选择对手类型'}}</view>
-      </view>
-      <view>
-        <view class="label">对手昵称</view>
-        <input class="input" value="{{form.opponentName}}" data-key="opponentName" bindinput="onInput" />
-      </view>
-      <view>
-        <view class="label">对手手牌 / Showdown</view>
-        <input class="input" value="{{form.showdown}}" data-key="showdown" bindinput="onInput" />
-      </view>
-      <view>
-        <view class="label">有效筹码</view>
-        <input class="input" type="number" value="{{form.effectiveStack}}" data-key="effectiveStack" bindinput="onInput" />
-      </view>
-      <view>
-        <view class="label">对手说明</view>
-        <view class="picker readonly-display">{{form.villainPosition || '-'}} · {{form.villainType || '-'}}</view>
-      </view>
+      <text wx:else class="board-empty-text">点击选择 Hero 手牌</text>
     </view>
   </view>
 
@@ -433,6 +432,48 @@
           <view class="selector-option-label">{{item.label}}</view>
         </view>
       </scroll-view>
+    </view>
+  </view>
+
+  <view wx:if="{{showdownPickerVisible}}" class="board-picker-modal">
+    <view class="board-picker-mask" bindtap="closeShowdownPicker"></view>
+    <view class="board-picker-panel" catchtap="noop">
+      <view class="board-picker-head">
+        <view>
+          <view class="board-picker-title">对手手牌</view>
+          <view class="small muted">直接按牌面选择 2 张对手手牌，已在 Hero 手牌或公牌里的牌会置灰。</view>
+        </view>
+        <button class="picker-close-btn" bindtap="closeShowdownPicker">关闭</button>
+      </view>
+      <view class="hero-picked-preview">
+        <view class="badge-outline">{{showdownPickerHint}}</view>
+        <view class="hero-picked-center cards-inline tight">
+          <view class="quick-picked-card mini-card mini-card-{{card.suitClass}}" wx:for="{{showdownPickerPreview}}" wx:for-item="card" wx:key="index">
+            <text class="quick-picked-rank">{{card.rank}}</text>
+            <text class="quick-picked-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="hero-picker-deck">
+        <view class="hero-picker-row" wx:for="{{showdownPickerDeck}}" wx:key="key">
+          <view
+            class="hero-picker-card hero-picker-card-{{card.suitClass}} {{card.selected ? 'selected' : ''}} {{card.disabled ? 'disabled' : ''}}"
+            wx:for="{{item.cards}}"
+            wx:for-item="card"
+            wx:key="token"
+            data-token="{{card.token}}"
+            data-disabled="{{card.disabled ? 1 : ''}}"
+            bindtap="pickShowdownCard"
+          >
+            <text class="hero-picker-rank">{{card.rank}}</text>
+            <text class="hero-picker-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="hero-picker-tools">
+        <button class="secondary-btn picker-tool-main" data-action="backspace" bindtap="handleShowdownPickerTool">退一张</button>
+        <button class="danger-btn picker-tool-main" data-action="clear" bindtap="handleShowdownPickerTool">清空</button>
+      </view>
     </view>
   </view>
 </view>

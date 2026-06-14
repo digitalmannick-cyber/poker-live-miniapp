@@ -285,6 +285,40 @@ function buildVoiceHeroPickerDeck(parsedVoice) {
   })
 }
 
+function buildVoiceShowdownPickerDeck(parsedVoice) {
+  const form = buildVoicePickerForm(parsedVoice)
+  const selected = parseHeroCardsInput(form.showdown)
+    .slice(0, 2)
+    .map(function (item) {
+      return item[0].toUpperCase() + item[1].toLowerCase()
+    })
+  const occupied = Object.keys(BOARD_FIELD_META).reduce(function (list, key) {
+    const meta = BOARD_FIELD_META[key]
+    return list.concat(
+      cardUi.parseCardsInput(form[key], meta.limit).map(function (card) {
+        return card.rank + card.suit
+      })
+    )
+  }, []).concat(parseHeroCardsInput(form.heroCardsInput))
+
+  return SUITS.map(function (suit) {
+    return {
+      key: suit.key,
+      cards: RANKS.map(function (rank) {
+        const token = rank + suit.key
+        return {
+          token,
+          rank,
+          suitSymbol: suit.symbol,
+          suitClass: suit.className,
+          selected: selected.indexOf(token) > -1,
+          disabled: occupied.indexOf(token) > -1
+        }
+      })
+    }
+  })
+}
+
 function buildVoiceBoardPickerPreview(parsedVoice, activeKey) {
   const form = buildVoicePickerForm(parsedVoice)
   const meta = BOARD_FIELD_META[activeKey] || BOARD_FIELD_META.flop
@@ -568,6 +602,7 @@ function buildParsedVoicePreview(parsedVoice, reviewResult) {
     playerCountDisplayText: Number(parsedVoice.playerCount) > 0 ? String(Number(parsedVoice.playerCount)) : '',
     currentProfitDisplayText: formatSignedNumber(parsedVoice.currentProfit),
     heroCardsVisual: cardUi.parseHeroCardsInput(parsedVoice.heroCardsInput),
+    showdownCardsVisual: cardUi.parseHeroCardsInput(detailView.form.showdown),
     boardVisual: buildBoardVisual(parsedVoice.board),
     streetItems: buildStreetItems(parsedVoice.streetInputs, parsedVoice.board)
   })
@@ -1273,6 +1308,10 @@ Page({
     voiceHeroPickerPreview: [],
     voiceHeroPickerDeck: [],
     voiceHeroReplaceIndex: -1,
+    voiceShowdownPickerVisible: false,
+    voiceShowdownPickerHint: '',
+    voiceShowdownPickerPreview: [],
+    voiceShowdownPickerDeck: [],
     swipedHandId: '',
     touchStartX: 0,
     touchStartY: 0,
@@ -1711,7 +1750,10 @@ Page({
   onParsedVoiceToggleChange(e) {
     const field = e.currentTarget.dataset.field
     if (!field || !this.data.parsedVoice) return
-    const nextParsed = setParsedVoiceDraftField(this.data.parsedVoice, field, !!e.detail.value)
+    const rawValue = e.detail && Array.isArray(e.detail.value)
+      ? e.detail.value.indexOf('1') > -1
+      : !!(e.detail && e.detail.value)
+    const nextParsed = setParsedVoiceDraftField(this.data.parsedVoice, field, rawValue)
     const parsedVoice = buildParsedVoicePreview(nextParsed, {
       provider: nextParsed.provider || nextParsed.providerText || '',
       naturalLanguageSummary: nextParsed.feedbackText || nextParsed.naturalLanguageSummary || '',
@@ -1854,7 +1896,8 @@ Page({
     const extraPatch = {
       voiceHeroPickerHint: '\u5df2\u9009 ' + cardUi.parseHeroCardsInput(normalized).length + ' / 2 \u5f20',
       voiceHeroPickerPreview: cardUi.parseHeroCardsInput(normalized),
-      voiceHeroPickerDeck: buildVoiceHeroPickerDeck(nextParsed)
+      voiceHeroPickerDeck: buildVoiceHeroPickerDeck(nextParsed),
+      voiceShowdownPickerDeck: buildVoiceShowdownPickerDeck(nextParsed)
     }
     if (this.data.voiceBoardPickerVisible && this.data.voiceBoardPickerKey) {
       extraPatch.voiceBoardPickerDeck = buildVoiceBoardPickerDeck(nextParsed, this.data.voiceBoardPickerKey)
@@ -1904,6 +1947,62 @@ Page({
     const next = action === 'clear' ? [] : action === 'backspace' ? selected.slice(0, -1) : selected
     this.syncVoiceHeroCards(next.join(''))
   },
+  openVoiceShowdownPicker() {
+    const parsed = this.data.parsedVoice
+    if (!parsed) return
+    this.setData({
+      voiceShowdownPickerVisible: true,
+      voiceShowdownPickerHint: '\u5df2\u9009 ' + cardUi.parseHeroCardsInput(parsed.showdown).length + ' / 2 \u5f20',
+      voiceShowdownPickerPreview: cardUi.parseHeroCardsInput(parsed.showdown),
+      voiceShowdownPickerDeck: buildVoiceShowdownPickerDeck(parsed)
+    })
+  },
+  closeVoiceShowdownPicker() {
+    this.setData({ voiceShowdownPickerVisible: false })
+  },
+  syncVoiceShowdownCards(value) {
+    const normalized = parseHeroCardsInput(value)
+      .slice(0, 2)
+      .map(function (item) {
+        return item[0].toUpperCase() + item[1].toLowerCase()
+      })
+      .join('')
+    const nextParsed = setParsedVoiceDraftField(this.data.parsedVoice, 'showdown', normalized)
+    this.refreshParsedVoiceDraft(nextParsed, {
+      voiceShowdownPickerHint: '\u5df2\u9009 ' + cardUi.parseHeroCardsInput(normalized).length + ' / 2 \u5f20',
+      voiceShowdownPickerPreview: cardUi.parseHeroCardsInput(normalized),
+      voiceShowdownPickerDeck: buildVoiceShowdownPickerDeck(nextParsed),
+      voiceHeroPickerDeck: buildVoiceHeroPickerDeck(nextParsed)
+    })
+  },
+  pickVoiceShowdownCard(e) {
+    const token = e.currentTarget.dataset.token
+    const disabled = !!e.currentTarget.dataset.disabled
+    if (!token || disabled || !this.data.parsedVoice) return
+    const selected = parseHeroCardsInput(this.data.parsedVoice.showdown)
+      .slice(0, 2)
+      .map(function (item) {
+        return item[0].toUpperCase() + item[1].toLowerCase()
+      })
+    const existsIndex = selected.indexOf(token)
+    const next = existsIndex > -1
+      ? selected.filter(function (item) { return item !== token })
+      : selected.concat(token).slice(0, 2)
+    this.syncVoiceShowdownCards(next.join(''))
+    if (next.length >= 2) {
+      this.setData({ voiceShowdownPickerVisible: false })
+    }
+  },
+  handleVoiceShowdownPickerTool(e) {
+    const action = e.currentTarget.dataset.action
+    const selected = parseHeroCardsInput(this.data.parsedVoice && this.data.parsedVoice.showdown)
+      .slice(0, 2)
+      .map(function (item) {
+        return item[0].toUpperCase() + item[1].toLowerCase()
+      })
+    const next = action === 'clear' ? [] : action === 'backspace' ? selected.slice(0, -1) : selected
+    this.syncVoiceShowdownCards(next.join(''))
+  },
   openVoiceBoardPicker(e) {
     const boardKeys = ['flop', 'turn', 'river']
     const index = Number(e.currentTarget.dataset.index)
@@ -1938,7 +2037,8 @@ Page({
       voiceBoardPickerHint: buildVoiceBoardPickerHint(nextParsed, key),
       voiceBoardPickerPreview: buildVoiceBoardPickerPreview(nextParsed, key),
       voiceBoardPickerDeck: buildVoiceBoardPickerDeck(nextParsed, key),
-      voiceHeroPickerDeck: buildVoiceHeroPickerDeck(nextParsed)
+      voiceHeroPickerDeck: buildVoiceHeroPickerDeck(nextParsed),
+      voiceShowdownPickerDeck: buildVoiceShowdownPickerDeck(nextParsed)
     }
     this.refreshParsedVoiceDraft(nextParsed, extraPatch)
   },

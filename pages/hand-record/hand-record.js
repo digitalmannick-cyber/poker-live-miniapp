@@ -52,8 +52,9 @@ function buildBoardEditorVisual(form) {
   })
 }
 
-function buildHeroPickerDeck(form) {
-  const selected = parseHeroCardsInput(form.heroCardsInput)
+function buildTwoCardPickerDeck(form, targetKey) {
+  const activeKey = targetKey || 'heroCardsInput'
+  const selected = parseHeroCardsInput(form[activeKey])
     .slice(0, 2)
     .map(item => item[0].toUpperCase() + item[1].toLowerCase())
 
@@ -66,6 +67,13 @@ function buildHeroPickerDeck(form) {
         })
       )
     }, [])
+    .concat(
+      parseHeroCardsInput(activeKey === 'heroCardsInput' ? form.showdown : form.heroCardsInput)
+        .slice(0, 2)
+        .map(function (item) {
+          return item[0].toUpperCase() + item[1].toLowerCase()
+        })
+    )
 
   return SUITS.map(function (suit) {
     return {
@@ -85,6 +93,14 @@ function buildHeroPickerDeck(form) {
       })
     }
   })
+}
+
+function buildHeroPickerDeck(form) {
+  return buildTwoCardPickerDeck(form, 'heroCardsInput')
+}
+
+function buildShowdownPickerDeck(form) {
+  return buildTwoCardPickerDeck(form, 'showdown')
 }
 
 function buildBoardPickerDeck(form, activeKey) {
@@ -287,8 +303,10 @@ function getEmptyHandFormPatch(session, settings) {
     'form.showdown': '',
     actions: [],
     heroCardsVisual: [],
+    showdownCardsVisual: [],
     boardEditorVisual: buildBoardEditorVisual({
       heroCardsInput: '',
+      showdown: '',
       flop: '',
       turn: '',
       river: ''
@@ -354,6 +372,9 @@ Page({
     heroPickerVisible: false,
     heroPickerDeck: [],
     heroCardsVisual: [],
+    showdownPickerVisible: false,
+    showdownPickerDeck: [],
+    showdownCardsVisual: [],
     boardEditorVisual: [],
     boardPickerVisible: false,
     boardPickerKey: 'flop',
@@ -412,6 +433,7 @@ Page({
         boardEditorVisual: buildBoardEditorVisual(this.data.form)
       })
       this.syncHeroCardsState(this.data.form.heroCardsInput)
+      this.syncShowdownCardsState(this.data.form.showdown)
     }
 
     loadSession().catch(() => {})
@@ -523,7 +545,12 @@ Page({
     this.setData({ advancedOpen: !this.data.advancedOpen })
   },
   toggleStraddle() {
-    const hasStraddle = !this.data.form.hasStraddle
+    this.setStraddleValue(!this.data.form.hasStraddle)
+  },
+  onStraddleCheckboxChange(e) {
+    this.setStraddleValue((e.detail.value || []).indexOf('1') > -1)
+  },
+  setStraddleValue(hasStraddle) {
     const positionOptions = handDetailFields.getPositionOptions(this.data.positions, hasStraddle)
     const patch = {
       'form.hasStraddle': hasStraddle
@@ -596,6 +623,7 @@ Page({
       'form.heroCardsInput': normalized,
       heroCardsVisual: cardUi.parseHeroCardsInput(normalized),
       heroPickerDeck: buildHeroPickerDeck(nextForm),
+      showdownPickerDeck: buildShowdownPickerDeck(nextForm),
       boardEditorVisual: buildBoardEditorVisual(nextForm)
     }
     if (this.data.boardPickerVisible && this.data.boardPickerKey) {
@@ -605,6 +633,64 @@ Page({
     }
 
     this.setData(patch)
+  },
+  openShowdownPicker() {
+    this.syncShowdownCardsState(this.data.form.showdown)
+    this.setData({ showdownPickerVisible: true })
+  },
+  closeShowdownPicker() {
+    this.setData({ showdownPickerVisible: false })
+  },
+  syncShowdownCardsState(value) {
+    const normalized = parseHeroCardsInput(value)
+      .slice(0, 2)
+      .map(function (item) {
+        return item[0].toUpperCase() + item[1].toLowerCase()
+      })
+      .join('')
+    const nextForm = Object.assign({}, this.data.form, { showdown: normalized })
+    const patch = {
+      'form.showdown': normalized,
+      showdownCardsVisual: cardUi.parseHeroCardsInput(normalized),
+      showdownPickerDeck: buildShowdownPickerDeck(nextForm),
+      heroPickerDeck: buildHeroPickerDeck(nextForm)
+    }
+    if (this.data.boardPickerVisible && this.data.boardPickerKey) {
+      patch.boardPickerDeck = buildBoardPickerDeck(nextForm, this.data.boardPickerKey)
+      patch.boardPickerHint = buildBoardPickerHint(nextForm, this.data.boardPickerKey)
+      patch.boardPickerPreview = buildBoardPickerPreview(nextForm, this.data.boardPickerKey)
+    }
+    this.setData(patch)
+  },
+  pickShowdownCard(e) {
+    const token = e.currentTarget.dataset.token
+    const disabled = !!e.currentTarget.dataset.disabled
+    if (!token || disabled) return
+    const selected = parseHeroCardsInput(this.data.form.showdown)
+      .slice(0, 2)
+      .map(item => item[0].toUpperCase() + item[1].toLowerCase())
+    const existsIndex = selected.indexOf(token)
+    const next = existsIndex > -1
+      ? selected.filter(function (item) { return item !== token })
+      : selected.concat(token).slice(0, 2)
+    this.syncShowdownCardsState(next.join(''))
+    if (next.length >= 2) {
+      this.setData({ showdownPickerVisible: false })
+    }
+  },
+  handleShowdownPickerTool(e) {
+    const action = e.currentTarget.dataset.action
+    const selected = parseHeroCardsInput(this.data.form.showdown)
+      .slice(0, 2)
+      .map(item => item[0].toUpperCase() + item[1].toLowerCase())
+    let next = selected
+    if (action === 'backspace') {
+      next = selected.slice(0, -1)
+    }
+    if (action === 'clear') {
+      next = []
+    }
+    this.syncShowdownCardsState(next.join(''))
   },
   openBoardPicker(e) {
     const key = e.currentTarget.dataset.key
@@ -691,7 +777,8 @@ Page({
     const patch = {
       ['form.' + key]: normalized,
       boardEditorVisual: buildBoardEditorVisual(nextForm),
-      heroPickerDeck: buildHeroPickerDeck(nextForm)
+      heroPickerDeck: buildHeroPickerDeck(nextForm),
+      showdownPickerDeck: buildShowdownPickerDeck(nextForm)
     }
     if (this.data.boardPickerVisible && this.data.boardPickerKey) {
       patch.boardPickerHint = buildBoardPickerHint(nextForm, this.data.boardPickerKey)

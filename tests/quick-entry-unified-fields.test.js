@@ -34,11 +34,12 @@ test('save payload includes new canonical fields', () => {
 })
 
 test('straddle toggle filters STR out of position selectors when unchecked', () => {
-  const toggleStart = js.indexOf('toggleStraddle()')
+  const toggleStart = js.indexOf('setStraddleValue(hasStraddle)')
   const toggleEnd = js.indexOf('noop() {}', toggleStart)
   const toggleBody = toggleStart >= 0 && toggleEnd > toggleStart ? js.slice(toggleStart, toggleEnd) : ''
 
-  assert.ok(toggleBody.includes('const hasStraddle = !this.data.form.hasStraddle'))
+  assert.ok(js.includes('onStraddleCheckboxChange(e)'))
+  assert.ok(js.includes('this.setStraddleValue(!this.data.form.hasStraddle)'))
   assert.ok(toggleBody.includes('handDetailFields.getPositionOptions(this.data.positions, hasStraddle)'))
   assert.ok(toggleBody.includes("this.data.form.heroPosition === 'STR'"))
   assert.ok(toggleBody.includes("this.data.form.villainPosition === 'STR'"))
@@ -61,10 +62,18 @@ test('position selector methods use straddle-aware option lists', () => {
 })
 
 test('expanded field controls are bound to the canonical form keys', () => {
-  assert.ok(wxml.includes('bindtap="toggleStraddle"'))
+  assert.ok(wxml.includes('bindchange="onStraddleCheckboxChange"'))
   assert.ok(wxml.includes('data-key="playerCount"'))
   assert.ok(wxml.includes('data-key="opponentName"'))
-  assert.ok(wxml.includes('data-key="showdown"'))
+  assert.ok(wxml.includes('bindtap="openShowdownPicker"'))
   assert.ok(wxml.includes('data-key="heroQuestion"'))
   assert.ok(wxml.includes('maxlength="160"'))
+})
+
+test('opponent hand uses card picker instead of free text input', () => {
+  assert.ok(js.includes('openShowdownPicker()'))
+  assert.ok(js.includes('pickShowdownCard(e)'))
+  assert.ok(js.includes('buildShowdownPickerDeck'))
+  assert.equal(wxml.includes('data-key="showdown"'), false)
+  assert.ok(wxml.includes('showdownPickerVisible'))
 })

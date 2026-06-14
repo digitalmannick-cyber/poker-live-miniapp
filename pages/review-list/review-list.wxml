@@ -294,8 +294,13 @@
               </view>
               <view class="review-voice-meta-item editable">
                 <view class="kpi-label">是否 Straddle</view>
-                <view class="review-edit-hint">切换</view>
-                <switch checked="{{parsedVoice.hasStraddle}}" data-field="hasStraddle" bindchange="onParsedVoiceToggleChange" />
+                <view class="review-edit-hint">勾选</view>
+                <checkbox-group class="detail-checkbox-group" data-field="hasStraddle" bindchange="onParsedVoiceToggleChange">
+                  <label class="detail-checkbox">
+                    <checkbox value="1" checked="{{parsedVoice.hasStraddle}}" color="#00d1ff" />
+                    <text>{{parsedVoice.hasStraddle ? '是' : '否'}}</text>
+                  </label>
+                </checkbox-group>
               </view>
               <view class="review-voice-meta-item editable">
                 <view class="kpi-label">Hero 位置</view>
@@ -335,7 +340,16 @@
               <view class="review-voice-meta-item editable">
                 <view class="kpi-label">对手手牌</view>
                 <view class="review-edit-hint">编辑</view>
-                <input class="review-field-input" value="{{parsedVoice.showdown}}" data-field="showdown" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'showdown'}}" placeholder="例如 AQ / AhQd / 77" />
+                <view class="review-card-select-area" bindtap="openVoiceShowdownPicker">
+                  <view wx:if="{{parsedVoice.showdownCardsVisual.length}}" class="cards-inline tight review-voice-hero-cards">
+                    <view wx:for="{{parsedVoice.showdownCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                      <text class="mini-card-rank">{{card.rank}}</text>
+                      <text class="mini-card-suit">{{card.suitSymbol}}</text>
+                    </view>
+                  </view>
+                  <text wx:else class="board-empty-text">例如 AQ / AhQd / 77</text>
+                  <text class="review-select-affordance">点选修改</text>
+                </view>
               </view>
             </view>
             <view class="review-detail-text review-voice-card-line">
@@ -410,10 +424,10 @@
 
         <block wx:if="{{detailHand.shouldShowFullDetails && !voicePanelVisible}}">
         <view class="review-detail-card review-info-card">
-          <view class="review-detail-grid">
-            <view wx:for="{{detailHand.detailRows}}" wx:key="key" class="review-info-item">
+          <view class="unified-field-grid">
+            <view wx:for="{{detailHand.detailRows}}" wx:key="key" class="unified-field-card">
               <view class="kpi-label">{{item.label}}</view>
-              <view class="review-detail-text">{{item.displayValue}}</view>
+              <view class="unified-field-value">{{item.displayValue}}</view>
             </view>
           </view>
         </view>
@@ -622,6 +636,53 @@
       <view class="hero-picker-tools">
         <button class="secondary-btn picker-tool-main" data-action="backspace" bindtap="handleVoiceHeroPickerTool">退一张</button>
         <button class="danger-btn picker-tool-main" data-action="clear" bindtap="handleVoiceHeroPickerTool">清空</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{voiceShowdownPickerVisible}}" class="hero-picker-modal">
+    <view class="hero-picker-mask" bindtap="closeVoiceShowdownPicker"></view>
+    <view class="hero-picker-panel" catchtap="stopModalTap">
+      <view class="hero-picker-head">
+        <view>
+          <view class="hero-picker-title">对手手牌</view>
+          <view class="small muted">点选两张对手摊牌手牌，已占用的 Hero 手牌和公牌会自动置灰。</view>
+        </view>
+        <button class="picker-close-btn" bindtap="closeVoiceShowdownPicker">关闭</button>
+      </view>
+      <view class="hero-picked-preview">
+        <view class="badge-outline">{{voiceShowdownPickerHint}}</view>
+        <view class="hero-picked-center cards-inline tight">
+          <view
+            wx:for="{{voiceShowdownPickerPreview}}"
+            wx:for-item="card"
+            wx:key="index"
+            class="quick-picked-card mini-card mini-card-{{card.suitClass}}"
+          >
+            <text class="quick-picked-rank">{{card.rank}}</text>
+            <text class="quick-picked-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="hero-picker-deck">
+        <view wx:for="{{voiceShowdownPickerDeck}}" wx:for-item="suitRow" wx:key="key" class="hero-picker-row">
+          <view
+            wx:for="{{suitRow.cards}}"
+            wx:for-item="card"
+            wx:key="token"
+            class="hero-picker-card hero-picker-card-{{card.suitClass}} {{card.selected ? 'selected' : ''}} {{card.disabled ? 'disabled' : ''}}"
+            data-token="{{card.token}}"
+            data-disabled="{{card.disabled ? 1 : ''}}"
+            bindtap="pickVoiceShowdownCard"
+          >
+            <text class="hero-picker-rank">{{card.rank}}</text>
+            <text class="hero-picker-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="hero-picker-tools">
+        <button class="secondary-btn picker-tool-main" data-action="backspace" bindtap="handleVoiceShowdownPickerTool">退一张</button>
+        <button class="danger-btn picker-tool-main" data-action="clear" bindtap="handleVoiceShowdownPickerTool">清空</button>
       </view>
     </view>
   </view>
