@@ -13,9 +13,9 @@ const SUITS = [
   { key: 'c', symbol: '♣', className: 'club' }
 ]
 const BOARD_FIELD_META = {
-  flop: { label: '翻牌', shortLabel: 'F', limit: 3, emptyText: '选择 3 张公牌' },
-  turn: { label: '转牌', shortLabel: 'T', limit: 1, emptyText: '选择 1 张公牌' },
-  river: { label: '河牌', shortLabel: 'R', limit: 1, emptyText: '选择 1 张公牌' }
+  flop: { label: '翻牌', shortLabel: '翻牌', limit: 3, emptyText: '选择 3 张公牌' },
+  turn: { label: '转牌', shortLabel: '转牌', limit: 1, emptyText: '选择 1 张公牌' },
+  river: { label: '河牌', shortLabel: '河牌', limit: 1, emptyText: '选择 1 张公牌' }
 }
 
 function normalizeCardsValue(value, limit) {

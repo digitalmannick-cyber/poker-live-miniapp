@@ -165,7 +165,7 @@
               <text class="mini-card-suit">{{card.suitSymbol}}</text>
             </view>
           </view>
-          <text wx:else class="board-empty-text">例如 AQ / AhQd / 77</text>
+          <text wx:else class="board-empty-text"></text>
         </view>
       </view>
     </view>
@@ -297,7 +297,7 @@
     <view class="section-title">复盘阶段语音复盘</view>
     <view class="muted small">这里是 MVP 中唯一的语音入口。先手动记牌，复盘时再口述补全。</view>
     <view class="label" style="margin-top: 16rpx;">口述内容</view>
-    <textarea class="textarea" placeholder="例如：我在 CO 拿 AhKd，有效筹码 800，底池 60，赢 320，翻牌 Ts7d2c，转牌 Ad，河牌 5h" value="{{form.voiceNote}}" data-key="voiceNote" bindinput="onInput"></textarea>
+    <textarea class="textarea" placeholder="" value="{{form.voiceNote}}" data-key="voiceNote" bindinput="onInput"></textarea>
     <button class="secondary-btn" bindtap="parseVoice">生成复盘建议</button>
 
     <view class="card" wx:if="{{parsedVoice}}" style="margin-top: 20rpx; margin-bottom: 0;">

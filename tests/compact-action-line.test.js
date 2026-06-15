@@ -8,19 +8,19 @@ const actionLine = require('../utils/action-line')
 test('formats street action lines with compact per-street syntax', () => {
   assert.equal(
     actionLine.formatStreetLine('preflop', 'HJ open 2.5, Hero BTN call', ''),
-    'PF: HJ R2.5, Hero BTN C'
+    '翻前: HJ R2.5, Hero BTN C'
   )
   assert.equal(
     actionLine.formatStreetLine('flop', 'HJ bet 33%, Hero call', 'Qs8d4c'),
-    'F Q\u26608\u26664\u2663: HJ B33%, Hero C'
+    '翻牌 Q\u26608\u26664\u2663: HJ B33%, Hero C'
   )
   assert.equal(
     actionLine.formatStreetLine('turn', 'HJ check, Hero bet 75, HJ call', 'Kh'),
-    'T K\u2665: HJ X, Hero B75%, HJ C'
+    '转牌 K\u2665: HJ X, Hero B75%, HJ C'
   )
   assert.equal(
     actionLine.formatStreetLine('river', 'HJ check, Hero check', '2c'),
-    'R 2\u2663: HJ X, Hero X'
+    '河牌 2\u2663: HJ X, Hero X'
   )
 })
 
@@ -28,7 +28,7 @@ test('postflop B33 and B75 are treated as pot percentages in display', () => {
   assert.equal(actionLine.formatActionLine('HJ B33, Hero C', 'flop'), 'HJ B33%, Hero C')
   assert.equal(actionLine.formatActionLine('Hero B75, HJ C', 'turn'), 'Hero B75%, HJ C')
   assert.equal(actionLine.formatActionLine('HJ B15800, Hero C', 'turn'), 'HJ B15800, Hero C')
-  assert.equal(actionLine.formatStreetSummary('F Qs8d4c: HJ B33, Hero C'), 'F Q\u26608\u26664\u2663: HJ B33%, Hero C')
+  assert.equal(actionLine.formatStreetSummary('F Qs8d4c: HJ B33, Hero C'), '翻牌 Q\u26608\u26664\u2663: HJ B33%, Hero C')
 })
 
 test('review views render formatted display action line', () => {

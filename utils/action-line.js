@@ -1,8 +1,8 @@
 const STREET_LABELS = {
-  preflop: 'PF',
-  flop: 'F',
-  turn: 'T',
-  river: 'R'
+  preflop: '翻前',
+  flop: '翻牌',
+  turn: '转牌',
+  river: '河牌'
 }
 
 const SUIT_SYMBOLS = {
@@ -33,10 +33,10 @@ function formatBoardCards(value) {
 
 function normalizeStreetName(value) {
   const key = String(value || '').trim().toLowerCase()
-  if (key === 'pf' || key === 'preflop' || key === '\u7ffb\u524d') return 'PF'
-  if (key === 'f' || key === 'flop' || key === '\u7ffb\u724c') return 'F'
-  if (key === 't' || key === 'turn' || key === '\u8f6c\u724c') return 'T'
-  if (key === 'r' || key === 'river' || key === '\u6cb3\u724c') return 'R'
+  if (key === 'pf' || key === 'preflop' || key === '\u7ffb\u524d') return '翻前'
+  if (key === 'f' || key === 'flop' || key === '\u7ffb\u724c') return '翻牌'
+  if (key === 't' || key === 'turn' || key === '\u8f6c\u724c') return '转牌'
+  if (key === 'r' || key === 'river' || key === '\u6cb3\u724c') return '河牌'
   return STREET_LABELS[key] || value
 }
 
@@ -70,6 +70,14 @@ function ensurePostflopPercent(value, streetKey) {
   })
 }
 
+function expandDisplayStreetLabels(value) {
+  return String(value || '')
+    .replace(/(^|\s|\/)(PF)(?=\s*:)/g, '$1翻前')
+    .replace(/(^|\s|\/)(F)(?=\s*(?::|[2-9TJQKA][shdc\u2660\u2665\u2666\u2663]))/g, '$1翻牌')
+    .replace(/(^|\s|\/)(T)(?=\s*(?::|[2-9TJQKA][shdc\u2660\u2665\u2666\u2663]))/g, '$1转牌')
+    .replace(/(^|\s|\/)(R)(?=\s*(?::|[2-9TJQKA][shdc\u2660\u2665\u2666\u2663]))/g, '$1河牌')
+}
+
 function formatActionLine(value, streetKey) {
   const source = normalizeWhitespace(value)
   if (!source) return ''
@@ -82,7 +90,7 @@ function formatActionLine(value, streetKey) {
     .replace(/\s*,\s*/g, ', ')
     .replace(/\s{2,}/g, ' ')
     .trim()
-  return ensurePostflopPercent(compact, streetKey)
+  return expandDisplayStreetLabels(ensurePostflopPercent(compact, streetKey))
 }
 
 function formatStreetLine(streetKey, actionLine, boardCards) {
@@ -96,9 +104,9 @@ function formatStreetLine(streetKey, actionLine, boardCards) {
 function formatStreetSummary(value) {
   const source = normalizeWhitespace(value)
   if (!source) return '\u6682\u65e0\u884c\u52a8\u7ebf'
-  return ensurePostflopPercent(formatActionLine(source), 'flop')
-    .replace(/\b([FTR])\s+((?:[2-9TJQKA]\s*[shdc\u2660\u2665\u2666\u2663]\s*){1,3})\s*:/ig, function (_, street, cards) {
-      return street.toUpperCase() + ' ' + formatBoardCards(cards) + ':'
+  return expandDisplayStreetLabels(ensurePostflopPercent(formatActionLine(source), 'flop'))
+    .replace(/(^|\s|\/)(F|T|R|翻牌|转牌|河牌)\s+((?:[2-9TJQKA]\s*[shdc\u2660\u2665\u2666\u2663]\s*){1,3})\s*:/ig, function (_, prefix, street, cards) {
+      return prefix + normalizeStreetName(street) + ' ' + formatBoardCards(cards) + ':'
     })
     .replace(/\s*[；;]\s*/g, ' / ')
     .replace(/\s*\/\s*/g, ' / ')
@@ -109,5 +117,6 @@ module.exports = {
   formatStreetLine,
   formatStreetSummary,
   formatBoardCards,
-  normalizeStreetName
+  normalizeStreetName,
+  expandDisplayStreetLabels
 }

@@ -152,14 +152,10 @@ function formatActionLine(summary) {
   const source = String(summary || '').trim()
   if (!source) return '\u6682\u65e0\u884c\u52a8\u7ebf'
   return source
-    .replace(/翻前/gi, 'PF')
-    .replace(/翻牌/gi, 'F')
-    .replace(/转牌/gi, 'T')
-    .replace(/河牌/gi, 'R')
-    .replace(/preflop/gi, 'PF')
-    .replace(/flop/gi, 'F')
-    .replace(/turn/gi, 'T')
-    .replace(/river/gi, 'R')
+    .replace(/preflop/gi, '翻前')
+    .replace(/flop/gi, '翻牌')
+    .replace(/turn/gi, '转牌')
+    .replace(/river/gi, '河牌')
     .replace(/\s*[\uff1b;]\s*/g, '  /  ')
     .replace(/\s*,\s*/g, ' ')
     .replace(/\s+/g, ' ')

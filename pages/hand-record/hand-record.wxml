@@ -140,12 +140,12 @@
             <view class="unified-field-card">
               <view class="label">有效筹码</view>
               <view class="unified-field-action">编辑</view>
-              <input class="input compact-input unified-field-value" type="number" placeholder="例如 1800" value="{{form.effectiveStack}}" data-key="effectiveStack" bindinput="onInput" />
+              <input class="input compact-input unified-field-value" type="number" placeholder="" value="{{form.effectiveStack}}" data-key="effectiveStack" bindinput="onInput" />
             </view>
             <view class="unified-field-card">
               <view class="label">当前底池</view>
               <view class="unified-field-action">编辑</view>
-              <input class="input compact-input unified-field-value" type="number" placeholder="例如 560" value="{{form.potSize}}" data-key="potSize" bindinput="onInput" />
+              <input class="input compact-input unified-field-value" type="number" placeholder="" value="{{form.potSize}}" data-key="potSize" bindinput="onInput" />
             </view>
             <view class="unified-field-card">
               <view class="label">本手输赢</view>
@@ -167,7 +167,7 @@
                     <text class="mini-card-suit">{{card.suitSymbol}}</text>
                   </view>
                 </view>
-                <text wx:else class="board-empty-text">例如 AQ / AhQd / 77</text>
+                <text wx:else class="board-empty-text"></text>
               </view>
             </view>
           </view>
@@ -180,7 +180,6 @@
               </view>
             </view>
             <text wx:else class="board-empty-text">点击选择 Hero 手牌</text>
-            <text class="edit-select-affordance">点选修改</text>
           </view>
         </view>
 
@@ -297,7 +296,7 @@
         <view class="card advanced-card edit-detail-card edit-detail-analysis">
           <view class="section-title">复盘分析</view>
           <view class="label">行动总结</view>
-          <textarea class="textarea analysis-textarea" placeholder="例如 open 30, BB call; flop bet 80 call" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput"></textarea>
+          <textarea class="textarea analysis-textarea" placeholder="" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput"></textarea>
           <view class="label">心路历程</view>
           <textarea class="textarea analysis-textarea" value="{{form.notes}}" data-key="notes" bindinput="onInput"></textarea>
           <view class="label">Hero 疑问点</view>

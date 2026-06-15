@@ -2,6 +2,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const actionLine = require('../utils/action-line')
 
 const root = path.resolve(__dirname, '..')
 const files = {
@@ -80,4 +81,16 @@ test('quick entry and detail edit use the screenshot edit detail sequence', () =
   assert.ok(appWxss.includes('.edit-detail-main'))
   assert.ok(appWxss.includes('.edit-detail-analysis'))
   assert.ok(appWxss.includes('.edit-detail-streets'))
+})
+
+test('detail entry surfaces use full street labels and blank empty hints', () => {
+  Object.entries(files).forEach(([name, source]) => {
+    assert.equal(source.includes('例如'), false, `${name} should not show example placeholders`)
+    assert.equal(source.includes('点选修改'), false, `${name} should not show the card edit badge text`)
+  })
+
+  assert.equal(actionLine.formatStreetLine('preflop', 'HJ open 2.5, Hero call', ''), '翻前: HJ R2.5, Hero C')
+  assert.equal(actionLine.formatStreetLine('flop', 'HJ bet 33%, Hero call', 'Qs8d4c'), '翻牌 Q♠8♦4♣: HJ B33%, Hero C')
+  assert.equal(actionLine.formatStreetLine('turn', 'Hero check', 'Kh'), '转牌 K♥: Hero X')
+  assert.equal(actionLine.formatStreetLine('river', 'Hero check', '2c'), '河牌 2♣: Hero X')
 })

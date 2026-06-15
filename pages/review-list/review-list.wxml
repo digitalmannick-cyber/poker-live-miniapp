@@ -221,7 +221,7 @@
           </view>
           <textarea
             class="textarea review-voice-textarea"
-            placeholder="点这里后用手机语音输入法说完整复盘。例如：我在 BB 拿 AhAd，HJ open，button call，我 4bet 到 10000，两人有效 150000，flop J J 8 彩虹，我 cbet 6000，对手 call，最后赢 80000。"
+            placeholder=""
             value="{{voiceNote}}"
             bindinput="onVoiceNoteInput"
             cursor-spacing="120"
@@ -262,7 +262,7 @@
                 class="review-confirm-textarea"
                 value="{{voiceCorrectionNote}}"
                 bindinput="onVoiceCorrectionInput"
-                placeholder="在这里直接确认或纠正，例如：flop 是 J84 彩虹，转牌是 A 黑桃，turn pot 是 54000。"
+                placeholder=""
                 auto-height="true"
               ></textarea>
               <button class="voice-correction-btn" bindtap="reparseVoiceWithCorrection" disabled="{{voiceBusy || !voiceCorrectionNote}}">
@@ -290,7 +290,7 @@
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">人数</view>
                 <view class="review-edit-hint">编辑</view>
-                <input class="review-field-input" value="{{parsedVoice.playerCountDisplayText}}" data-field="playerCount" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'playerCount'}}" placeholder="默认 8，例如 5" />
+                <input class="review-field-input" value="{{parsedVoice.playerCountDisplayText}}" data-field="playerCount" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'playerCount'}}" placeholder="" />
               </view>
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">是否 Straddle</view>
@@ -347,8 +347,7 @@
                       <text class="mini-card-suit">{{card.suitSymbol}}</text>
                     </view>
                   </view>
-                  <text wx:else class="board-empty-text">例如 AQ / AhQd / 77</text>
-                  <text class="review-select-affordance">点选修改</text>
+                  <text wx:else class="board-empty-text"></text>
                 </view>
               </view>
             </view>
@@ -362,7 +361,6 @@
                 </view>
               </view>
               <text wx:else class="board-empty-text">点击选择 Hero 手牌</text>
-              <text class="review-select-affordance">点选修改</text>
               </view>
             </view>
             <view wx:if="{{parsedVoice.streetSummary}}" class="review-detail-block">

@@ -45,9 +45,9 @@ function parseBoardFlat(board) {
 function parseBoardStreets(board) {
   const current = board || {}
   return [
-    { label: 'F', cards: parseCardsInput(current.flop, 3) },
-    { label: 'T', cards: parseCardsInput(current.turn, 1) },
-    { label: 'R', cards: parseCardsInput(current.river, 1) }
+    { label: '翻牌', cards: parseCardsInput(current.flop, 3) },
+    { label: '转牌', cards: parseCardsInput(current.turn, 1) },
+    { label: '河牌', cards: parseCardsInput(current.river, 1) }
   ]
 }
 
