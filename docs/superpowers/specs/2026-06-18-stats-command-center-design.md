@@ -1,168 +1,168 @@
-# Stats Command Center Redesign
+# 统计指挥室重设计
 
-## Context
+## 背景
 
-The current `pages/stats` screen shows only five basic KPI values and its WXML copy is corrupted. The redesign will turn this tab into a comprehensive poker performance command center while staying consistent with the miniapp's existing Persona 5-inspired visual system.
+当前 `pages/stats` 页面只展示 5 个基础 KPI，并且 WXML 文案已经出现编码异常。此次重设计会把统计 tab 升级成一个完整的扑克表现指挥室，同时保持小程序现有的 P5（女神异闻录）风格基调。
 
-The user selected the comprehensive direction: combine business performance, review diagnosis, volatility, opponent/position breakdowns, and review priorities. The style should stay aligned with the current miniapp instead of becoming a separate, over-designed theme.
+用户已选择综合方案：同时覆盖经营表现、复盘诊断、波动风险、对手/位置拆解和复盘优先级。视觉上需要跟现有小程序保持一致，不做一套割裂的新主题。
 
-## Goals
+## 目标
 
-- Preserve the existing miniapp mood: black/red base, cyan positive highlights, sharp Persona 5-like rhythm, dark cards, and existing reusable app chrome.
-- Make the stats tab useful for decisions, not just passive totals.
-- Use only fields already present in local/cloud data: sessions, hands, hand actions, settings, and review metadata.
-- Keep the page mobile-first for WeChat Mini Program screens, with dense but readable data blocks.
-- Avoid fake metrics that cannot be derived from current fields.
+- 保留现有小程序氛围：黑红底色、青色正向高亮、P5 式锐利节奏、暗色卡片和已有应用框架。
+- 让统计页能辅助决策，而不是只被动展示总数。
+- 只使用当前已有数据字段：场次、手牌、行动记录、设置和复盘元数据。
+- 以微信小程序移动端为优先，信息密度高但必须可读。
+- 不展示当前字段无法推导出来的假指标。
 
-## Existing Data Surface
+## 现有数据范围
 
-Session fields available for stats:
+场次字段可用于统计：
 
-- `status`, `venue`, `smallBlind`, `bigBlind`, `tableSize`
-- `buyIn`, `cashOut`, `totalProfit`, `durationMinutes`
-- `handCount`, `startTime`, `endTime`, `date`
+- `status`、`venue`、`smallBlind`、`bigBlind`、`tableSize`
+- `buyIn`、`cashOut`、`totalProfit`、`durationMinutes`
+- `handCount`、`startTime`、`endTime`、`date`
 
-Hand fields available for stats:
+手牌字段可用于统计：
 
-- `playedDate`, `stakeLevel`, `heroPosition`, `villainPosition`
-- `villainType`, `opponentType`, `opponentName`
-- `hasStraddle`, `effectiveStack`, `potSize`, `currentProfit`, `resultBB`
-- `tags`, `reviewStatus`, `aiReview`, `detailBackfilled`
-- `heroCardsInput`, `board`, `showdown`, `streetInputs`
+- `playedDate`、`stakeLevel`、`heroPosition`、`villainPosition`
+- `villainType`、`opponentType`、`opponentName`
+- `hasStraddle`、`effectiveStack`、`potSize`、`currentProfit`、`resultBB`
+- `tags`、`reviewStatus`、`aiReview`、`detailBackfilled`
+- `heroCardsInput`、`board`、`showdown`、`streetInputs`
 
-Hand action fields available for future extension:
+行动记录字段可作为后续扩展：
 
-- `street`, `actorSeat`, `actorLabel`, `actionType`, `amount`, `potAfter`
+- `street`、`actorSeat`、`actorLabel`、`actionType`、`amount`、`potAfter`
 
-## Information Architecture
+## 信息架构
 
-The stats tab will be one vertically scrolling screen with five sections.
+统计 tab 是一个纵向滚动页面，包含五个区块。
 
-### 1. Hero Report
+### 1. 顶部战报
 
-Purpose: give the player an immediate read on current performance.
+目的：让玩家一眼判断当前整体表现。
 
-Content:
+内容：
 
-- Total profit
-- Hourly rate
-- Completed session count
-- Total hands
-- Win-rate by completed sessions
-- Bankroll estimate
-- Small status line such as "Profitable", "Waiting for sample", or "Stop-loss review needed". The implementation should use normal Chinese UI copy.
+- 总盈利
+- 小时收益
+- 已完成场次数
+- 总手牌数
+- 已完成场次胜率
+- 估算当前资金
+- 简短状态文案，例如“盈利中”“等待样本”“需要止损复盘”
 
-Visual treatment:
+视觉处理：
 
-- Keep the app's existing card system but make the top panel more editorial and P5-like.
-- Use angled red blocks, strong type, and optional existing P5 character asset as low-opacity background art.
-- Positive values use current cyan convention; negative values use red.
+- 沿用现有卡片系统，但顶部面板要更像 P5 战报。
+- 使用斜切红色块、强字重标题，并可将现有 P5 角色素材作为低透明背景。
+- 正收益沿用当前青色；负收益沿用红色。
 
-### 2. Performance Board
+### 2. 经营表现面板
 
-Purpose: summarize whether the player is making money and where.
+目的：总结玩家是否赚钱，以及在哪些场景赚钱。
 
-Metrics:
+指标：
 
-- Average profit per completed session
-- Average duration per completed session
-- Best session and worst session
-- Venue ranking by total profit and hourly rate
-- Stake ranking by total profit and hands
+- 已完成场次的平均每场盈利
+- 已完成场次的平均时长
+- 最佳场次和最差场次
+- 按场馆统计总盈利和小时收益排行
+- 按级别统计总盈利和手牌数排行
 
-Display:
+展示方式：
 
-- Compact two-column metric cards for high-level values.
-- Ranking rows for venue and stake.
-- Empty states when there are no completed sessions.
+- 高层指标使用紧凑的两列指标卡。
+- 场馆和级别用排行行展示。
+- 没有已完成场次时展示空状态。
 
-### 3. Tactical Diagnosis
+### 3. 战术诊断
 
-Purpose: show which poker contexts are driving results.
+目的：展示哪些扑克上下文正在驱动结果。
 
-Breakdowns:
+拆解维度：
 
-- Hero position: hands, profit, win count, average profit
-- Opponent type: hands, profit, average profit
-- Straddle vs non-straddle: hands, profit, average profit
-- Review tag frequency and total profit
+- Hero 位置：手牌数、盈利、胜手数、平均盈利
+- 对手类型：手牌数、盈利、平均盈利
+- Straddle 与非 Straddle：手牌数、盈利、平均盈利
+- 复盘标签：出现频率和总盈利
 
-Highlighted insights:
+重点洞察：
 
-- Best position
-- Worst position
-- Most expensive tag
-- Most profitable opponent type
+- 最赚钱位置
+- 最亏钱位置
+- 代价最高标签
+- 最赚钱对手类型
 
-Display:
+展示方式：
 
-- Small "intel cards" for highlighted insights.
-- Bar-like rows using CSS width percentages for relative magnitude.
-- Do not render complex chart libraries; WeChat CSS bars are enough and safer.
+- 用小型“情报卡”展示重点洞察。
+- 使用 CSS 百分比条表达相对强弱。
+- 不引入复杂图表库；微信小程序里用 CSS 条形图更稳。
 
-### 4. Volatility And Big Pots
+### 4. 波动与大底池
 
-Purpose: make risk and swing profile visible.
+目的：让风险和波动结构可见。
 
-Metrics:
+指标：
 
-- Biggest winning hand
-- Biggest losing hand
-- Average pot size
-- Big pot count using current data-derived threshold: pot size at least 2x average pot, or at least 100BB when stake level is parseable.
-- Profit distribution: win hands, lose hands, breakeven hands
-- Profit factor: total won divided by absolute total lost, shown only when losses exist.
+- 最大单手盈利
+- 最大单手亏损
+- 平均底池
+- 大底池数量：使用当前数据可推导阈值，底池至少达到平均底池 2 倍，或在级别可解析时达到 100BB。
+- 盈亏分布：盈利手、亏损手、打平手
+- 盈亏因子：总盈利手金额除以总亏损手绝对值；只有存在亏损手时展示。
 
-Display:
+展示方式：
 
-- Three compact distribution bars.
-- A featured largest win/loss pair with card-like rows.
-- Use current hand fields only; no EV approximation unless `ev` is structured later.
+- 使用三段式分布条展示盈利、亏损、打平比例。
+- 最大赢手和最大输手用重点行展示。
+- 只使用当前手牌字段；除非后续 `ev` 字段结构化，否则不估算 EV。
 
-### 5. Review Priority
+### 5. 复盘优先级
 
-Purpose: turn stats into the next action.
+目的：把统计结果转成下一步行动。
 
-Priority buckets:
+优先级来源：
 
-- Large losing hands not reviewed
-- Hands with tags that are frequent or costly
-- Hands missing detailed backfill
-- Reviewed hands count vs total hands
+- 未复盘的大额亏损手牌
+- 高频或高代价标签对应的手牌
+- 缺少详细回填的手牌
+- 已复盘手牌数与总手牌数
 
-Display:
+展示方式：
 
-- "Review priority" style list with counts and reasons. The implementation should use normal Chinese UI copy.
-- A short empty state when all available hands are reviewed or sample size is too small.
-- Optional tap targets can later navigate to review filters, but first implementation can be read-only if route-level filters are not already supported.
+- 用“今日复盘优先级”列表展示数量和原因。
+- 如果所有可用手牌都已复盘，或样本太少，展示简短空状态。
+- 后续可支持点击跳转到复盘筛选；第一版如果路由筛选尚未稳定，可以先做只读。
 
-## Interaction Model
+## 交互模型
 
-The first implementation should include:
+第一版需要包含：
 
-- Time range segmented control: all time, last 30 days, last 7 days. The implementation should use normal Chinese UI copy.
-- Metric sections recompute from the selected time range.
-- Ranking rows and diagnosis rows are rendered from actual data arrays.
-- No new pages are required.
+- 时间范围分段控件：`全部`、`近30天`、`近7天`。
+- 选择时间范围后，所有指标区块重新计算。
+- 排行行和诊断行都从真实数据数组渲染。
+- 不新增页面。
 
-Non-goals for the first implementation:
+第一版不做：
 
-- Exporting charts.
-- Cloud-only aggregate queries.
-- Advanced line chart canvas rendering.
-- Predictive or AI-generated advice.
+- 图表导出。
+- 只依赖云端聚合查询。
+- 复杂 canvas 折线图。
+- 预测性或 AI 生成建议。
 
-## Data Architecture
+## 数据架构
 
-Add a richer stats builder in the data layer rather than computing everything inside the page component.
+丰富统计逻辑应放在数据层或独立工具中，不要堆在页面组件里。
 
-Preferred shape:
+推荐形态：
 
-- `dataService.getStatsData()` returns existing `stats` plus a new `analytics` object.
-- `store.getStatsAnalytics(filters)` or an equivalent helper builds analytics from local arrays.
-- Cloud fallback can initially use local synced data because the app already reads stats locally for dashboard speed.
+- `dataService.getStatsData()` 保留现有 `stats`，并新增 `analytics` 对象。
+- `store.getStatsAnalytics(filters)` 或等价工具函数，从本地数组构建统计分析。
+- 云端回退可以先使用本地同步数据，因为当前仪表盘也优先读本地以保证速度。
 
-Analytics object outline:
+`analytics` 对象结构建议：
 
 ```js
 {
@@ -181,59 +181,59 @@ Analytics object outline:
 }
 ```
 
-Each row should include display-ready primitives where useful: `label`, `count`, `profit`, `profitDisplay`, `averageProfit`, `tone`, and `barWidth`.
+每个统计行尽量提供页面可直接消费的基础字段：`label`、`count`、`profit`、`profitDisplay`、`averageProfit`、`tone`、`barWidth`。
 
-## Visual System
+## 视觉系统
 
-Use current miniapp tokens and behavior:
+沿用当前小程序 token 和行为：
 
-- Background: existing dark red/black global page background.
-- Cards: current dark translucent cards with light border, but stats-specific cards can use sharper corners and angled pseudo-elements.
-- Accent: `#e60012` red for aggression and section identity.
-- Positive: current cyan.
-- Negative: current red.
-- Typography: keep system fonts and current heavy weights. Do not introduce external fonts.
-- Imagery: reuse existing local P5 assets such as `assets/p5-character.svg` or `assets/p5-knight-bg.svg` as subtle page art if compatible with Mini Program image rendering.
+- 背景：使用现有黑红全局页面背景。
+- 卡片：继续使用暗色半透明卡片和浅色描边；统计页专属卡片可以更锐利，加入斜切伪元素。
+- 主强调色：`#e60012`，用于攻击性、标题和区块身份。
+- 正向：沿用当前青色。
+- 负向：沿用当前红色。
+- 字体：使用系统字体和现有粗字重，不引入外部字体。
+- 图像：如兼容微信小程序渲染，可复用 `assets/p5-character.svg` 或 `assets/p5-knight-bg.svg` 作为低透明页面装饰。
 
-Layout rules:
+布局规则：
 
-- No nested cards inside cards.
-- Keep repeated metric cells stable in height to prevent layout jumps.
-- Avoid tiny labels that become unreadable on mobile.
-- Keep bottom spacing compatible with custom tab bar and agent chat.
+- 不做卡片套卡片。
+- 重复指标单元要有稳定高度，避免数据变化导致布局跳动。
+- 避免过小标签，保证移动端可读。
+- 底部留白要兼容自定义 tab bar 和 agent chat。
 
-## Empty And Low-Data States
+## 空状态与低样本状态
 
-- If no sessions or hands exist, show a P5-style empty report. The implementation should use normal Chinese UI copy.
-- If sessions exist but none are finished, show active sample count and explain that profit metrics need completed sessions.
-- If a dimension has no usable rows, hide the ranking and show a short muted line.
-- Do not show divide-by-zero values, `NaN`, or misleading zeroes for unavailable stats.
+- 没有场次或手牌时，展示 P5 风格空报告：“暂无统计样本”。
+- 有场次但没有已完成场次时，展示当前样本数，并说明盈利类指标需要已完成场次。
+- 某个维度没有可用数据时，隐藏排行或展示简短弱提示。
+- 不展示除零结果、`NaN` 或容易误导的 0 值。
 
-## Testing Plan
+## 测试计划
 
-Unit tests should cover the analytics builder:
+统计构建器需要单测覆盖：
 
-- Empty data returns stable zero/empty analytics.
-- Completed and active sessions are separated correctly.
-- Time range filters include the expected sessions and hands.
-- Venue, stake, position, opponent type, straddle, and tag rankings aggregate profit and counts correctly.
-- Volatility handles wins, losses, breakeven hands, and missing stake levels.
-- Review priority detects large unreviewed losses and missing detail backfill.
+- 空数据返回稳定的零值和空数组。
+- 正确区分已完成场次与进行中场次。
+- 时间范围过滤能包含预期场次和手牌。
+- 场馆、级别、位置、对手类型、Straddle、标签排行能正确聚合盈利和数量。
+- 波动统计能处理盈利、亏损、打平和缺失级别的手牌。
+- 复盘优先级能识别大额未复盘亏损手和缺少详情回填的手牌。
 
-UI syntax tests should cover:
+UI 语法测试需要覆盖：
 
-- `pages/stats/stats.wxml` parses successfully.
-- The page can render with empty analytics arrays.
+- `pages/stats/stats.wxml` 能通过解析。
+- 页面在统计数组为空时仍能渲染。
 
-## Implementation Boundaries
+## 实现边界
 
-Files likely to change:
+预计会改动的文件：
 
 - `pages/stats/stats.js`
 - `pages/stats/stats.wxml`
 - `pages/stats/stats.wxss`
 - `services/data-service.js`
-- `utils/store.js` or a new focused analytics utility under `utils/`
-- focused tests under `tests/`
+- `utils/store.js` 或 `utils/` 下新增专门的统计工具
+- `tests/` 下新增或修改聚焦测试
 
-Avoid changing unrelated active work in other tabs or the agent chat component.
+避免改动其他 tab、agent chat 组件或当前任务无关的已有改动。
