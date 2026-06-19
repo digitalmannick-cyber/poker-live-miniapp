@@ -3,6 +3,9 @@ const aiService = require('../../services/ai-service')
 const display = require('../../utils/display')
 const tabBar = require('../../utils/tab-bar')
 
+const SWIPE_OPEN_DISTANCE = 72
+const SWIPE_CLOSE_DISTANCE = 48
+
 function getDisplaySessionProfit(session) {
   if (!session || session.status !== 'finished') return 0
   return Number(session.totalProfit) || 0
@@ -246,11 +249,20 @@ Page({
     sessionSummaryVisible: false,
     sessionSummaryLoading: false,
     sessionSummaryError: '',
-    sessionSummaryView: null
+    sessionSummaryView: null,
+    swipedSessionId: '',
+    touchStartX: 0,
+    touchStartY: 0,
+    touchActiveSessionId: '',
+    touchMoved: false
   },
 
   async onShow() {
     tabBar.syncCustomTabBar('/pages/session-list/session-list')
+    await this.refreshSessions()
+  },
+
+  async refreshSessions() {
     this.setData({ loading: true })
     try {
       const data = await dataService.getSessionListData()
@@ -258,6 +270,7 @@ Page({
       const sessions = (data.sessions || [])
         .map((item, index) => Object.assign({}, item, {
           totalProfitDisplay: display.formatAmount(getDisplaySessionProfit(item), settings.chipUnit),
+          swiped: item._id === this.data.swipedSessionId,
           __sortIndex: index
         }))
         .sort((a, b) => {
@@ -292,7 +305,102 @@ Page({
   },
 
   goSessionDetail(e) {
-    wx.navigateTo({ url: '/pages/session-detail/session-detail?id=' + e.currentTarget.dataset.id })
+    const sessionId = e.currentTarget.dataset.id
+    if (!sessionId) return
+    if (this.data.touchMoved) {
+      this.setData({ touchMoved: false })
+      return
+    }
+    if (this.data.swipedSessionId && this.data.swipedSessionId !== sessionId) {
+      this.closeSwipedSessionItem()
+      return
+    }
+    wx.navigateTo({ url: '/pages/session-detail/session-detail?id=' + sessionId })
+  },
+
+  updateSessionSwipeState(sessionId) {
+    const sessions = (this.data.sessions || []).map(item => Object.assign({}, item, {
+      swiped: item._id === sessionId
+    }))
+    this.setData({
+      sessions,
+      swipedSessionId: sessionId || ''
+    })
+  },
+
+  closeSwipedSessionItem() {
+    this.updateSessionSwipeState('')
+  },
+
+  onSessionItemTouchStart(e) {
+    const touch = e.touches && e.touches[0]
+    if (!touch) return
+    this.setData({
+      touchStartX: touch.clientX,
+      touchStartY: touch.clientY,
+      touchActiveSessionId: e.currentTarget.dataset.id || '',
+      touchMoved: false
+    })
+  },
+
+  onSessionItemTouchMove(e) {
+    const touch = e.touches && e.touches[0]
+    if (!touch) return
+    const deltaX = touch.clientX - this.data.touchStartX
+    const deltaY = touch.clientY - this.data.touchStartY
+    if (Math.abs(deltaX) < Math.abs(deltaY) || Math.abs(deltaX) < 12) return
+    this.setData({ touchMoved: true })
+  },
+
+  onSessionItemTouchEnd(e) {
+    const touch = e.changedTouches && e.changedTouches[0]
+    const sessionId = e.currentTarget.dataset.id || this.data.touchActiveSessionId
+    if (!touch || !sessionId) return
+    const deltaX = touch.clientX - this.data.touchStartX
+    const deltaY = touch.clientY - this.data.touchStartY
+    if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -SWIPE_OPEN_DISTANCE) {
+      this.updateSessionSwipeState(sessionId)
+      this.setData({ touchMoved: true })
+      return
+    }
+    if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > SWIPE_CLOSE_DISTANCE) {
+      this.closeSwipedSessionItem()
+      this.setData({ touchMoved: true })
+      return
+    }
+    if (this.data.touchMoved) {
+      setTimeout(() => this.setData({ touchMoved: false }), 80)
+    }
+  },
+
+  editSessionFromList(e) {
+    const sessionId = e.currentTarget.dataset.id
+    if (!sessionId) return
+    this.closeSwipedSessionItem()
+    wx.navigateTo({ url: '/pages/session-detail/session-detail?id=' + sessionId })
+  },
+
+  deleteSessionFromList(e) {
+    const sessionId = e.currentTarget.dataset.id
+    if (!sessionId) return
+    wx.showModal({
+      title: '删除 Session',
+      content: '删除后，该 Session、该场全部手牌、行动记录及结算记录都会永久删除且无法恢复。是否继续？',
+      confirmText: '删除',
+      confirmColor: '#dc2626',
+      success: async res => {
+        if (!res.confirm) return
+        try {
+          await dataService.deleteSession(sessionId)
+          this.closeSwipedSessionItem()
+          await this.refreshSessions()
+          wx.showToast({ title: '已删除', icon: 'success' })
+        } catch (error) {
+          console.warn('delete session failed: ' + (error && (error.stack || error.message || error.errMsg) || error))
+          wx.showToast({ title: '删除失败，请稍后重试', icon: 'none' })
+        }
+      }
+    })
   },
 
   closeSessionSummary() {

@@ -23,6 +23,63 @@
   min-width: 0;
 }
 
+.session-swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22rpx;
+  margin-bottom: 14rpx;
+}
+
+.session-swipe-row .list-item {
+  margin-bottom: 0;
+}
+
+.session-swipe-content {
+  position: relative;
+  z-index: 2;
+  background: #15171d;
+  transition: transform 160ms ease-out;
+  will-change: transform;
+}
+
+.session-swipe-row.open .session-swipe-content {
+  transform: translateX(-176rpx);
+}
+
+.session-swipe-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 176rpx;
+  display: none;
+  grid-template-columns: repeat(2, 88rpx);
+  overflow: hidden;
+  border-radius: 0 22rpx 22rpx 0;
+}
+
+.session-swipe-row.open .session-swipe-actions {
+  display: grid;
+}
+
+.session-swipe-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.session-swipe-action.edit {
+  background: linear-gradient(180deg, #0aa8d6, #087ea5);
+}
+
+.session-swipe-action.delete {
+  background: linear-gradient(180deg, #ef233c, #b80f24);
+}
+
 .session-list-actions {
   display: flex;
   align-items: center;
