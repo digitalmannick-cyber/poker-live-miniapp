@@ -12,6 +12,7 @@ project.private.config.json
 
 *.log
 .superpowers/
+.worktrees/
 _local-artifacts/
 .codex-tools/
 .env.local
