@@ -603,6 +603,23 @@ function deleteHand(handId) {
   return true
 }
 
+function deleteSession(sessionId) {
+  const data = readStore()
+  const session = data.sessions.find(item => item._id === sessionId)
+  if (!session) return false
+  const handIds = new Set(
+    data.hands
+      .filter(item => item.sessionId === sessionId)
+      .map(item => item._id)
+  )
+  data.handActions = data.handActions.filter(item => !handIds.has(item.handId))
+  data.hands = data.hands.filter(item => item.sessionId !== sessionId)
+  data.bankrollLogs = data.bankrollLogs.filter(item => item.sessionId !== sessionId)
+  data.sessions = data.sessions.filter(item => item._id !== sessionId)
+  writeStore(data)
+  return true
+}
+
 function getReviewHands(filters) {
   return filterReviewHands(readStore().hands, filters || {}, now())
 }
@@ -662,6 +679,7 @@ module.exports = {
   createHand,
   updateHand,
   deleteHand,
+  deleteSession,
   getReviewHands,
   getStatsSummary,
   exportBackup,

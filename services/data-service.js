@@ -91,6 +91,9 @@ function getLocalAdapter() {
     async deleteHand(handId) {
       return store.deleteHand(handId)
     },
+    async deleteSession(sessionId) {
+      return store.deleteSession(sessionId)
+    },
     async getReviewHands(filters) {
       return store.getReviewHands(filters)
     },
@@ -430,6 +433,12 @@ async function deleteHand(handId) {
   return result
 }
 
+async function deleteSession(sessionId) {
+  const result = await getLocalAdapter().deleteSession(sessionId)
+  scheduleBusinessDataSync('sync delete session failed')
+  return result
+}
+
 module.exports = {
   getDashboardData,
   bootstrapCloudSync,
@@ -445,6 +454,7 @@ module.exports = {
   createHand,
   updateHand,
   deleteHand,
+  deleteSession,
   getSessionById,
   getHandById,
   getActionsByHandId,

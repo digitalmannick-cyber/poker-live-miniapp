@@ -633,6 +633,32 @@ async function deleteHand(handId) {
   return true
 }
 
+async function deleteSession(sessionId) {
+  const session = await getSessionById(sessionId)
+  if (!session) return false
+  const db = getDbOrThrow()
+  const playerId = requireCurrentPlayerId()
+  const hands = await getHandsBySessionId(sessionId)
+
+  for (let index = 0; index < hands.length; index += 1) {
+    const hand = hands[index]
+    const actions = await getActionsByHandId(hand._id)
+    if (actions.length) {
+      await Promise.all(actions.map(item => db.collection(COLLECTIONS.handActions).doc(item._id).remove()))
+    }
+    await db.collection(COLLECTIONS.hands).doc(hand._id).remove()
+  }
+
+  const bankrollLogs = await fetchAll(offset =>
+    db.collection(COLLECTIONS.bankrollLogs).where({ playerId, sessionId }).skip(offset).limit(PAGE_SIZE)
+  )
+  if (bankrollLogs.length) {
+    await Promise.all(bankrollLogs.map(item => db.collection(COLLECTIONS.bankrollLogs).doc(item._id).remove()))
+  }
+  await db.collection(COLLECTIONS.sessions).doc(sessionId).remove()
+  return true
+}
+
 async function getReviewHands(filters) {
   const db = getDbOrThrow()
   const playerId = requireCurrentPlayerId()
@@ -685,6 +711,7 @@ module.exports = {
   createHand,
   updateHand,
   deleteHand,
+  deleteSession,
   getReviewHands,
   getStatsSummary,
   __test: {
