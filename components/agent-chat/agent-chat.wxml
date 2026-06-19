@@ -11,10 +11,10 @@
   <view wx:if="{{displayVisible}}" class="agent-chat-panel {{visible ? 'open' : 'closing'}}" catchtap="noop">
     <view class="agent-chat-head">
       <view>
-        <view class="agent-chat-title">Poker Agent</view>
+        <view class="agent-chat-title">EV脑</view>
         <view class="agent-chat-subtitle">范围、复盘、训练和状态检查</view>
       </view>
-      <view class="agent-chat-close" bindtap="closeChat" aria-label="收起 Poker Agent">
+      <view class="agent-chat-close" bindtap="closeChat" aria-label="收起 EV脑">
         <view class="agent-chat-collapse-icon"></view>
       </view>
     </view>
@@ -37,8 +37,12 @@
         id="{{item.id}}"
         class="agent-chat-message {{item.role === 'user' ? 'user' : 'assistant'}}"
       >
-        <view class="agent-chat-message-role">{{item.role === 'user' ? '你' : 'Agent'}}</view>
-        <view class="agent-chat-message-text">{{item.text}}</view>
+        <view class="agent-chat-message-role">{{item.role === 'user' ? '你' : 'EV脑'}}</view>
+        <view
+          class="agent-chat-message-text"
+          data-text="{{item.text}}"
+          bindlongpress="copyMessageText"
+        >{{item.text}}</view>
         <image
           wx:if="{{item.imageUrl}}"
           class="agent-chat-message-image"
@@ -50,7 +54,7 @@
       </view>
 
       <view wx:if="{{busy}}" class="agent-chat-message assistant">
-        <view class="agent-chat-message-role">Agent</view>
+        <view class="agent-chat-message-role">EV脑</view>
         <view class="agent-chat-thinking">
           <view class="agent-chat-dot"></view>
           <view class="agent-chat-dot"></view>

@@ -1,1 +1,464 @@
 @import '../../app.wxss';
+
+.stats-container {
+  padding-top: 24rpx;
+}
+
+.stats-hero,
+.stats-section {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 24rpx;
+  border-radius: 24rpx;
+  border: 1rpx solid rgba(255,255,255,0.14);
+  box-sizing: border-box;
+}
+
+.stats-hero {
+  min-height: 560rpx;
+  padding: 26rpx;
+  background:
+    linear-gradient(135deg, rgba(230, 0, 18, 0.86) 0 26%, rgba(230, 0, 18, 0) 26% 100%),
+    radial-gradient(circle at 88% 18%, rgba(0, 209, 255, 0.22), rgba(0, 209, 255, 0) 34%),
+    linear-gradient(180deg, rgba(20, 20, 27, 0.98), rgba(8, 8, 12, 0.98));
+  box-shadow: 0 24rpx 54rpx rgba(0,0,0,0.38);
+}
+
+.stats-hero::before,
+.stats-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(135deg, rgba(255,255,255,0.055) 0 1rpx, transparent 1rpx 18rpx);
+  opacity: 0.25;
+}
+
+.stats-hero-art {
+  position: absolute;
+  right: -56rpx;
+  bottom: -28rpx;
+  width: 340rpx;
+  height: 440rpx;
+  opacity: 0.13;
+  filter: grayscale(1);
+  pointer-events: none;
+}
+
+.stats-slash {
+  position: absolute;
+  pointer-events: none;
+  transform: skewX(-18deg);
+  z-index: 0;
+}
+
+.stats-slash-a {
+  top: 122rpx;
+  right: -46rpx;
+  width: 230rpx;
+  height: 34rpx;
+  background: rgba(255, 212, 0, 0.88);
+}
+
+.stats-hero-head,
+.stats-hero-main,
+.stats-hero-grid,
+.stats-range-segment,
+.stats-prototype-note,
+.stats-section-head,
+.stats-metric-grid,
+.stats-rank-row,
+.stats-diagnosis-row,
+.stats-intel-grid,
+.stats-vol-grid,
+.stats-distribution-row,
+.stats-review-item,
+.stats-subsection-title {
+  position: relative;
+  z-index: 2;
+}
+
+.stats-hero-head,
+.stats-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.stats-kicker {
+  display: inline-flex;
+  padding: 6rpx 12rpx;
+  color: #09090d;
+  background: #ffffff;
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 1;
+  transform: skewX(-10deg);
+}
+
+.stats-title {
+  margin-top: 12rpx;
+  color: #ffffff;
+  font-size: 46rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.stats-status {
+  flex-shrink: 0;
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(255,255,255,0.08);
+  border: 1rpx solid rgba(255,255,255,0.16);
+  color: rgba(255,255,255,0.86);
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.stats-status.positive {
+  color: #00d1ff;
+  border-color: rgba(0, 209, 255, 0.36);
+  background: rgba(0, 209, 255, 0.10);
+}
+
+.stats-range-segment {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10rpx;
+  margin-top: 30rpx;
+  padding: 8rpx;
+  border-radius: 18rpx;
+  background: rgba(0,0,0,0.22);
+  border: 1rpx solid rgba(255,255,255,0.10);
+}
+
+.stats-range-item {
+  height: 58rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14rpx;
+  color: rgba(255,255,255,0.66);
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.stats-range-item.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #e60012, #ff2a2a);
+  box-shadow: 0 12rpx 26rpx rgba(230, 0, 18, 0.24);
+}
+
+.stats-hero-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 178rpx;
+  gap: 18rpx;
+  align-items: end;
+  margin-top: 34rpx;
+}
+
+.stats-hero-label,
+.stats-bankroll-label,
+.stats-cell-label,
+.stats-metric-label,
+.stats-rank-meta,
+.stats-intel-label,
+.stats-intel-sub,
+.stats-vol-label,
+.stats-review-meta,
+.stats-prototype-note {
+  color: rgba(255,255,255,0.62);
+  font-size: 22rpx;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.stats-hero-profit {
+  margin-top: 10rpx;
+  color: #00d1ff;
+  font-size: 54rpx;
+  font-weight: 900;
+  line-height: 1.04;
+  word-break: break-word;
+}
+
+.stats-hero-sub {
+  margin-top: 10rpx;
+  color: rgba(255,255,255,0.76);
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.stats-bankroll {
+  min-height: 128rpx;
+  padding: 18rpx 16rpx;
+  border-radius: 18rpx;
+  background: rgba(255,255,255,0.07);
+  border: 1rpx solid rgba(255,255,255,0.13);
+  box-sizing: border-box;
+}
+
+.stats-bankroll-value {
+  margin-top: 12rpx;
+  color: #ffd400;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 1.16;
+}
+
+.stats-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 24rpx;
+}
+
+.stats-hero-cell,
+.stats-metric-card,
+.stats-intel-card,
+.stats-vol-card {
+  border-radius: 18rpx;
+  background: rgba(255,255,255,0.055);
+  border: 1rpx solid rgba(255,255,255,0.12);
+  box-sizing: border-box;
+}
+
+.stats-hero-cell {
+  min-height: 104rpx;
+  padding: 16rpx 14rpx;
+}
+
+.stats-cell-value {
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.stats-prototype-note {
+  margin-top: 18rpx;
+}
+
+.stats-section {
+  padding: 24rpx;
+  background:
+    linear-gradient(180deg, rgba(20, 20, 27, 0.96), rgba(11, 11, 15, 0.96));
+}
+
+.stats-section::after {
+  content: '';
+  position: absolute;
+  right: -80rpx;
+  top: -42rpx;
+  width: 240rpx;
+  height: 120rpx;
+  transform: rotate(-12deg);
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(230, 0, 18, 0.62), rgba(230, 0, 18, 0));
+}
+
+.stats-metric-grid,
+.stats-intel-grid,
+.stats-vol-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.stats-metric-card {
+  min-height: 112rpx;
+  padding: 18rpx;
+}
+
+.stats-metric-value {
+  margin-top: 10rpx;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.18;
+  word-break: break-word;
+}
+
+.stats-subsection-title {
+  margin: 26rpx 0 14rpx;
+  color: rgba(255,255,255,0.82);
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.stats-rank-row,
+.stats-diagnosis-row,
+.stats-distribution-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8rpx 16rpx;
+  align-items: center;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid rgba(255,255,255,0.08);
+}
+
+.stats-rank-row:last-child,
+.stats-diagnosis-row:last-child,
+.stats-distribution-row:last-child {
+  border-bottom: none;
+}
+
+.stats-rank-label {
+  color: #ffffff;
+  font-size: 27rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.stats-rank-value {
+  font-size: 25rpx;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.stats-bar {
+  grid-column: span 2;
+  height: 10rpx;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: rgba(255,255,255,0.08);
+}
+
+.stats-bar-fill {
+  height: 100%;
+  min-width: 8rpx;
+  border-radius: 999rpx;
+  background: rgba(255,255,255,0.42);
+}
+
+.stats-bar-fill.positive {
+  background: linear-gradient(90deg, #00d1ff, rgba(0, 209, 255, 0.34));
+}
+
+.stats-bar-fill.negative {
+  background: linear-gradient(90deg, #ff3b3b, rgba(255, 59, 59, 0.28));
+}
+
+.stats-intel-card {
+  min-height: 148rpx;
+  padding: 18rpx;
+}
+
+.stats-intel-card.positive {
+  border-color: rgba(0, 209, 255, 0.28);
+  background: linear-gradient(180deg, rgba(0, 209, 255, 0.10), rgba(255,255,255,0.035));
+}
+
+.stats-intel-card.negative {
+  border-color: rgba(255, 59, 59, 0.30);
+  background: linear-gradient(180deg, rgba(255, 59, 59, 0.12), rgba(255,255,255,0.035));
+}
+
+.stats-intel-value {
+  margin-top: 8rpx;
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: 900;
+  line-height: 1.12;
+}
+
+.stats-intel-sub {
+  margin-top: 8rpx;
+}
+
+.stats-diagnosis-row {
+  margin-top: 4rpx;
+}
+
+.stats-vol-card {
+  min-height: 116rpx;
+  padding: 18rpx;
+}
+
+.stats-vol-card.positive {
+  border-color: rgba(0, 209, 255, 0.26);
+}
+
+.stats-vol-card.negative {
+  border-color: rgba(255, 59, 59, 0.30);
+}
+
+.stats-vol-value {
+  margin-top: 10rpx;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.18;
+}
+
+.stats-review-section {
+  margin-bottom: 0;
+}
+
+.stats-review-item {
+  display: grid;
+  grid-template-columns: 26rpx minmax(0, 1fr);
+  gap: 16rpx;
+  align-items: start;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid rgba(255,255,255,0.08);
+}
+
+.stats-review-item:last-child {
+  border-bottom: none;
+}
+
+.stats-review-icon {
+  width: 22rpx;
+  height: 22rpx;
+  margin-top: 6rpx;
+  transform: skewX(-18deg);
+  background: #ffd400;
+}
+
+.stats-review-item.negative .stats-review-icon {
+  background: #ff3b3b;
+}
+
+.stats-review-title {
+  color: #ffffff;
+  font-size: 27rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.stats-review-meta {
+  margin-top: 8rpx;
+}
+
+.positive {
+  color: #00d1ff;
+}
+
+.negative {
+  color: #ff3b3b;
+}
+
+.neutral {
+  color: rgba(255,255,255,0.84);
+}
+
+@media (max-width: 360px) {
+  .stats-hero {
+    padding: 22rpx;
+  }
+
+  .stats-title {
+    font-size: 40rpx;
+  }
+
+  .stats-hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-bankroll {
+    min-height: 0;
+  }
+}

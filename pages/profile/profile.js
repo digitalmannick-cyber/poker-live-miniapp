@@ -463,7 +463,7 @@ Page({
   showAbout() {
     wx.showModal({
       title: '关于',
-      content: 'Poker Live Recorder\n版本 v1.0.0\n本地离线原型，用于记录牌局、手牌与复盘流程。',
+      content: '智牌屋\n版本 v1.0.0\n本地离线原型，用于记录牌局、手牌与复盘流程。',
       showCancel: false,
       confirmText: '知道了',
       confirmColor: '#e60012'

@@ -65,7 +65,7 @@ test('review list uses shared hand detail field helpers', () => {
 test('voice confirmation includes new canonical fields', () => {
   assert.ok(wxml.includes('是否 Straddle'))
   assert.ok(wxml.includes('对手手牌'))
-  assert.ok(wxml.includes('Hero 疑问点'))
+  assert.ok(wxml.includes('data-field="heroQuestion"'))
 })
 
 test('read-only detail is gated while voice confirmation is expanded', () => {

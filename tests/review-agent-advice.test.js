@@ -23,7 +23,7 @@ assert.ok(
 )
 
 assert.ok(
-  wxml.includes('Poker Agent 建议') && wxml.includes('detailHand.aiReviewView.answer'),
+  wxml.includes('EV脑 建议') && wxml.includes('detailHand.aiReviewView.answer'),
   'review detail should show saved Agent advice'
 )
 

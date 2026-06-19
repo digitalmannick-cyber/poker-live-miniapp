@@ -49,11 +49,14 @@ assert.ok(
   'pages/profile/profile.wxml'
 ].forEach(file => {
   const text = fs.readFileSync(path.join(root, file), 'utf8')
-  assert.ok(text.includes('<agent-chat />'), `${file} should mount the floating agent chat`)
+  assert.ok(
+    text.includes('<agent-chat />') || text.includes('<agent-chat wx:if="{{agentChatReady}}" />'),
+    `${file} should mount the floating agent chat`
+  )
 })
 
 assert.ok(
-  componentWxml.includes('Poker Agent') &&
+  componentWxml.includes('EV脑') &&
   componentWxml.includes('quickActions') &&
   componentWxml.includes('data-intent="{{item.key}}"') &&
   componentWxml.includes('/components/agent-chat/poker-agent-fab-96.png') &&
@@ -98,7 +101,7 @@ assert.ok(
   componentJs.includes('inferChatIntent') &&
   componentJs.includes('findLastMessageIntent') &&
   componentJs.includes('小程序目前还没有全局止盈止损线自动写入功能') &&
-  componentJs.includes('我是 Poker Agent'),
+  componentJs.includes('我是 EV脑'),
   'agent chat should answer local questions directly and preserve prior task intent for short follow-up questions'
 )
 
@@ -114,6 +117,24 @@ assert.ok(
   componentJs.includes('最近 50 手总结') &&
   componentJs.includes('现场马脚快闪题'),
   'agent chat should convert raw provider 503 html into a readable user message'
+)
+
+assert.ok(
+  componentWxml.includes('class="agent-chat-message-text"') &&
+  componentWxml.includes('bindlongpress="copyMessageText"') &&
+  componentWxml.includes('data-text="{{item.text}}"') &&
+  componentJs.includes('copyMessageText') &&
+  componentJs.includes('wx.setClipboardData'),
+  'agent chat messages should support long-press copy without changing the message bubble element type'
+)
+
+assert.ok(
+  componentJs.includes('sanitizeAgentDisplayText') &&
+  componentJs.includes('Service Temporarily Unavailable') &&
+  componentJs.includes('stripDisplayMarkdown') &&
+  componentJs.includes('normalizeStoredMessages') &&
+  componentJs.includes('extractAnswer'),
+  'agent chat should sanitize provider html errors and noisy markdown from new replies and persisted history'
 )
 
 assert.ok(
@@ -134,7 +155,7 @@ assert.ok(
   componentJs.includes('extractMessageImageUrl') &&
   componentJs.includes('stripMessageImageUrl') &&
   componentJs.includes('imageUrl'),
-  'agent chat should detect range image links without hardcoding the poker Agent base url in the frontend'
+  'agent chat should detect range image links without hardcoding the EV脑 base url in the frontend'
 )
 
 {
@@ -148,7 +169,7 @@ assert.ok(
   assert.equal(
     result.imageUrl,
     'https://flask-v2u1-267284-4-1429181305.sh.run.tcloudbase.com/static/ranges/bb-vs-btn.png',
-    'cloud function should normalize relative poker Agent image urls before returning to the miniapp'
+    'cloud function should normalize relative EV脑 image urls before returning to the miniapp'
   )
 }
 

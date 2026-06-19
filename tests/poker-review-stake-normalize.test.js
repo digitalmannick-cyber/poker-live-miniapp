@@ -116,3 +116,19 @@ test('spoken remaining players override default player count', () => {
 
   assert.equal(extracted.playerCount, 5)
 })
+
+test('three blinds speech implies straddle with explicit amount', () => {
+  const review = loadPokerReview()
+  const extracted = review.__test.normalizeExtractedHand(
+    {},
+    {
+      hand: {},
+      session: {}
+    },
+    '这手牌是200400800，3个盲注，我在button call'
+  )
+
+  assert.equal(extracted.stakeLevel, '200/400')
+  assert.equal(extracted.hasStraddle, true)
+  assert.equal(extracted.straddleAmount, 800)
+})

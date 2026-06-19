@@ -76,4 +76,11 @@ assert.ok(
   'street action lines and pots should be merged field-by-field instead of overwritten'
 )
 
+assert.ok(
+  js.includes('buildVoiceCorrectionText') &&
+    js.includes('this.reparseVoiceWithCorrection()') &&
+    /async applyVoicePatch\(\)[\s\S]*voiceCorrectionNote[\s\S]*reparseVoiceWithCorrection/.test(js),
+  'confirm backfill should automatically reparse typed correction text with the target field name before saving'
+)
+
 console.log('review missing field UX tests passed')

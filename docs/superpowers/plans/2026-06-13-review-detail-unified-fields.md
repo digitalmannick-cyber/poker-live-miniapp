@@ -793,7 +793,7 @@ In `applyVoicePatch`, after successful save and reload, keep or add:
 this.setData({
   voicePanelVisible: false,
   voiceBusy: false,
-  voiceStatus: '语音复盘已保存，Poker Agent 正在生成建议...'
+  voiceStatus: '语音复盘已保存，EV脑 正在生成建议...'
 })
 ```
 

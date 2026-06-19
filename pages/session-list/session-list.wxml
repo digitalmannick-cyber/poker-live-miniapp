@@ -50,7 +50,7 @@
     <view class="session-summary-head">
       <view>
         <view class="session-summary-title">{{sessionSummaryView.title}}</view>
-        <view class="session-summary-subtitle">Poker Agent Session 总结</view>
+        <view class="session-summary-subtitle">EV脑 Session 总结</view>
       </view>
       <view class="session-summary-close" bindtap="closeSessionSummary">关闭</view>
     </view>
@@ -122,4 +122,4 @@
   </view>
 </view>
 
-<agent-chat />
+<agent-chat wx:if="{{agentChatReady}}" />

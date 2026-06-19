@@ -9,7 +9,7 @@
       "dir": "cloudfunctions/poker_review",
       "runtime": "Nodejs20.19",
       "handler": "index.main",
-      "timeout": 90,
+      "timeout": 150,
       "memorySize": 256,
       "installDependency": true,
       "envVariables": {
@@ -17,7 +17,7 @@
         "POKER_AGENT_BASE_URL": "https://flask-v2u1-267284-4-1429181305.sh.run.tcloudbase.com",
         "POKER_AGENT_ASK_PATH": "/api/v1/agent/ask",
         "POKER_AGENT_USER_ID": "miniapp",
-        "POKER_AGENT_TIMEOUT_MS": "80000"
+        "POKER_AGENT_TIMEOUT_MS": "120000"
       }
     },
     {

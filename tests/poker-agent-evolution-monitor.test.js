@@ -4,7 +4,7 @@ const monitor = require('../tools/poker-agent-evolution-monitor')
 const report = monitor.renderReport()
 
 assert.ok(
-  report.includes('待你确认是否写入 Poker Agent'),
+  report.includes('待你确认是否写入 EV脑'),
   'report should include the Agent confirmation section'
 )
 
@@ -14,7 +14,7 @@ assert.ok(
 )
 
 assert.ok(
-  monitor.CANDIDATES.some(item => item.target === 'Poker Agent' && item.priority === 'P0'),
+  monitor.CANDIDATES.some(item => item.target === 'EV脑' && item.priority === 'P0'),
   'monitor should surface high-priority Agent evolution candidates'
 )
 
@@ -23,4 +23,4 @@ assert.ok(
   'pot calculation should be tracked as miniapp source-of-truth work'
 )
 
-console.log('poker Agent evolution monitor tests passed')
+console.log('EV脑 evolution monitor tests passed')

@@ -122,6 +122,85 @@ function buildOpponentDisplayName(hand) {
   return type
 }
 
+function hasReviewListDetailValue(value) {
+  if (value == null) return false
+  if (typeof value === 'number') return !Number.isNaN(value) && value !== 0
+  return String(value).trim() !== ''
+}
+
+function hasReviewListStreetDetails(streetInputs) {
+  const current = streetInputs || {}
+  return ['preflop', 'flop', 'turn', 'river'].some(function (key) {
+    const street = current[key] || {}
+    return hasReviewListDetailValue(street.actionLine) || hasReviewListDetailValue(street.pot)
+  })
+}
+
+function isReviewListQuickOnlyHand(hand) {
+  const board = hand && hand.board || {}
+  const hasBoard = hasReviewListDetailValue(board.flop) || hasReviewListDetailValue(board.turn) || hasReviewListDetailValue(board.river)
+  const hasReviewState = !!(
+    hand && (
+      hand.detailBackfilled ||
+      hand.aiReview ||
+      hand.aiReviewStatus ||
+      (hand.reviewStatus && hand.reviewStatus !== 'idle')
+    )
+  )
+  const hasDetail = !!(
+    hasBoard ||
+    hasReviewListStreetDetails(hand && hand.streetInputs) ||
+    hasReviewListDetailValue(hand && hand.streetSummary) ||
+    hasReviewListDetailValue(hand && hand.effectiveStack) ||
+    hasReviewListDetailValue(hand && hand.potSize) ||
+    hasReviewListDetailValue(hand && hand.opponentName) ||
+    hasReviewListDetailValue(hand && hand.showdown) ||
+    hasReviewListDetailValue(hand && hand.heroQuestion) ||
+    hasReviewListDetailValue(hand && hand.notes) ||
+    (Array.isArray(hand && hand.tags) && hand.tags.length)
+  )
+  return !hasReviewState && !hasDetail
+}
+
+function buildReviewListMetaText(hand, quickOnly) {
+  if (quickOnly) return ''
+  const source = hand || {}
+  const parts = []
+  if (hasReviewListDetailValue(source.potSize)) parts.push('底池 ' + source.potSize)
+  if (hasReviewListDetailValue(source.effectiveStack)) parts.push('有效筹码 ' + source.effectiveStack)
+  const opponent = buildOpponentDisplayName(source)
+  if (opponent) parts.push(opponent)
+  return parts.join(' · ')
+}
+
+function buildReviewListHandView(item, chipUnit, swipedHandId) {
+  const quickOnly = isReviewListQuickOnlyHand(item)
+  const aiReviewView = item.aiReview && buildAiReviewView(item.aiReview)
+  const heroPosition = quickOnly ? '' : String(item.heroPosition || '').trim()
+  const actionText = quickOnly ? '' : buildCompactStreetSummary(item)
+  const tags = reviewTags.normalizeReviewTags(item.tags)
+  const metaText = buildReviewListMetaText(item, quickOnly)
+  return Object.assign({}, item, {
+    aiReviewReady: !!(aiReviewView && aiReviewView.visible),
+    aiReviewGenerating: item.aiReviewStatus === 'generating',
+    aiReviewFailed: item.aiReviewStatus === 'failed',
+    swiped: item._id === swipedHandId,
+    actionLine: actionText,
+    showActionLine: !!String(actionText || '').trim(),
+    currentProfitDisplay: display.formatAmount(item.currentProfit, chipUnit),
+    heroCardsVisual: cardUi.parseHeroCardsInput(item.heroCardsInput),
+    heroPosition,
+    showHeroPosition: !!heroPosition,
+    heroPositionClass: buildPositionClass(heroPosition),
+    boardStreetVisual: quickOnly ? [] : cardUi.parseBoardStreets(item.board),
+    tags,
+    tagItems: tags.map(label => ({ label })),
+    opponentDisplayName: quickOnly ? '' : buildOpponentDisplayName(item),
+    metaText,
+    hasMetaText: !!metaText
+  })
+}
+
 function normalizeActiveFilterPatch(patch) {
   const source = patch || {}
   const next = {}
@@ -402,6 +481,15 @@ function preserveLockedQuickEntryFields(parsedVoice, detailHand) {
   return next
 }
 
+function cleanVoiceShowdownValue(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (/mindJourney|heroQuestion|missingFields|followUpQuestions|naturalLanguageSummary|tags/i.test(text)) {
+    return ''
+  }
+  return text
+}
+
 
 const MISSING_FIELD_META = {
   table_size: { field: 'playerCount', label: '\u4eba\u6570', hint: '\u9ed8\u8ba4 8 \u4eba\uff0c\u5982\u679c\u53e3\u8ff0\u201c\u5269 5 \u4e2a\u4eba\u201d\u5219\u6539\u4e3a 5' },
@@ -428,7 +516,7 @@ const MISSING_FIELD_META = {
 function normalizeMissingFieldKey(value) {
   const source = String(value || '').trim()
   if (/table[_ ]?size|player[_ ]?count|\u684c\u578b|\u51e0\u4eba\u684c|\u4eba\u684c|\u4eba\u6570/i.test(source)) return 'table_size'
-  if (/effective[_ ]?stack|\u6709\u6548\u7b79\u7801/i.test(source)) return 'effective_stack'
+  if (/effective[_ ]?stack|\u6709\u6548\u7b79\u7801|\u6709\u6548\u540e\u624b|\u540e\u624b\u5927\u7ea6|\u540e\u624b/i.test(source)) return 'effective_stack'
   if (/pot[_ ]?size|\u5f53\u524d\u5e95\u6c60|\u5e95\u6c60/i.test(source)) return 'pot_size'
   if (/current[_ ]?profit|\u672c\u624b\u8f93\u8d62|\u8f93\u8d62/i.test(source)) return 'current_profit'
   if (/villain[_ ]?position|\u5bf9\u624b\u4f4d\u7f6e/i.test(source)) return 'villain_position'
@@ -453,7 +541,30 @@ function buildMissingFieldItem(value, index) {
     text: meta.label + '\u9700\u8981\u8865\u5145'
   }
 }
-function buildConfirmItems(missingFields, followUpQuestions, voiceNeedsRefresh) {
+function getParsedVoiceFieldValue(parsedVoice, field) {
+  const source = parsedVoice || {}
+  const path = String(field || '').split('.').filter(Boolean)
+  if (!path.length) return undefined
+  return path.reduce((current, key) => {
+    if (current == null) return undefined
+    return current[key]
+  }, source)
+}
+
+function isParsedVoiceFieldFilled(parsedVoice, field) {
+  const value = getParsedVoiceFieldValue(parsedVoice, field)
+  if (value == null) return false
+  if (typeof value === 'number') {
+    if (Number.isNaN(value)) return false
+    return field === 'currentProfit' || value !== 0
+  }
+  const text = String(value).trim()
+  if (!text) return false
+  if (field === 'currentProfit') return true
+  return text !== '0'
+}
+
+function buildConfirmItems(missingFields, followUpQuestions, voiceNeedsRefresh, parsedVoice) {
   const items = []
   if (voiceNeedsRefresh) {
     items.push({ field: 'voiceNote', label: '\u539f\u59cb\u53e3\u8ff0\u5df2\u4fee\u6539', hint: '\u8bf7\u91cd\u65b0\u89e3\u6790\u540e\u518d\u786e\u8ba4\u56de\u586b', text: '\u539f\u59cb\u53e3\u8ff0\u5df2\u4fee\u6539\uff0c\u8bf7\u91cd\u65b0\u89e3\u6790' })
@@ -469,10 +580,21 @@ function buildConfirmItems(missingFields, followUpQuestions, voiceNeedsRefresh) 
     .map((item, index) => typeof item === 'string' ? buildMissingFieldItem(item, index) : Object.assign({ key: String(index) }, item))
     .filter(item => {
       const key = item.field || item.text
+      if (item.field !== 'voiceNote' && isParsedVoiceFieldFilled(parsedVoice, item.field)) return false
       if (seen[key]) return false
       seen[key] = true
       return true
     })
+}
+
+function buildVoiceCorrectionText(correction, confirmItems) {
+  const text = String(correction || '').trim()
+  if (!text) return ''
+  const editableItems = (confirmItems || []).filter(item => item && item.field && item.field !== 'voiceNote')
+  if (editableItems.length === 1 && !/[:：]/.test(text)) {
+    return editableItems[0].label + ': ' + text
+  }
+  return text
 }
 
 function collectReviewTextParts(value, parts) {
@@ -480,7 +602,7 @@ function collectReviewTextParts(value, parts) {
   if (value == null) return output
   if (typeof value === 'string' || typeof value === 'number') {
     const text = String(value).trim()
-    if (text) output.push(text)
+    if (text && !looksLikeTagTaxonomyLeak(text)) output.push(text)
     return output
   }
   if (Array.isArray(value)) {
@@ -494,6 +616,15 @@ function collectReviewTextParts(value, parts) {
     })
   }
   return output
+}
+
+function looksLikeTagTaxonomyLeak(value) {
+  const text = String(value || '')
+  if (!text) return false
+  if (/fixed\s+miniapp\s+taxonomy|For\s+tags,\s*choose\s+only|Do\s+not\s+return\s+internal\s+snake_case\s+leak\s+tags/i.test(text)) return true
+  const labels = ['精彩', '可优化', '明显错误', 'Hero Call', 'Overfold', 'Bad Fold', '价值下注', '诈唬', '多人池', '深筹码', '3Bet池', '4Bet池']
+  const count = labels.reduce((sum, label) => sum + (text.indexOf(label) > -1 ? 1 : 0), 0)
+  return count >= 6 && /tags?|标签|taxonomy|分类|候选|固定/.test(text)
 }
 
 function inferReviewTagsFromReview(parsedVoice, aiReview) {
@@ -513,8 +644,8 @@ function inferReviewTagsFromReview(parsedVoice, aiReview) {
 
   if (/clear[_\s-]?mistake|mistake|bad[_\s-]?play|error|明显|重大|错误|不应该|自相矛盾/i.test(text)) tags.push('mistake')
   if (/optimi[sz]e|issue|problem|建议|优化|可优化|应该|需要|替代线/i.test(text)) tags.push('optimization')
-  if (/good|great|standard|correct|标准|正确|合理|打得好|精彩/i.test(text)) tags.push('good')
-  if (/hero[_\s-]?call|bluff[_\s-]?catch|call[_\s-]?down|抓诈|抓鸡|接诈/i.test(text)) tags.push('hero_call')
+  if (/good|great|nice[_\s-]?hand|打得好|精彩/i.test(text)) tags.push('good')
+  if (/\bhero_call\b|bluff[_\s-]?catch|call[_\s-]?down|Hero.{0,12}(?:抓诈|抓鸡|接诈)|(?:抓诈|抓鸡|接诈).{0,12}Hero/i.test(text)) tags.push('hero_call')
   if (/over[_\s-]?fold|river[_\s-]?overfold|过度弃牌|弃太多|fold太多/i.test(text)) tags.push('overfold')
   if (/bad[_\s-]?fold|错误弃牌|弃错|fold错/i.test(text)) tags.push('bad_fold')
   if (/value[_\s-]?bet|thin[_\s-]?value|价值下注|薄价值|打价值/i.test(text)) tags.push('value_bet')
@@ -536,6 +667,21 @@ function inferReviewTagsFromReview(parsedVoice, aiReview) {
 function buildParsedVoicePreview(parsedVoice, reviewResult) {
   if (!parsedVoice) return null
   const meta = reviewResult || {}
+  const board = Object.assign({ flop: '', turn: '', river: '' }, parsedVoice.board || {})
+  const streetInputs = Object.assign(
+    {
+      preflop: { actionLine: '', pot: '' },
+      flop: { actionLine: '', pot: '' },
+      turn: { actionLine: '', pot: '' },
+      river: { actionLine: '', pot: '' }
+    },
+    parsedVoice.streetInputs || {}
+  )
+  const previewSource = Object.assign({}, parsedVoice, {
+    board,
+    streetInputs,
+    showdown: cleanVoiceShowdownValue(parsedVoice.showdown)
+  })
   const detailView = handDetailFields.buildHandDetailViewModel(parsedVoice, {
     mode: 'confirm',
     backfilled: true,
@@ -560,17 +706,9 @@ function buildParsedVoicePreview(parsedVoice, reviewResult) {
     ''
   ).trim()
   return Object.assign({}, parsedVoice, {
-    board: Object.assign({ flop: '', turn: '', river: '' }, parsedVoice.board || {}),
-    streetSummary: buildCompactStreetSummary(parsedVoice),
-    streetInputs: Object.assign(
-      {
-        preflop: { actionLine: '', pot: '' },
-        flop: { actionLine: '', pot: '' },
-        turn: { actionLine: '', pot: '' },
-        river: { actionLine: '', pot: '' }
-      },
-      parsedVoice.streetInputs || {}
-    ),
+    board,
+    streetSummary: buildCompactStreetSummary(previewSource),
+    streetInputs,
     tags,
     tagsText: tags.join(' · '),
     tagItems: tags.map(label => ({ label })),
@@ -579,15 +717,16 @@ function buildParsedVoicePreview(parsedVoice, reviewResult) {
     hasStraddle: detailView.form.hasStraddle,
     heroQuestion: detailView.form.heroQuestion,
     opponentName: detailView.form.opponentName,
-    showdown: detailView.form.showdown,
+    showdown: cleanVoiceShowdownValue(detailView.form.showdown),
     detailRows: detailView.rows,
     missingFields,
-    missingFieldsText: buildConfirmItems(missingFields, [], false).map(item => item.label).join(' · '),
+    missingFieldsText: buildConfirmItems(missingFields, [], false, parsedVoice).map(item => item.label).join(' · '),
     followUpQuestions,
     confirmItems: buildConfirmItems(
       missingFields,
       followUpQuestions,
-      !!parsedVoice.voiceNeedsRefresh
+      !!parsedVoice.voiceNeedsRefresh,
+      parsedVoice
     ),
     feedbackText,
     aiReview: meta.analysis || parsedVoice.aiReview || null,
@@ -598,9 +737,9 @@ function buildParsedVoicePreview(parsedVoice, reviewResult) {
     playerCountDisplayText: Number(parsedVoice.playerCount) > 0 ? String(Number(parsedVoice.playerCount)) : '',
     currentProfitDisplayText: formatSignedNumber(parsedVoice.currentProfit),
     heroCardsVisual: cardUi.parseHeroCardsInput(parsedVoice.heroCardsInput),
-    showdownCardsVisual: cardUi.parseHeroCardsInput(detailView.form.showdown),
-    boardVisual: buildBoardVisual(parsedVoice.board),
-    streetItems: buildStreetItems(parsedVoice.streetInputs, parsedVoice.board)
+    showdownCardsVisual: cardUi.parseHeroCardsInput(cleanVoiceShowdownValue(detailView.form.showdown)),
+    boardVisual: buildBoardVisual(board),
+    streetItems: buildStreetItems(streetInputs, board)
   })
 }
 
@@ -688,6 +827,39 @@ function normalizeParsedVoice(parsedVoice, reviewResult, voiceNote, detailHand) 
       aiReview: reviewResult && reviewResult.analysis || parsedVoice && parsedVoice.aiReview || null
     }
   )
+  const provider = String((reviewResult && reviewResult.provider) || (mergedVoice && mergedVoice.provider) || '').trim()
+  const hasVoiceContext = !!String(voiceNote || '').trim()
+  if (provider === 'poker-agent') {
+    ;[
+      'potSize',
+      'streetSummary',
+      'mindJourney',
+      'showdown',
+      'opponentName',
+      'villainPosition',
+      'heroPosition',
+      'effectiveStack'
+    ].forEach(key => {
+      if ((!hasVoiceContext || isBlankVoiceValue(extracted[key])) && !isBlankVoiceValue(mergedVoice[key])) {
+        extracted[key] = mergedVoice[key]
+      }
+    })
+    if (hasVoiceContext) {
+      const mergedBoard = Object.assign({}, extracted.board || {})
+      const providerBoard = mergedVoice.board || {}
+      ;['flop', 'turn', 'river'].forEach(key => {
+        if (isBlankVoiceValue(mergedBoard[key]) && !isBlankVoiceValue(providerBoard[key])) {
+          mergedBoard[key] = providerBoard[key]
+        }
+      })
+      extracted.board = mergedBoard
+      extracted.streetInputs = mergeBlankStreetInputs(extracted.streetInputs, mergedVoice.streetInputs)
+    } else {
+      extracted.board = Object.assign({}, extracted.board || {}, mergedVoice.board || {})
+      extracted.streetInputs = mergeBlankStreetInputs(mergedVoice.streetInputs, extracted.streetInputs)
+    }
+  }
+  extracted.showdown = cleanVoiceShowdownValue(extracted.showdown)
   extracted.tags = reviewTags.normalizeReviewTags([]
     .concat(Array.isArray(extracted.tags) ? extracted.tags : sanitizeStringArray(extracted.tags))
     .concat(agentInferredTags)
@@ -723,7 +895,7 @@ function buildStoredVoiceExtract(parsedVoice) {
       parsedVoice.streetInputs || {}
     ),
     streetSummary: parsedVoice.streetSummary || '',
-    showdown: parsedVoice.showdown || '',
+    showdown: cleanVoiceShowdownValue(parsedVoice.showdown),
     mindJourney: parsedVoice.mindJourney || '',
     tags: reviewTags.normalizeReviewTags(parsedVoice.tags),
     missingFields: sanitizeStringArray(parsedVoice.missingFields),
@@ -870,7 +1042,9 @@ function buildAgentCorrectionPayload(detailHand, parsedVoice, voiceNote) {
 
 function buildVoicePatch(detailHand, parsedVoice, voiceNote) {
   const current = detailHand || {}
-  const lockedParsedVoice = preserveLockedQuickEntryFields(Object.assign({}, parsedVoice), detailHand)
+  const lockedParsedVoice = preserveLockedQuickEntryFields(Object.assign({}, parsedVoice, {
+    showdown: cleanVoiceShowdownValue(parsedVoice && parsedVoice.showdown)
+  }), detailHand)
   const parsedBoard = lockedParsedVoice.board || {}
   const currentBoard = current.board || {}
   const baseNotes = stripAutoVoiceReviewNotes(current.notes)
@@ -907,7 +1081,7 @@ function buildVoicePatch(detailHand, parsedVoice, voiceNote) {
     },
     streetInputs,
     streetSummary: lockedParsedVoice.streetSummary || current.streetSummary || '',
-    showdown: lockedParsedVoice.showdown || current.showdown || '',
+    showdown: cleanVoiceShowdownValue(lockedParsedVoice.showdown) || current.showdown || '',
     tags,
     mindJourney: lockedParsedVoice.mindJourney || current.mindJourney || '',
     voiceNote: voiceNote || current.voiceNote || '',
@@ -1196,7 +1370,7 @@ function buildDetailHandView(hand, chipUnit) {
     aiReviewReady: !!(aiReviewView && aiReviewView.visible),
     aiReviewGenerating: aiReviewStatus === 'generating',
     aiReviewFailed: aiReviewStatus === 'failed',
-    aiReviewErrorText: hand.aiReviewError || 'Poker Agent \u6682\u65f6\u6ca1\u6709\u751f\u6210\u5efa\u8bae\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002',
+    aiReviewErrorText: hand.aiReviewError || 'EV脑 \u6682\u65f6\u6ca1\u6709\u751f\u6210\u5efa\u8bae\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002',
     villainTypeText: hand.villainType || hand.opponentType || '',
     boardHasCards: boardVisual.some(item => item.cards.length),
     hasStreetItems: streetItems.some(item => item.actionLine || item.pot),
@@ -1406,20 +1580,7 @@ Page({
       filterInitialized: true
     })
     const data = await dataService.getReviewData(nextFilters)
-    const hands = (data.hands || []).map(item => Object.assign({}, item, {
-      aiReviewReady: !!(item.aiReview && buildAiReviewView(item.aiReview) && buildAiReviewView(item.aiReview).visible),
-      aiReviewGenerating: item.aiReviewStatus === 'generating',
-      aiReviewFailed: item.aiReviewStatus === 'failed',
-      swiped: item._id === this.data.swipedHandId,
-      actionLine: buildCompactStreetSummary(item),
-      currentProfitDisplay: display.formatAmount(item.currentProfit, chipUnit),
-      heroCardsVisual: cardUi.parseHeroCardsInput(item.heroCardsInput),
-      heroPositionClass: buildPositionClass(item.heroPosition),
-      boardStreetVisual: cardUi.parseBoardStreets(item.board),
-      tags: reviewTags.normalizeReviewTags(item.tags),
-      tagItems: reviewTags.normalizeReviewTags(item.tags).map(label => ({ label })),
-      opponentDisplayName: buildOpponentDisplayName(item)
-    }))
+    const hands = (data.hands || []).map(item => buildReviewListHandView(item, chipUnit, this.data.swipedHandId))
     this.setData(Object.assign({}, data, {
       hands,
       chipUnit,
@@ -1802,10 +1963,14 @@ Page({
       wx.showToast({ title: '\u8bf7\u5148\u8f93\u5165\u786e\u8ba4\u6216\u4fee\u6b63\u5185\u5bb9', icon: 'none' })
       return
     }
+    const correctionText = buildVoiceCorrectionText(
+      correction,
+      this.data.parsedVoice && this.data.parsedVoice.confirmItems
+    )
     const base = String(this.data.voiceNote || '').trim()
     const nextVoiceNote = base
-      ? base + '\n\u8865\u5145\u786e\u8ba4\uff1a' + correction
-      : correction
+      ? base + '\n' + correctionText
+      : correctionText
     this.setData({
       voiceNote: nextVoiceNote,
       voiceCorrectionNote: '',
@@ -2167,6 +2332,10 @@ Page({
       wx.showToast({ title: '\u6682\u65e0\u53ef\u56de\u586b\u5185\u5bb9', icon: 'none' })
       return
     }
+    if (String(this.data.voiceCorrectionNote || '').trim()) {
+      this.reparseVoiceWithCorrection()
+      return
+    }
     const handId = this.data.detailHand._id
     const voiceNote = this.data.voiceNote
     const correction = buildAgentCorrectionPayload(this.data.detailHand, this.data.parsedVoice, voiceNote)
@@ -2180,7 +2349,7 @@ Page({
     this.setData({
       voicePanelVisible: false,
       voiceBusy: false,
-      voiceStatus: '语音复盘已保存，Poker Agent 正在生成建议...'
+      voiceStatus: '语音复盘已保存，EV脑 正在生成建议...'
     })
     wx.showToast({ title: '\u590d\u76d8\u5df2\u4fdd\u5b58', icon: 'success' })
 
@@ -2199,7 +2368,7 @@ Page({
         )
       )
       if (result.code && result.code !== 0) {
-        const error = new Error(result.message || 'Poker Agent advice failed')
+        const error = new Error(result.message || 'EV脑 advice failed')
         error.code = result.code
         throw error
       }
@@ -2215,7 +2384,7 @@ Page({
       console.warn('poker agent advice failed: ' + (error && (error.errMsg || error.message) || String(error)))
       await dataService.updateHand(handId, {
         aiReviewStatus: 'failed',
-        aiReviewError: error && (error.message || error.errMsg) || 'Poker Agent advice failed'
+        aiReviewError: error && (error.message || error.errMsg) || 'EV脑 advice failed'
       })
       await this.refresh()
       await this.loadHandDetail(handId)

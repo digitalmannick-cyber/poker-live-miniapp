@@ -91,4 +91,4 @@ assert.ok(
   'cloud prompt and user-facing errors should not contain mojibake'
 )
 
-console.log('poker Agent two-stage tests passed')
+console.log('EV脑 two-stage tests passed')

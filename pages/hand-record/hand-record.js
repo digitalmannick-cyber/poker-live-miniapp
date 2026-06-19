@@ -236,16 +236,15 @@ function buildSessionSelectorOptions(sessions, currentId) {
 }
 
 function buildSessionPatch(session, settings) {
-  const positionOptions = handDetailFields.getPositionOptions(settings.positions, false)
   return {
     sessionId: session ? session._id : '',
     session: session || null,
     'form.playedDate': getSessionDate(session),
     'form.stakeLevel': getSessionLevel(session),
     'form.hasStraddle': false,
-    'form.heroPosition': positionOptions[0] || 'CO',
-    'form.opponentType': settings.opponentTypes[0] || '',
-    'form.villainPosition': positionOptions[positionOptions.length - 1] || 'BB',
+    'form.heroPosition': '',
+    'form.opponentType': '',
+    'form.villainPosition': '',
     sessionBlindDisplay: session ? [session.smallBlind, session.bigBlind].filter(Boolean).join('/') : '',
     sessionMetaText: session ? [session.date, session.venue, session.status === 'active' ? '进行中' : '已结束'].filter(Boolean).join(' · ') : '',
     resultBbDisplay: formatResultBb('', getSessionLevel(session), session)
@@ -281,16 +280,15 @@ function buildTagOptions(tagsInput) {
 }
 
 function getEmptyHandFormPatch(session, settings) {
-  const positionOptions = handDetailFields.getPositionOptions(settings.positions, false)
   return {
     'form.playedDate': getSessionDate(session),
     'form.stakeLevel': getSessionLevel(session),
     'form.playerCount': '',
     'form.hasStraddle': false,
     'form.heroSeat': '4',
-    'form.heroPosition': positionOptions[0] || 'CO',
-    'form.opponentType': settings.opponentTypes[0] || '',
-    'form.villainPosition': positionOptions[positionOptions.length - 1] || 'BB',
+    'form.heroPosition': '',
+    'form.opponentType': '',
+    'form.villainPosition': '',
     'form.buttonSeat': '2',
     'form.heroCardsInput': '',
     'form.flop': '',
@@ -339,7 +337,7 @@ Page({
       playerCount: '',
       hasStraddle: false,
       heroSeat: '4',
-      heroPosition: 'CO',
+      heroPosition: '',
       opponentType: '',
       villainPosition: '',
       buttonSeat: '2',
@@ -438,9 +436,9 @@ Page({
         'form.playedDate': getSessionDate(session),
         'form.stakeLevel': getSessionLevel(session),
         'form.hasStraddle': false,
-        'form.heroPosition': positionOptions[0] || 'CO',
-        'form.opponentType': settings.opponentTypes[0] || '',
-        'form.villainPosition': positionOptions[positionOptions.length - 1] || 'BB',
+        'form.heroPosition': '',
+        'form.opponentType': '',
+        'form.villainPosition': '',
         sessionBlindDisplay: session ? [session.smallBlind, session.bigBlind].filter(Boolean).join('/') : '',
         sessionMetaText: session ? [session.date, session.venue].filter(Boolean).join(' · ') : '',
         resultBbDisplay: formatResultBb(this.data.form.currentProfit, getSessionLevel(session), session),

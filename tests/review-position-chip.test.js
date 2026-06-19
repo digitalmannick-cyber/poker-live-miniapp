@@ -12,12 +12,13 @@ assert.ok(
   reviewJs.includes("BTN: 'pos-btn'") &&
   reviewJs.includes("SB: 'pos-sb'") &&
   reviewJs.includes("'UTG+1': 'pos-utg1'") &&
-  reviewJs.includes('heroPositionClass: buildPositionClass(item.heroPosition)'),
+  reviewJs.includes('heroPositionClass: buildPositionClass(heroPosition)') &&
+  reviewJs.includes('showHeroPosition: !!heroPosition'),
   'review list should derive a stable position color class for each hand'
 )
 
 assert.ok(
-  reviewWxml.includes('position-chip {{item.heroPositionClass}}'),
+  reviewWxml.includes('wx:if="{{item.showHeroPosition}}" class="position-chip {{item.heroPositionClass}}"'),
   'review list position chip should use the derived position color class'
 )
 

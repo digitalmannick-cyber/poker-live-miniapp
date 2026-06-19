@@ -15,12 +15,12 @@ assert.ok(
 assert.ok(
   reviewJs.includes('function preserveLockedQuickEntryFields') &&
   reviewJs.includes('preserveLockedQuickEntryFields(extracted, detailHand)') &&
-  reviewJs.includes('preserveLockedQuickEntryFields(Object.assign({}, parsedVoice), detailHand)'),
+  reviewJs.includes('preserveLockedQuickEntryFields(Object.assign({}, parsedVoice'),
   'AI parsed preview and voice patch should preserve quick-entry fields from the original hand'
 )
 
 assert.ok(
-  reviewJs.includes('const lockedParsedVoice = preserveLockedQuickEntryFields(Object.assign({}, parsedVoice), detailHand)') &&
+  reviewJs.includes('const lockedParsedVoice = preserveLockedQuickEntryFields(Object.assign({}, parsedVoice') &&
   reviewJs.includes('heroCardsInput: lockedParsedVoice.heroCardsInput || current.heroCardsInput') &&
   reviewJs.includes('lockedParsedVoice.currentProfit ===') &&
   reviewJs.includes('voiceExtract: buildStoredVoiceExtract(lockedParsedVoice)'),

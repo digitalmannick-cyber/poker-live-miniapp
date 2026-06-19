@@ -77,3 +77,8 @@ test('opponent hand uses card picker instead of free text input', () => {
   assert.equal(wxml.includes('data-key="showdown"'), false)
   assert.ok(wxml.includes('showdownPickerVisible'))
 })
+
+test('quick entry does not prefill hero or villain positions', () => {
+  assert.equal(js.includes("positionOptions[0] || 'CO'"), false)
+  assert.equal(js.includes("positionOptions[positionOptions.length - 1] || 'BB'"), false)
+})

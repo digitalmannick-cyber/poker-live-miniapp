@@ -65,7 +65,7 @@
                   <text class="mini-card-suit">{{card.suitSymbol}}</text>
                 </view>
               </view>
-              <view class="position-chip {{item.heroPositionClass}}">{{item.heroPosition}}</view>
+              <view wx:if="{{item.showHeroPosition}}" class="position-chip {{item.heroPositionClass}}">{{item.heroPosition}}</view>
               <view class="cards-inline tight review-board-inline">
                 <block wx:for="{{item.boardStreetVisual}}" wx:for-item="street" wx:key="street">
                   <view wx:for="{{street.cards}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-board mini-card-{{card.suitClass}}">
@@ -77,12 +77,9 @@
             </view>
             <view class="review-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
           </view>
-          <view class="review-action-line">{{item.actionLine}}</view>
-          <view class="review-meta-row">
-            <view class="small muted">
-              底池 {{item.potSize || '-'}} · 有效筹码 {{item.effectiveStack || '-'}}
-              <text wx:if="{{item.opponentDisplayName}}"> · {{item.opponentDisplayName}}</text>
-            </view>
+          <view wx:if="{{item.showActionLine}}" class="review-action-line">{{item.actionLine}}</view>
+          <view wx:if="{{item.hasMetaText || item.aiReviewReady || item.aiReviewGenerating}}" class="review-meta-row">
+            <view wx:if="{{item.hasMetaText}}" class="small muted">{{item.metaText}}</view>
             <view wx:if="{{item.aiReviewReady || item.aiReviewGenerating}}" class="review-ai-badge {{item.aiReviewGenerating ? 'loading' : 'ready'}}">
               <view wx:if="{{item.aiReviewGenerating}}" class="review-ai-badge-dot"></view>
               <text>{{item.aiReviewGenerating ? 'AI生成中' : 'AI建议'}}</text>
@@ -409,10 +406,6 @@
                 <view wx:for="{{parsedVoice.tagItems}}" wx:key="label" class="review-hand-tag">{{item.label}}</view>
               </view>
             </view>
-            <view wx:if="{{parsedVoice.showdown}}" class="review-detail-block">
-              <view class="kpi-label">对手亮牌</view>
-              <view class="review-detail-text">{{parsedVoice.showdown}}</view>
-            </view>
             <view wx:if="{{parsedVoice.missingFields.length}}" class="review-detail-block">
               <view class="kpi-label">缺失字段</view>
               <view class="review-detail-text">{{parsedVoice.missingFieldsText}}</view>
@@ -482,7 +475,7 @@
             <view class="review-ai-spinner"></view>
             <view>
               <view class="review-agent-pending-title">AI 建议生成中</view>
-              <view class="review-agent-pending-text">Poker Agent 正在根据最新回填信息重新分析。</view>
+              <view class="review-agent-pending-text">EV脑 正在根据最新回填信息重新分析。</view>
             </view>
           </view>
         </view>
@@ -499,7 +492,7 @@
         <view wx:if="{{detailHand.aiReviewReady}}" class="review-detail-card review-agent-card">
           <view class="review-card-head">
             <view>
-              <view class="section-title">Poker Agent 建议</view>
+              <view class="section-title">EV脑 建议</view>
               <view class="small muted">基于当前手牌信息生成的专业复盘建议</view>
             </view>
             <view class="review-voice-badge">{{detailHand.aiReviewView.provider}}</view>

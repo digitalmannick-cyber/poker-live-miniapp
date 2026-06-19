@@ -242,6 +242,7 @@ Page({
   data: {
     sessions: [],
     loading: false,
+    agentChatReady: false,
     sessionSummaryVisible: false,
     sessionSummaryLoading: false,
     sessionSummaryError: '',
@@ -278,6 +279,14 @@ Page({
     }
   },
 
+  onReady() {
+    setTimeout(() => {
+      if (!this.data.agentChatReady) {
+        this.setData({ agentChatReady: true })
+      }
+    }, 240)
+  },
+
   goNewSession() {
     wx.navigateTo({ url: '/pages/session-detail/session-detail?mode=create' })
   },
@@ -306,7 +315,7 @@ Page({
       sessionSummaryError: '',
       sessionSummaryView: {
         title: `${session.title || session.date || 'Session'} 总结`,
-        overview: 'Poker Agent 正在汇总本场所有已复盘手牌...',
+        overview: 'EV脑 正在汇总本场所有已复盘手牌...',
         counts: { good: 0, mistakes: 0, optimizations: 0 },
         goodHands: [],
         mistakeHands: [],
@@ -344,7 +353,7 @@ Page({
     } catch (error) {
       this.setData({
         sessionSummaryLoading: false,
-        sessionSummaryError: error && (error.message || error.errMsg) || 'Poker Agent 暂时无法生成 Session 总结'
+        sessionSummaryError: error && (error.message || error.errMsg) || 'EV脑 暂时无法生成 Session 总结'
       })
     }
   }

@@ -466,7 +466,7 @@ function requestJson(url, payload, headers, timeout) {
         method: 'POST',
         headers: Object.assign(
           {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json; charset=utf-8'
           },
           headers || {}
         )
@@ -921,13 +921,36 @@ function buildFallbackExtract(cleanedTranscript, context) {
   const session = context.session || {}
   const posMatch = cleanedTranscript.match(/\b(UTG|HJ|CO|BTN|SB|BB|LJ|MP)\b/i)
   const levelMatch = cleanedTranscript.match(/(?:^|[^\d])((?:\d{2,4})\s*\/\s*(?:\d{2,4}))(?:[^\d]|$)/)
+  const levelTripletSlash = cleanedTranscript.match(/(?:^|[^\d])(\d{2,5})\s*[\/／]\s*(\d{2,5})\s*[\/／]\s*(\d{2,5})(?:[^\d]|$)/)
+  const levelTripletCompact = cleanedTranscript.match(/(?:^|[^\d])(\d{9}|\d{12})(?:[^\d]|$)/)
   const winMatch = cleanedTranscript.match(/\u8d62\s*(-?\d+)/)
   const loseMatch = cleanedTranscript.match(/\u8f93\s*(\d+)/)
+  let straddleAmount = 0
+  let hasStraddle = /(3个盲注|三个盲注|带straddle|有straddle|straddle)/i.test(cleanedTranscript)
+  let fallbackStakeLevel = levelMatch ? levelMatch[1].replace(/\s+/g, '') : (session.stakeLevel || '')
+  if (levelTripletSlash) {
+    fallbackStakeLevel = levelTripletSlash[1] + '/' + levelTripletSlash[2]
+    straddleAmount = Number(levelTripletSlash[3]) || 0
+    hasStraddle = true
+  } else if (levelTripletCompact) {
+    const digits = levelTripletCompact[1]
+    if (digits.length % 3 === 0) {
+      const size = digits.length / 3
+      const smallBlind = Number(digits.slice(0, size)) || 0
+      const bigBlind = Number(digits.slice(size, size * 2)) || 0
+      const thirdBlind = Number(digits.slice(size * 2)) || 0
+      if (smallBlind && bigBlind === smallBlind * 2 && thirdBlind === bigBlind * 2) {
+        fallbackStakeLevel = smallBlind + '/' + bigBlind
+        straddleAmount = thirdBlind
+        hasStraddle = true
+      }
+    }
+  }
 
   return {
     playerCount: resolvePlayerCount(extractPlayerCountFromText(cleanedTranscript), currentHand.playerCount, session.playerCount),
     playedDate: session.date || '',
-    stakeLevel: levelMatch ? levelMatch[1].replace(/\s+/g, '') : (session.stakeLevel || ''),
+    stakeLevel: fallbackStakeLevel,
     heroPosition: posMatch ? posMatch[1].toUpperCase() : (currentHand.heroPosition || ''),
     heroCardsInput: toHeroCardsInput(cleanedTranscript) || currentHand.heroCardsInput || '',
     effectiveStack: currentHand.effectiveStack || 0,
@@ -951,18 +974,37 @@ function buildFallbackExtract(cleanedTranscript, context) {
       turn: { actionLine: '', pot: '' },
       river: { actionLine: '', pot: '' }
     },
-    streetSummary: cleanedTranscript.slice(0, 120),
+    hasStraddle,
+    straddleAmount,
+    streetSummary: '',
     showdown: '',
-    mindJourney: cleanedTranscript,
+    mindJourney: '',
     tags: []
   }
 }
 
+function looksLikePromptLeakage(value) {
+  return /Task:\s*extract_hand_fields|You are the user-specific Poker Agent|Return JSON if possible|Important fields:|Current hand context:/i.test(String(value || ''))
+}
+
+function normalizePositionValue(value) {
+  const source = String(value || '').trim().toUpperCase().replace(/\s+/g, '')
+  if (source === 'BUTTON') return 'BTN'
+  if (source === 'HIJACK' || source === 'HI-JACK') return 'HJ'
+  if (source === 'CUTOFF') return 'CO'
+  if (source === 'BIGBLIND') return 'BB'
+  if (source === 'SMALLBLIND') return 'SB'
+  if (source === 'UTG1') return 'UTG+1'
+  return source
+}
+
 function normalizeStreetInputValue(value) {
   if (!value) return { actionLine: '', pot: '' }
-  if (typeof value === 'string') return { actionLine: value, pot: '' }
+  if (typeof value === 'string') return { actionLine: looksLikePromptLeakage(value) ? '' : value, pot: '' }
   return {
-    actionLine: String(value.actionLine || value.action_line || value.actions || value.line || ''),
+    actionLine: looksLikePromptLeakage(value.actionLine || value.action_line || value.actions || value.line || '')
+      ? ''
+      : String(value.actionLine || value.action_line || value.actions || value.line || ''),
     pot: String(value.pot || value.potSize || value.pot_size || '')
   }
 }
@@ -975,8 +1017,17 @@ function normalizeExtractedHand(record, context, cleanedTranscript) {
   const board = source.board || {}
   const streetInputs = source.streetInputs || source.street_inputs || {}
   const normalizedStakeLevel = normalizeStakeLevel(source.stakeLevel, currentHand.stakeLevel || session.stakeLevel || fallback.stakeLevel || '')
-  const hasStraddle = normalizeBoolean(currentHand.hasStraddle)
-  const straddleStakeLevel = normalizeStakeLevel(currentHand.stakeLevel, session.stakeLevel || fallback.stakeLevel || normalizedStakeLevel)
+  const currentHasStraddle = normalizeBoolean(currentHand.hasStraddle)
+  const fallbackHasStraddle = normalizeBoolean(fallback.hasStraddle)
+  const hasStraddle = currentHasStraddle || fallbackHasStraddle
+  const straddleStakeLevel = currentHasStraddle
+    ? normalizeStakeLevel(currentHand.stakeLevel, session.stakeLevel || normalizedStakeLevel)
+    : normalizeStakeLevel(fallback.stakeLevel, currentHand.stakeLevel || session.stakeLevel || normalizedStakeLevel)
+  const straddleAmount = currentHasStraddle
+    ? currentHand.straddleAmount
+    : fallbackHasStraddle
+      ? fallback.straddleAmount
+      : 0
 
   return {
     playerCount: resolvePlayerCount(toNumber(source.playerCount || source.tableSize || source.table_size, 0), fallback.playerCount, currentHand.playerCount, session.playerCount),
@@ -985,17 +1036,17 @@ function normalizeExtractedHand(record, context, cleanedTranscript) {
     hasStraddle,
     straddleAmount: getStraddleAmountFromHand({
       hasStraddle,
-      straddleAmount: currentHand.straddleAmount,
+      straddleAmount,
       stakeLevel: straddleStakeLevel
     }, session),
-    heroPosition: String(source.heroPosition || fallback.heroPosition || currentHand.heroPosition || '').toUpperCase(),
+    heroPosition: normalizePositionValue(source.heroPosition || fallback.heroPosition || currentHand.heroPosition || ''),
     heroCardsInput: toHeroCardsInput(source.heroCardsInput || fallback.heroCardsInput || currentHand.heroCardsInput || ''),
     effectiveStack: toNumber(source.effectiveStack, fallback.effectiveStack || 0),
     potSize: toNumber(source.potSize, fallback.potSize || 0),
     currentProfit: toNumber(source.currentProfit, fallback.currentProfit || 0),
     opponentType: String(source.opponentType || fallback.opponentType || currentHand.opponentType || ''),
     opponentName: String(source.opponentName || currentHand.opponentName || ''),
-    villainPosition: String(source.villainPosition || fallback.villainPosition || currentHand.villainPosition || '').toUpperCase(),
+    villainPosition: normalizePositionValue(source.villainPosition || fallback.villainPosition || currentHand.villainPosition || ''),
     board: {
       flop: toBoardCards(board.flop || fallback.board.flop || currentHand.board && currentHand.board.flop || '', 3),
       turn: toBoardCards(board.turn || fallback.board.turn || currentHand.board && currentHand.board.turn || '', 1),
@@ -1007,9 +1058,13 @@ function normalizeExtractedHand(record, context, cleanedTranscript) {
       turn: normalizeStreetInputValue(streetInputs.turn),
       river: normalizeStreetInputValue(streetInputs.river)
     },
-    streetSummary: String(source.streetSummary || fallback.streetSummary || currentHand.streetSummary || ''),
+    streetSummary: looksLikePromptLeakage(source.streetSummary || fallback.streetSummary || currentHand.streetSummary || '')
+      ? ''
+      : String(source.streetSummary || fallback.streetSummary || currentHand.streetSummary || ''),
     showdown: String(source.showdown || ''),
-    mindJourney: String(source.mindJourney || fallback.mindJourney || currentHand.notes || ''),
+    mindJourney: looksLikePromptLeakage(source.mindJourney || fallback.mindJourney || currentHand.notes || '')
+      ? ''
+      : String(source.mindJourney || fallback.mindJourney || currentHand.notes || ''),
     heroQuestion: String(source.heroQuestion || currentHand.heroQuestion || '').trim(),
     tags: reviewTags.normalizeReviewTags(source.tags),
     sessionTitle: session.title || ''
@@ -1028,7 +1083,7 @@ function buildPokerAgentQuestion(cleanedTranscript, context) {
   }
   return [
     'Task: hand_review',
-    'You are a professional Texas Holdem live cash Poker Agent and hand-review coach.',
+    'You are a professional Texas Holdem live cash EV脑 and hand-review coach.',
     'Review the completed structured hand. The JSON block below is authoritative. Do not re-parse it as ordinary prompt text and do not report fields as missing when they are present in structuredHand.',
     'Perspective is mandatory: Hero is the miniapp user and the player being coached. Always evaluate Hero decisions only. Do not rewrite the hand from villain/opponent perspective.',
     'If showdown or transcript says the opponent/villain had a made hand such as set, two pair, straight, flush, or full house, treat that as villain hand information, not Hero hand information, unless structuredHand.heroCardsInput explicitly makes Hero hold that hand.',
@@ -1132,7 +1187,7 @@ function buildPokerAgentExtractQuestion(cleanedTranscript, context, corrections)
     : ''
   return [
     'Task: extract_hand_fields',
-    'You are the user-specific Poker Agent for live Texas Holdem voice review.',
+    'You are the user-specific EV脑 for live Texas Holdem voice review.',
     'Use your poker rules, user memory, dialect habits, nickname mappings, and prior corrections first. If your built-in Agent knowledge is not enough, use your internal LLM fallback, but return the Agent-verified structured result.',
     'Do not provide strategy advice in this task. Only extract fields for miniapp backfill.',
     'Return JSON if possible. Important fields: playedDate, stakeLevel, hasStraddle, straddleAmount, heroPosition, heroCardsInput, effectiveStack, potSize, currentProfit, opponentType, opponentName, villainPosition, board.flop, board.turn, board.river, streetInputs, streetSummary, showdown, mindJourney, heroQuestion, tags, missingFields, followUpQuestions, naturalLanguageSummary.',
@@ -1324,17 +1379,24 @@ function mergeAgentExtractPayload(response, answerPayload) {
 
 function normalizePokerAgentExtract(agentResponse, cleanedTranscript, context) {
   const response = agentResponse || {}
+  const data = response.data || {}
   const review = response.data && response.data.review || {}
   const answerPayload = parseAgentAnswerPayload(response)
+  const hasAgentDataHand = !!(data.extractedHand || data.extracted_hand)
   const parsedHand = Object.assign(
     {},
     review.parsed_hand || response.parsed_hand || {},
+    data.extractedHand || data.extracted_hand || {},
     mergeAgentExtractPayload(response, answerPayload)
   )
   const missingFields = Array.isArray(response.missingFields)
     ? response.missingFields
     : Array.isArray(response.missing_fields)
       ? response.missing_fields
+      : Array.isArray(data.missingFields)
+        ? data.missingFields
+        : Array.isArray(data.missing_fields)
+          ? data.missing_fields
       : Array.isArray(answerPayload.missingFields)
         ? answerPayload.missingFields
         : Array.isArray(answerPayload.missing_fields)
@@ -1346,6 +1408,10 @@ function normalizePokerAgentExtract(agentResponse, cleanedTranscript, context) {
     ? response.followUpQuestions
     : Array.isArray(response.follow_up_questions)
       ? response.follow_up_questions
+      : Array.isArray(data.followUpQuestions)
+        ? data.followUpQuestions
+        : Array.isArray(data.follow_up_questions)
+          ? data.follow_up_questions
       : Array.isArray(answerPayload.followUpQuestions)
         ? answerPayload.followUpQuestions
         : Array.isArray(answerPayload.follow_up_questions)
@@ -1353,6 +1419,8 @@ function normalizePokerAgentExtract(agentResponse, cleanedTranscript, context) {
           : []
   const answer = String(
     response.naturalLanguageSummary ||
+    data.naturalLanguageSummary ||
+    data.natural_language_summary ||
     answerPayload.naturalLanguageSummary ||
     answerPayload.natural_language_summary ||
     response.field_summary ||
@@ -1360,8 +1428,12 @@ function normalizePokerAgentExtract(agentResponse, cleanedTranscript, context) {
     cleanedTranscript ||
     ''
   ).trim()
+  const extractedHand = normalizeExtractedHand(parsedHand, context, cleanedTranscript)
+  if (hasAgentDataHand) {
+    extractedHand.__trustedStructuredExtract = true
+  }
   return {
-    extractedHand: normalizeExtractedHand(parsedHand, context, cleanedTranscript),
+    extractedHand,
     missingFields,
     followUpQuestions,
     naturalLanguageSummary: answer,
@@ -1480,7 +1552,9 @@ async function callPokerAgentTask(mode, cleanedTranscript, context, event) {
       intent: chatIntent || undefined,
       chat_intent: chatIntent || undefined,
       subtask: chatIntent || undefined,
-      question,
+      question: mode === 'extract' ? cleanedTranscript : question,
+      instructions: mode === 'extract' ? question : undefined,
+      transcript: mode === 'extract' ? cleanedTranscript : undefined,
       context: {
         hand: mode === 'chat' ? (chatContext.hand || {}) : (context.hand || {}),
         session: mode === 'chat' ? (chatContext.session || {}) : (context.session || {}),
@@ -1498,6 +1572,7 @@ async function callPokerAgentTask(mode, cleanedTranscript, context, event) {
     {},
     config.timeout
   )
+  assertPokerAgentAdviceQuality(response, mode)
   return mode === 'chat'
     ? normalizePokerAgentChat(response, cleanedTranscript)
     : mode === 'session_summary'
@@ -1662,6 +1737,157 @@ async function callAiReview(cleanedTranscript, context, userTerms, mode, event) 
   }
 }
 
+function isPokerAgentUnavailable(error) {
+  if (error && error.code === 'POKER_AGENT_QUALITY_UNAVAILABLE') return true
+  const message = String(error && (error.message || error.errMsg) || '')
+  return /ai provider (?:http 5\d\d|timeout)|Service Temporarily Unavailable|ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED/i.test(message)
+}
+
+function assertPokerAgentAdviceQuality(response, mode) {
+  if (mode !== 'advice') return
+  const payload = response || {}
+  const toolCalls = Array.isArray(payload.tool_calls) ? payload.tool_calls : []
+  const coachCall = toolCalls.find(item => item && item.name === 'llm_coach_review')
+  const llmError = payload.data && payload.data.llm_error
+  if (!llmError && (!coachCall || coachCall.status === 'ok')) return
+
+  const status = String(coachCall && coachCall.status || llmError && llmError.status || 'unavailable')
+  const error = new Error(`EV脑专业复盘模型未完成（${status}），拒绝返回通用模板建议`)
+  error.code = 'POKER_AGENT_QUALITY_UNAVAILABLE'
+  error.raw = { llmError: llmError || null, coachStatus: status }
+  throw error
+}
+
+function buildExtractFallbackResult(cleanedTranscript, transcript, context, termApplied, error) {
+  const processed = aiNormalizer.postProcessReviewResult(
+    {
+      extractedHand: {},
+      missingFields: [],
+      followUpQuestions: [],
+      naturalLanguageSummary: cleanedTranscript
+    },
+    transcript,
+    context.hand
+  )
+  const extractedHand = normalizeExtractedHand(processed.extractedHand, context, transcript)
+  return {
+    code: 0,
+    provider: 'local-fallback',
+    mode: 'extract',
+    cleanedTranscript,
+    appliedTerms: termApplied.appliedTerms,
+    extractedHand,
+    missingFields: filterResolvedQuestions(processed.missingFields || [], extractedHand),
+    followUpQuestions: filterResolvedQuestions(processed.followUpQuestions || [], extractedHand),
+    naturalLanguageSummary: cleanedTranscript,
+    analysis: null,
+    raw: {
+      fallbackReason: error && error.message ? error.message : 'poker agent unavailable'
+    }
+  }
+}
+
+function streetLine(streetInputs, key) {
+  const street = streetInputs && streetInputs[key] || {}
+  return String(street.actionLine || '').trim()
+}
+
+function buildLocalAdviceAnalysis(hand, error) {
+  const source = hand || {}
+  const board = source.board || {}
+  const streetInputs = source.streetInputs || {}
+  const riverLine = streetLine(streetInputs, 'river')
+  const turnLine = streetLine(streetInputs, 'turn')
+  const summaryParts = [
+    source.heroPosition && source.heroCardsInput ? `Hero ${source.heroPosition} ${source.heroCardsInput}` : '',
+    source.villainPosition ? `对手 ${source.villainPosition}` : '',
+    source.stakeLevel ? `级别 ${source.stakeLevel}` : ''
+  ].filter(Boolean)
+  const answer = [
+    'EV脑主服务暂时不可用，已先基于当前结构化牌谱生成本地建议。',
+    summaryParts.length ? summaryParts.join('，') + '。' : '',
+    riverLine
+      ? '这手的关键点在河牌决策：面对对手大额下注时，不要只看自己范围优势，要结合对手前面被动跟注线和河牌下注尺度判断价值组合。'
+      : turnLine
+        ? '这手的关键点在转牌决策：下注前先确认目标，是保护、价值还是诈唬；如果后续河牌会很难处理，转牌尺寸需要提前规划。'
+        : '这手建议先补齐逐街行动线和底池，再做精确复盘。'
+  ].filter(Boolean).join('\n')
+
+  const streetBreakdown = [
+    streetLine(streetInputs, 'preflop') ? {
+      street: '翻前',
+      status: '待复盘',
+      points: [`行动线：${streetLine(streetInputs, 'preflop')}`]
+    } : null,
+    streetLine(streetInputs, 'flop') ? {
+      street: '翻牌',
+      status: '可继续分析',
+      points: [`行动线：${streetLine(streetInputs, 'flop')}`]
+    } : null,
+    turnLine ? {
+      street: '转牌',
+      status: '需要确认下注目标',
+      points: [`行动线：${turnLine}`]
+    } : null,
+    riverLine ? {
+      street: '河牌',
+      status: '核心决策点',
+      points: [
+        `行动线：${riverLine}`,
+        '面对大额下注，优先估算对手价值范围和诈唬数量，不要因为 A 属于自己范围就自动 bluff-catch。'
+      ]
+    } : null
+  ].filter(Boolean)
+
+  return {
+    provider: 'local-fallback',
+    intent: 'hand_review',
+    answer,
+    summary: answer,
+    spots: [],
+    leakTags: [],
+    trainingPlan: ['复盘同类 3Bet pot 河牌大额下注：列出对手价值组合、诈唬组合和自己的最低防守手牌。'],
+    confidence: null,
+    missingFields: [],
+    verdict: '主服务不可用，已生成本地兜底建议',
+    goodPoints: [],
+    issues: riverLine ? ['河牌面对大额下注需要更明确的组合数判断。'] : [],
+    clearMistakes: [],
+    optimizations: ['补齐对手类型、有效后手和逐街底池后，可重新生成完整 EV脑建议。'],
+    exploitAdjustments: source.opponentType ? [`对手类型：${source.opponentType}，复盘时应结合该类型调整抓诈频率。`] : [],
+    streetBreakdown,
+    keyTakeaway: riverLine
+      ? '河牌大额下注先数价值和诈唬组合，再决定是否抓诈。'
+      : '先补齐行动线和底池，再做精确街道复盘。',
+    humanRule: '',
+    raw: {
+      fallbackReason: error && error.message ? error.message : 'poker agent unavailable',
+      board
+    }
+  }
+}
+
+function buildAdviceFallbackResult(cleanedTranscript, transcript, context, termApplied, error) {
+  const hand = normalizeExtractedHand(context.hand || {}, context, transcript)
+  const reason = error && error.message ? error.message : 'poker agent unavailable'
+  return {
+    code: 'POKER_AGENT_UNAVAILABLE',
+    provider: 'poker-agent',
+    mode: 'advice',
+    message: `EV脑主服务不可用，AI建议未生成。${reason}`,
+    cleanedTranscript,
+    appliedTerms: termApplied.appliedTerms,
+    extractedHand: hand,
+    missingFields: [],
+    followUpQuestions: [],
+    naturalLanguageSummary: cleanedTranscript,
+    analysis: null,
+    raw: {
+      fallbackReason: reason
+    }
+  }
+}
+
 exports.main = async event => {
   const mode = normalizeMode(event && event.mode)
   const context = buildContext(event && event.hand, event && event.session, event && event.actions, event)
@@ -1744,6 +1970,14 @@ exports.main = async event => {
       }
     }
 
+    if (mode === 'extract' && isPokerAgentUnavailable(error)) {
+      return buildExtractFallbackResult(cleanedTranscript, transcript, context, termApplied, error)
+    }
+
+    if (mode === 'advice' && isPokerAgentUnavailable(error)) {
+      return buildAdviceFallbackResult(cleanedTranscript, transcript, context, termApplied, error)
+    }
+
     return {
       code: 'POKER_REVIEW_FAILED',
       message: error && error.message ? error.message : 'poker review failed'
@@ -1769,6 +2003,10 @@ module.exports.__test = {
   buildPokerAgentExtractQuestion,
   buildPokerAgentQuestion,
   buildPokerAgentChatQuestion,
-  buildPokerAgentSessionSummaryQuestion
+  buildPokerAgentSessionSummaryQuestion,
+  isPokerAgentUnavailable,
+  assertPokerAgentAdviceQuality,
+  buildExtractFallbackResult,
+  buildAdviceFallbackResult
 }
 

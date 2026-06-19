@@ -59,6 +59,45 @@ function stripMessageImageUrl(text) {
     .trim()
 }
 
+function getProviderErrorStatus(text) {
+  const source = String(text || '')
+  const match = source.match(/(?:ai provider http|HTTP|http)\s*(\d{3})/i) ||
+    source.match(/\b(408|429|500|502|503|504)\b/)
+  return match ? Number(match[1]) : 0
+}
+
+function getProviderErrorDisplayMessage(status) {
+  if (status === 429) return '大模型请求过于频繁或额度受限（HTTP 429），请稍后重试。'
+  if (status === 502) return '大模型网关暂时异常（HTTP 502），请稍后重试。'
+  if (status === 503) return '大模型服务暂时不可用（HTTP 503），请稍后重试。'
+  if (status === 504) return '大模型响应超时（HTTP 504），请稍后重试。'
+  if (status >= 500) return `大模型服务异常（HTTP ${status}），请稍后重试。`
+  if (status >= 400) return `大模型调用失败（HTTP ${status}），请检查模型配置或稍后重试。`
+  return ''
+}
+
+function stripDisplayMarkdown(text) {
+  return String(text || '')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    .replace(/__([^_\n]+)__/g, '$1')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/^\s*---+\s*$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function sanitizeAgentDisplayText(text) {
+  const raw = String(text || '').trim()
+  if (!raw) return ''
+  const status = getProviderErrorStatus(raw)
+  if (/<\s*html|<\s*body|<\s*head|nginx|Service Temporarily Unavailable/i.test(raw) || /ai provider http/i.test(raw)) {
+    return getProviderErrorDisplayMessage(status) || raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)
+  }
+  return stripDisplayMarkdown(raw)
+}
+
 function extractPayloadImageUrl(payload) {
   const source = payload || {}
   return normalizeImageUrl(
@@ -74,7 +113,7 @@ function extractPayloadImageUrl(payload) {
 
 function createMessage(role, text, extra = {}) {
   const id = `${role}-${Date.now()}-${Math.floor(Math.random() * 10000)}`
-  const cleanText = String(text || '').trim()
+  const cleanText = sanitizeAgentDisplayText(text)
   const imageUrl = normalizeImageUrl(extra.imageUrl) || extractMessageImageUrl(cleanText)
   const displayText = imageUrl ? stripMessageImageUrl(cleanText) : cleanText
   return {
@@ -90,7 +129,7 @@ function createInitialMessages() {
   return [
     createMessage(
       'assistant',
-      '我是 Poker Agent。你可以直接用自然语言问牌谱、查范围、复盘最近手牌，或者让我帮你做状态检查。'
+      '我是 EV脑。你可以直接用自然语言问牌谱、查范围、复盘最近手牌，或者让我帮你做状态检查。'
     )
   ]
 }
@@ -101,7 +140,7 @@ function normalizeStoredMessages(messages) {
     .slice(-MAX_STORED_MESSAGES)
     .map(item => {
       const role = item && item.role === 'user' ? 'user' : 'assistant'
-      const rawText = String(item && item.text || '').trim()
+      const rawText = sanitizeAgentDisplayText(item && item.text)
       const text = rawText.length > MAX_MESSAGE_TEXT_LENGTH
         ? rawText.slice(0, MAX_MESSAGE_TEXT_LENGTH) + '...'
         : rawText
@@ -147,7 +186,7 @@ function getLocalAgentReply(text) {
   const source = String(text || '').trim()
   if (!source) return ''
   if (/(你是(什么|谁)|什么模型|用.*模型|你用[得的]?什么模型|who are you|model)/i.test(source)) {
-    return '我是 Poker Agent，小程序里的扑克助手，主要帮你查范围、复盘手牌、总结训练问题和做状态检查。底层请求会交给后端 Poker Agent 服务处理。'
+    return '我是 EV脑，小程序里的扑克助手，主要帮你查范围、复盘手牌、总结训练问题和做状态检查。底层请求会交给后端 EV脑 服务处理。'
   }
   if (/(设置|设定|改成|改为|保存|记录|配置).{0,12}(止盈|止损)|(止盈|止损).{0,12}(设置|设定|改成|改为|保存|记录|配置)/.test(source)) {
     return '小程序目前还没有全局止盈止损线自动写入功能，所以我不能直接替你保存这个设置。你可以把本场买入、当前筹码、止盈线和止损线告诉我，我可以按这条线帮你判断继续、降级还是收工。'
@@ -186,15 +225,8 @@ function inferChatIntent(text, activeIntent, messages) {
 
 function sanitizeAgentErrorMessage(error) {
   const raw = String(error && (error.message || error.errMsg) || error || '').trim()
-  if (!raw) return 'Poker Agent 暂时连接失败，请稍后再试。'
-  if (raw.includes('503') || raw.includes('Service Temporarily Unavailable')) {
-    return 'Poker Agent 暂时不可用（503），请稍后再试。'
-  }
-  return raw
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 160) || 'Poker Agent 暂时连接失败，请稍后再试。'
+  if (!raw) return 'EV脑 暂时连接失败，请稍后再试。'
+  return sanitizeAgentDisplayText(raw) || 'EV脑 暂时连接失败，请稍后再试。'
 }
 
 function summarizeHand(hand) {
@@ -228,13 +260,13 @@ function summarizeHand(hand) {
 
 function extractAnswer(payload) {
   const source = payload || {}
-  return String(
+  return sanitizeAgentDisplayText(
     source.answer ||
     source.message ||
     source.naturalLanguageSummary ||
     source.text ||
     ''
-  ).trim()
+  )
 }
 
 Component({
@@ -294,6 +326,23 @@ Component({
       const url = String(e.currentTarget.dataset.url || '').trim()
       if (!url || typeof wx === 'undefined' || !wx.previewImage) return
       wx.previewImage({ current: url, urls: [url] })
+    },
+
+    copyMessageText(e) {
+      const text = String(e.currentTarget.dataset.text || '').trim()
+      if (!text || typeof wx === 'undefined' || !wx.setClipboardData) return
+      wx.setClipboardData({
+        data: text,
+        success() {
+          if (wx.showToast) {
+            wx.showToast({
+              title: '已复制',
+              icon: 'success',
+              duration: 1200
+            })
+          }
+        }
+      })
     },
 
     scrollToBottom() {
@@ -401,7 +450,7 @@ Component({
       } catch (error) {
         const message = sanitizeAgentErrorMessage(error)
         this.setData({
-          messages: this.data.messages.concat(createMessage('assistant', `连接 Poker Agent 失败：${message}`, { intent: 'general_chat' })),
+          messages: this.data.messages.concat(createMessage('assistant', `连接 EV脑 失败：${message}`, { intent: 'general_chat' })),
           lastIntent: 'general_chat',
           busy: false
         }, () => {

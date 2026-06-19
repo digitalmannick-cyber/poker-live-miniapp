@@ -23,7 +23,7 @@ const SIGNALS = [
   { key: 'street_actions', label: '逐街行动线抽取', patterns: ['streetInputs', 'actionLine', 'preflop', 'flop', 'turn', 'river'] },
   { key: 'pot_math', label: '逐街 pot 计算/校验', patterns: ['normalizeStreetPotFlow', 'getStreetContribution', 'estimateStreetPot', 'uncalled', 'potSize'] },
   { key: 'board_cards', label: '公牌/手牌纠错与补花色', patterns: ['boardText', 'inferBoardText', 'assignGeneratedSuits', 'duplicate', 'river'] },
-  { key: 'agent_flow', label: 'Agent 两阶段流程', patterns: ["mode: 'extract'", "mode: 'advice'", 'Poker Agent', 'poker-agent', 'rawAgentResponse'] },
+  { key: 'agent_flow', label: 'Agent 两阶段流程', patterns: ["mode: 'extract'", "mode: 'advice'", 'EV脑', 'poker-agent', 'rawAgentResponse'] },
   { key: 'missing_fields', label: '缺失字段追问/中文化', patterns: ['missingFields', 'followUpQuestions', 'MISSING_FIELD_META', 'focusMissingField'] },
   { key: 'training', label: 'AI 建议/训练计划/漏洞标签', patterns: ['trainingPlan', 'leakTags', 'aiReview', 'advice'] }
 ]
@@ -31,7 +31,7 @@ const SIGNALS = [
 const CANDIDATES = [
   {
     priority: 'P0',
-    target: 'Poker Agent',
+    target: 'EV脑',
     title: '语音复盘口语词典和用户私有记忆',
     evidence: ['applyUserTerms', 'extractExplicitTermDefinitions', 'corrections', 'userId/playerId'],
     reason: '用户反复纠正的个人说法、方言、口头禅应按 user_id 存进 Agent 私有记忆，提高下一次字段抽取准确率。',
@@ -39,7 +39,7 @@ const CANDIDATES = [
   },
   {
     priority: 'P0',
-    target: 'Poker Agent',
+    target: 'EV脑',
     title: '德扑语音字段抽取 schema',
     evidence: ['extractedHand', 'streetInputs', 'board', 'missingFields'],
     reason: 'Agent 应稳定输出小程序可消费的统一 JSON，尤其是逐街行动线、对手位置、有效筹码、桌型、输赢。',
@@ -47,7 +47,7 @@ const CANDIDATES = [
   },
   {
     priority: 'P0',
-    target: 'Poker Agent',
+    target: 'EV脑',
     title: '常见语音误识别规则',
     evidence: ['勾八四彩虹 -> J84', '7到他大盲 -> 弃到他大盲', '1万2 -> 12000'],
     reason: '这些是语义识别层问题，Agent 应先理解，再交给小程序做确定性校验。',
@@ -55,7 +55,7 @@ const CANDIDATES = [
   },
   {
     priority: 'P1',
-    target: 'Poker Agent',
+    target: 'EV脑',
     title: '行动线语义抽取',
     evidence: ['open', '3B', '4B', 'call', 'fold', 'cbet', 'donk'],
     reason: 'Agent 更适合理解自然语言动作、角色和街道边界，并输出结构化 actions。',
@@ -79,7 +79,7 @@ const CANDIDATES = [
   },
   {
     priority: 'P2',
-    target: 'Poker Agent',
+    target: 'EV脑',
     title: '复盘建议模板和针对性训练',
     evidence: ['trainingPlan', 'leakTags', 'aiReview'],
     reason: '用户要求建议包括打得好/不好/可优化/明显错误/针对性训练，这属于 Agent 的核心能力。',
@@ -124,11 +124,11 @@ function renderReport() {
   const signals = collectSignals()
   const date = new Date().toISOString().slice(0, 10)
   const lines = [
-    '# Poker Agent 进化监控',
+    '# EV脑 进化监控',
     '',
     `生成日期：${date}`,
     '',
-    '这份报告用于从小程序代码、测试和设计文档里识别哪些内容适合反哺 Poker Agent。它不直接修改 Agent，只给出待确认清单。',
+    '这份报告用于从小程序代码、测试和设计文档里识别哪些内容适合反哺 EV脑。它不直接修改 Agent，只给出待确认清单。',
     '',
     '## 当前信号',
     ''
@@ -146,9 +146,9 @@ function renderReport() {
     lines.push('')
   })
 
-  lines.push('## 待你确认是否写入 Poker Agent')
+  lines.push('## 待你确认是否写入 EV脑')
   lines.push('')
-  CANDIDATES.filter(item => item.target === 'Poker Agent').forEach(item => {
+  CANDIDATES.filter(item => item.target === 'EV脑').forEach(item => {
     lines.push(`### ${item.priority} ${item.title}`)
     lines.push(`- 归属：${item.target}`)
     lines.push(`- 证据：${item.evidence.join('；')}`)
@@ -171,7 +171,7 @@ function renderReport() {
   lines.push('## 推荐监控规则')
   lines.push('')
   lines.push('- 每次新增语音解析测试、AI 回填规则、用户纠错入口时，运行 `node tools/poker-agent-evolution-monitor.js`。')
-  lines.push('- P0/P1 且归属 Poker Agent 的内容，先让你确认，再写入 Agent 的公共知识或 user memory 逻辑。')
+  lines.push('- P0/P1 且归属 EV脑 的内容，先让你确认，再写入 Agent 的公共知识或 user memory 逻辑。')
   lines.push('- 任何用户真实牌局、对手名字、个人习惯，只能按 `user_id` 写入私有记忆，不进入公共知识。')
   lines.push('- pot 数学、重复牌校验、页面交互保持小程序为最终准绳；Agent 可以复用算法，但不能替代小程序校验。')
   lines.push('')

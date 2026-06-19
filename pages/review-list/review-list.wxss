@@ -443,6 +443,7 @@
   min-width: 0;
 }
 
+
 .review-ai-badge {
   flex: 0 0 auto;
   min-height: 38rpx;
