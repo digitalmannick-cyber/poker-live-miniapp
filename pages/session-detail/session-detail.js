@@ -1,6 +1,7 @@
 const dataService = require('../../services/data-service')
 const display = require('../../utils/display')
 const cardUi = require('../../utils/card-ui')
+const sessionDuration = require('../../utils/session-duration')
 
 function padNumber(value) {
   return String(value).padStart(2, '0')
@@ -181,7 +182,9 @@ Page({
     selectorOptions: [],
     loading: false,
     profitPreviewDisplay: '0',
-    profitPreviewTone: 'positive'
+    profitPreviewTone: 'positive',
+    durationDisplay: '--:--',
+    durationLabel: 'SESSION TIME'
   },
   onLoad(options) {
     const mode = options.mode || 'detail'
@@ -192,12 +195,19 @@ Page({
   onShow() {
     this.refresh()
   },
+  onHide() {
+    this.stopDurationClock()
+  },
+  onUnload() {
+    this.stopDurationClock()
+  },
   async refresh() {
     const settings = dataService.getAppSettings()
     const chipUnit = settings.chipUnit
     const venueOptions = settings.venues.slice()
     const blindPresetOptions = settings.blindPresets.slice()
     if (this.data.mode === 'create') {
+      this.stopDurationClock()
       const form = buildForm(null, settings)
       this.setData({
         session: null,
@@ -240,6 +250,31 @@ Page({
       profitPreviewTone: getProfitTone(form.buyIn, form.cashOut),
       loading: false
     })
+    this.startDurationClock()
+  },
+  refreshDurationDisplay() {
+    const view = sessionDuration.buildDurationView(this.data.session)
+    this.setData({
+      durationDisplay: view.display,
+      durationLabel: view.label
+    })
+  },
+  startDurationClock() {
+    this.stopDurationClock()
+    this.refreshDurationDisplay()
+    if (!this.data.session || this.data.session.status !== 'active' || this.data.session.timerPausedAt) return
+    const delay = 60000 - (Date.now() % 60000) + 50
+    this.durationClockTimeout = setTimeout(() => {
+      this.refreshDurationDisplay()
+      this.durationClockInterval = setInterval(() => this.refreshDurationDisplay(), 60000)
+      this.durationClockTimeout = null
+    }, delay)
+  },
+  stopDurationClock() {
+    if (this.durationClockTimeout) clearTimeout(this.durationClockTimeout)
+    if (this.durationClockInterval) clearInterval(this.durationClockInterval)
+    this.durationClockTimeout = null
+    this.durationClockInterval = null
   },
   onInput(e) {
     const key = e.currentTarget.dataset.key

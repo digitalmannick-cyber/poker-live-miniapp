@@ -11,6 +11,13 @@
     </view>
 
     <view style="margin-top: 20rpx;">
+      <view wx:if="{{mode !== 'create' && session}}" class="session-duration-instrument">
+        <view class="session-duration-label">{{durationLabel}}</view>
+        <view class="session-duration-value">{{durationDisplay}}</view>
+        <view class="session-duration-rule"></view>
+        <view class="session-duration-caption">{{session.status === 'finished' ? 'SESSION 总时长' : (session.timerPausedAt ? '计时已暂停' : '已进行 · 动态计时')}}</view>
+      </view>
+
       <view class="session-time-stack">
         <view class="session-time-block">
           <view class="label">开始时间</view>

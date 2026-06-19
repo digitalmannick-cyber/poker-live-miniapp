@@ -1,5 +1,54 @@
 @import '../../app.wxss';
 
+.session-duration-instrument {
+  margin: 2rpx 0 26rpx;
+  padding: 26rpx 24rpx 22rpx;
+  border-radius: 22rpx;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 0, rgba(230, 0, 18, 0.13), transparent 58%),
+    linear-gradient(180deg, rgba(18, 21, 30, 0.92), rgba(10, 12, 18, 0.96));
+  border: 1rpx solid rgba(255,255,255,0.11);
+  box-shadow:
+    inset 0 1rpx 0 rgba(255,255,255,0.06),
+    0 16rpx 34rpx rgba(0,0,0,0.22);
+}
+
+.session-duration-label {
+  color: rgba(255,255,255,0.48);
+  font-size: 20rpx;
+  font-weight: 800;
+  letter-spacing: 5rpx;
+}
+
+.session-duration-value {
+  margin-top: 10rpx;
+  color: #ffffff;
+  font-size: 76rpx;
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: 8rpx;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 26rpx rgba(255, 30, 55, 0.18);
+}
+
+.session-duration-rule {
+  width: 72%;
+  height: 5rpx;
+  margin: 18rpx auto 0;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, rgba(230,0,18,0), #ff1835 20%, #ff4b5d 50%, #ff1835 80%, rgba(230,0,18,0));
+  box-shadow: 0 0 18rpx rgba(255, 24, 53, 0.42);
+}
+
+.session-duration-caption {
+  margin-top: 13rpx;
+  color: rgba(255,255,255,0.52);
+  font-size: 21rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+}
+
 .session-time-stack {
   margin-bottom: 6rpx;
 }
