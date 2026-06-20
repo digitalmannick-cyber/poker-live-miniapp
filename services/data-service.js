@@ -1,6 +1,7 @@
 const store = require('../utils/store')
 const cloudRepo = require('./cloud-repo')
 const cloudUtils = require('../utils/cloud')
+const sessionRules = require('../utils/session-rules')
 const { AUTO_CLOUD_BOOTSTRAP } = require('../config/cloud')
 
 let bootstrapPromise = null
@@ -398,7 +399,10 @@ async function getActionsByHandId(handId) {
 }
 
 async function createSession(payload) {
-  const result = await getLocalAdapter().createSession(payload)
+  const adapter = getLocalAdapter()
+  const existingSessions = await adapter.getSessions()
+  sessionRules.assertCanCreateSession(existingSessions)
+  const result = await adapter.createSession(payload)
   scheduleBusinessDataSync('sync create session failed')
   return result
 }

@@ -1,4 +1,5 @@
 const cloudUtils = require('../utils/cloud')
+const sessionRules = require('../utils/session-rules')
 const store = require('../utils/store')
 
 const COLLECTIONS = {
@@ -510,6 +511,8 @@ async function getActionsByHandId(handId) {
 async function createSession(payload) {
   const db = getDbOrThrow()
   const playerId = requireCurrentPlayerId()
+  const existingSessions = await getSessions()
+  sessionRules.assertCanCreateSession(existingSessions)
   const doc = withPlayerScope(buildSessionDoc(null, Object.assign({}, payload, { createdAt: now() })), playerId)
   const result = await db.collection(COLLECTIONS.sessions).add({ data: doc })
   return Object.assign({ _id: result._id }, doc)

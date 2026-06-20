@@ -2,6 +2,7 @@ const STORAGE_KEY = 'pokerLiveMiniappStore'
 const LEGACY_PROFILE_ID = '8X2K9M'
 const INITIAL_DATA_VERSION = 2
 const reviewTags = require('./review-tags')
+const sessionRules = require('./session-rules')
 let cachedStore = null
 
 function createProfileId() {
@@ -271,6 +272,7 @@ function getSessionById(id) {
 
 function createSession(payload) {
   const data = readStore()
+  sessionRules.assertCanCreateSession(data.sessions)
   const buyIn = Number(payload.buyIn) || 0
   const cashOut = Number(payload.cashOut) || 0
   const status = 'active'
