@@ -953,7 +953,7 @@ Page({
     })
     wx.showToast({ title: '手牌已保存', icon: 'success' })
     wx.setStorageSync(REVIEW_PENDING_FILTER_KEY, {
-      sessionId: this.data.sessionId,
+      sessionStatus: 'active',
       dateRange: 'all',
       resultFilter: 'all',
       sortBy: 'dateDesc'

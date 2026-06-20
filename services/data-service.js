@@ -2,6 +2,7 @@ const store = require('../utils/store')
 const cloudRepo = require('./cloud-repo')
 const cloudUtils = require('../utils/cloud')
 const sessionRules = require('../utils/session-rules')
+const reviewSessionStatus = require('../utils/review-session-status')
 const { AUTO_CLOUD_BOOTSTRAP } = require('../config/cloud')
 
 let bootstrapPromise = null
@@ -272,7 +273,13 @@ async function getReviewData(filters) {
   scheduleCloudBootstrap()
   const adapter = getLocalAdapter()
   const sessions = await adapter.getSessions()
-  const hands = await adapter.getReviewHands(filters || {})
+  const sourceFilters = Object.assign({}, filters || {})
+  delete sourceFilters.sessionStatus
+  delete sourceFilters.sessionId
+  let hands = await adapter.getReviewHands(sourceFilters)
+  if (filters && filters.sessionStatus) {
+    hands = reviewSessionStatus.filterHandsBySessionStatus(hands, sessions, filters.sessionStatus)
+  }
   const totalHands = hands.length
   const totalProfit = hands.reduce((sum, item) => sum + (Number(item.currentProfit) || 0), 0)
   return {
