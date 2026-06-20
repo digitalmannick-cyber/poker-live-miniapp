@@ -1,4 +1,5 @@
 const dataService = require('../../services/data-service')
+const sessionRules = require('../../utils/session-rules')
 const cardUi = require('../../utils/card-ui')
 const handDetailFields = require('../../utils/hand-detail-fields')
 const reviewTags = require('../../utils/review-tags')
@@ -965,6 +966,10 @@ Page({
     }, 450)
   },
   goCreateSession() {
+    if (this.data.session && this.data.session.status === 'active') {
+      wx.showToast({ title: sessionRules.ACTIVE_SESSION_MESSAGE, icon: 'none' })
+      return
+    }
     wx.navigateTo({ url: '/pages/session-detail/session-detail?mode=create' })
   },
   goSessionList() {

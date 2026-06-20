@@ -6,7 +6,7 @@
         <view class="card-title">全部 Session</view>
         <view class="muted small">先从一场一场的闭环做起</view>
       </view>
-      <button class="primary-btn small-btn" bindtap="goNewSession">新建</button>
+      <button class="primary-btn small-btn new-session-btn {{activeSession ? 'disabled' : ''}}" bindtap="goNewSession">新建</button>
     </view>
   </view>
 

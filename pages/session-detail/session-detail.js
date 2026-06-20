@@ -2,6 +2,7 @@ const dataService = require('../../services/data-service')
 const display = require('../../utils/display')
 const cardUi = require('../../utils/card-ui')
 const sessionDuration = require('../../utils/session-duration')
+const sessionRules = require('../../utils/session-rules')
 
 function padNumber(value) {
   return String(value).padStart(2, '0')
@@ -195,6 +196,24 @@ Page({
   onShow() {
     this.refresh()
   },
+  guardCreateMode() {
+    if (this.createGuardPromise) return this.createGuardPromise
+    this.createGuardPromise = dataService.getSessionListData().then(data => {
+      const activeSession = sessionRules.findActiveSession(data.sessions)
+      if (!activeSession) return true
+      wx.showToast({ title: sessionRules.ACTIVE_SESSION_MESSAGE, icon: 'none' })
+      setTimeout(() => {
+        wx.navigateBack({
+          delta: 1,
+          fail() {
+            wx.switchTab({ url: '/pages/session-list/session-list' })
+          }
+        })
+      }, 80)
+      return false
+    })
+    return this.createGuardPromise
+  },
   onHide() {
     this.stopDurationClock()
   },
@@ -207,6 +226,11 @@ Page({
     const venueOptions = settings.venues.slice()
     const blindPresetOptions = settings.blindPresets.slice()
     if (this.data.mode === 'create') {
+      const createAllowed = await this.guardCreateMode()
+      if (!createAllowed) {
+        this.setData({ loading: false })
+        return
+      }
       this.stopDurationClock()
       const form = buildForm(null, settings)
       this.setData({
@@ -374,9 +398,17 @@ Page({
     })
     dataService.updateSettings({ lastBlindPreset: payload.blindPreset })
     if (this.data.mode === 'create') {
-      const session = await dataService.createSession(payload)
-      wx.showToast({ title: '已创建牌局', icon: 'success' })
-      wx.redirectTo({ url: '/pages/session-detail/session-detail?id=' + session._id })
+      try {
+        const session = await dataService.createSession(payload)
+        wx.showToast({ title: '已创建牌局', icon: 'success' })
+        wx.redirectTo({ url: '/pages/session-detail/session-detail?id=' + session._id })
+      } catch (error) {
+        const duplicate = error && error.code === sessionRules.ACTIVE_SESSION_ERROR_CODE
+        wx.showToast({
+          title: duplicate ? sessionRules.ACTIVE_SESSION_MESSAGE : '创建失败，请稍后重试',
+          icon: 'none'
+        })
+      }
       return
     }
     await dataService.updateSession(this.data.sessionId, payload)

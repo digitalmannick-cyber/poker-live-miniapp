@@ -2,6 +2,7 @@ const dataService = require('../../services/data-service')
 const aiService = require('../../services/ai-service')
 const display = require('../../utils/display')
 const tabBar = require('../../utils/tab-bar')
+const sessionRules = require('../../utils/session-rules')
 
 const SWIPE_OPEN_DISTANCE = 72
 const SWIPE_CLOSE_DISTANCE = 48
@@ -244,6 +245,7 @@ function formatSessionSummaryView(result, session, hands, settings, localFallbac
 Page({
   data: {
     sessions: [],
+    activeSession: null,
     loading: false,
     agentChatReady: false,
     sessionSummaryVisible: false,
@@ -285,6 +287,7 @@ Page({
           return next
         })
       this.setData({ sessions, loading: false })
+      this.setData({ activeSession: sessionRules.findActiveSession(sessions) })
     } catch (error) {
       console.warn('load session list failed: ' + (error && (error.stack || error.message || error.errMsg) || error))
       this.setData({ sessions: [], loading: false })
@@ -301,6 +304,10 @@ Page({
   },
 
   goNewSession() {
+    if (this.data.activeSession) {
+      wx.showToast({ title: sessionRules.ACTIVE_SESSION_MESSAGE, icon: 'none' })
+      return
+    }
     wx.navigateTo({ url: '/pages/session-detail/session-detail?mode=create' })
   },
 
