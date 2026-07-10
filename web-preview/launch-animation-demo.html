@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>智牌屋 · 启动动画 Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --launch-duration: 1600ms;
+      --exit-duration: 240ms;
+      --red: #f0002f;
+      --cyan: #00d1ff;
+      --black: #050507;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 28px 18px;
+      overflow-x: hidden;
+      background:
+        radial-gradient(circle at 50% 10%, rgba(240, 0, 47, .12), transparent 34%),
+        #09090c;
+      color: #fff;
+      font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+
+    .demo-shell { width: min(100%, 430px); }
+
+    .demo-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      overflow: hidden;
+      isolation: isolate;
+      border: 1px solid rgba(255, 255, 255, .13);
+      border-radius: 34px;
+      background: var(--black);
+      box-shadow: 0 36px 100px rgba(0, 0, 0, .64);
+    }
+
+    .ready-screen {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      align-content: center;
+      gap: 14px;
+      padding: 38px;
+      background:
+        linear-gradient(145deg, rgba(230, 0, 18, .2) 0 21%, transparent 21%),
+        radial-gradient(circle at 82% 22%, rgba(0, 209, 255, .12), transparent 34%),
+        #09090d;
+    }
+
+    .ready-screen strong { font-size: clamp(28px, 7vw, 38px); }
+    .ready-screen span { color: rgba(255, 255, 255, .6); }
+
+    .ready-card {
+      height: 126px;
+      margin-top: 18px;
+      border: 1px solid rgba(255, 255, 255, .12);
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(230, 0, 18, .15), rgba(0, 209, 255, .04));
+    }
+
+    .launch {
+      position: absolute;
+      z-index: 3;
+      inset: 0;
+      overflow: hidden;
+      background: #030305;
+      transform: translateZ(0);
+    }
+
+    .hero,
+    .cape-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .hero { z-index: 1; }
+
+    .cape-layer {
+      z-index: 2;
+      clip-path: polygon(0 38%, 47% 42%, 54% 58%, 38% 83%, 0 84%);
+      transform-origin: 32% 58%;
+      opacity: .92;
+    }
+
+    .edge-glow {
+      position: absolute;
+      z-index: 3;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 36% 54%, transparent 30%, rgba(240, 0, 47, .07) 44%, transparent 60%),
+        linear-gradient(110deg, transparent 53%, rgba(240, 0, 47, .11) 58%, transparent 65%);
+      mix-blend-mode: screen;
+    }
+
+    .vignette {
+      position: absolute;
+      z-index: 4;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, .12), transparent 38%, rgba(0, 0, 0, .6)),
+        radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, .52) 100%);
+    }
+
+    .brand {
+      position: absolute;
+      z-index: 5;
+      left: 0;
+      right: 0;
+      bottom: 7.2%;
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      text-shadow: 0 4px 18px #000;
+    }
+
+    .brand-name {
+      position: relative;
+      padding: 5px 16px 7px;
+      font-size: clamp(28px, 8vw, 40px);
+      font-weight: 1000;
+      letter-spacing: .18em;
+      line-height: 1;
+      transform: skewX(-8deg);
+    }
+
+    .brand-name::before {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      left: -9px;
+      right: -1px;
+      bottom: 2px;
+      height: 10px;
+      background: var(--red);
+      transform: skewX(-22deg) rotate(-2deg);
+    }
+
+    .brand-line {
+      color: rgba(255, 255, 255, .68);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .36em;
+    }
+
+    .loading-dots { display: flex; gap: 7px; margin-top: 4px; }
+    .loading-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, .25); }
+    .loading-dots i:first-child { background: var(--red); }
+
+    .cut {
+      position: absolute;
+      z-index: 8;
+      width: 180%;
+      height: 36%;
+      left: -190%;
+      bottom: -8%;
+      background: var(--red);
+      transform: rotate(-11deg) skewX(-18deg);
+      box-shadow: 0 -10px 0 #f5f3ef;
+    }
+
+    .launch.is-playing { animation: launchExit var(--exit-duration) ease-in calc(var(--launch-duration) - var(--exit-duration)) forwards; }
+    .launch.is-playing .hero { animation: heroEnter var(--launch-duration) cubic-bezier(.2, .78, .25, 1) both; }
+    .launch.is-playing .cape-layer { animation: capeDrift 760ms ease-in-out 260ms 2 alternate; }
+    .launch.is-playing .edge-glow { animation: glowPulse 720ms ease-in-out 240ms 2 alternate; }
+    .launch.is-playing .brand { animation: brandEnter 520ms cubic-bezier(.18, .88, .24, 1) 270ms both; }
+    .launch.is-playing .cut { animation: cutAcross 300ms cubic-bezier(.66, 0, .28, 1) calc(var(--launch-duration) - 300ms) both; }
+
+    @keyframes heroEnter {
+      0% { opacity: 0; transform: scale(1.035); filter: brightness(.62); }
+      18% { opacity: 1; }
+      72%, 100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+    }
+
+    @keyframes capeDrift {
+      from { transform: translate3d(-2px, 0, 0) skewY(-.25deg); }
+      to { transform: translate3d(5px, -1px, 0) skewY(.6deg); }
+    }
+
+    @keyframes glowPulse { from { opacity: .45; } to { opacity: 1; } }
+
+    @keyframes brandEnter {
+      from { opacity: 0; transform: translate3d(-22px, 6px, 0) skewX(-4deg); }
+      to { opacity: 1; transform: translate3d(0, 0, 0); }
+    }
+
+    @keyframes cutAcross {
+      from { left: -190%; }
+      64% { left: -12%; }
+      to { left: 120%; }
+    }
+
+    @keyframes launchExit {
+      0%, 72% { opacity: 1; visibility: visible; }
+      100% { opacity: 0; visibility: hidden; }
+    }
+
+    .controls { display: flex; justify-content: center; margin-top: 22px; }
+
+    .replay {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 150px;
+      padding: 13px 22px;
+      border: 1px solid rgba(255, 255, 255, .2);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .075);
+      color: #fff;
+      font: 800 15px/1 system-ui, sans-serif;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    .replay:hover { border-color: var(--red); background: rgba(240, 0, 47, .12); }
+    .replay:active { transform: scale(.97); }
+    .replay:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+
+    @media (max-height: 760px) {
+      body { padding-block: 16px; }
+      .demo-shell { width: min(100%, 350px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .launch.is-playing { animation-duration: 180ms; animation-delay: 520ms; }
+      .launch.is-playing .hero { animation: reducedEnter 240ms ease both; }
+      .launch.is-playing .cape-layer,
+      .launch.is-playing .edge-glow,
+      .launch.is-playing .cut { animation: none; }
+      .launch.is-playing .brand { animation: brandEnter 240ms ease 120ms both; }
+      @keyframes reducedEnter { from { opacity: 0; } to { opacity: 1; } }
+    }
+  </style>
+</head>
+<body>
+  <main class="demo-shell">
+    <section class="demo-stage" aria-label="智牌屋启动动画演示">
+      <div class="ready-screen" aria-hidden="true">
+        <strong>智牌屋</strong>
+        <span>首屏内容已就绪</span>
+        <div class="ready-card"></div>
+      </div>
+
+      <div class="launch is-playing" id="launch" role="img" aria-label="手持五张扑克牌的红黑怪盗启动画面">
+        <img class="hero" src="../assets/branding/launch-phantom-five-cards-v1.jpg" alt="">
+        <img class="cape-layer" src="../assets/branding/launch-phantom-five-cards-v1.jpg" alt="">
+        <div class="edge-glow"></div>
+        <div class="vignette"></div>
+        <div class="brand">
+          <div class="brand-name">智牌屋</div>
+          <div class="brand-line">READ THE TABLE</div>
+          <div class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+        <div class="cut"></div>
+      </div>
+    </section>
+
+    <div class="controls">
+      <a class="replay" href="launch-animation-demo.html">重新播放</a>
+    </div>
+  </main>
+</body>
+</html>
