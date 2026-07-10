@@ -4,7 +4,7 @@
 
 **Goal:** 创建一个可独立打开、可重复播放的 HTML Demo，演示已确认的智牌屋启动动画主视觉与退场效果。
 
-**Architecture:** 使用单文件 `web-preview/launch-animation-demo.html` 承载 HTML 和 CSS，不引入框架或第三方动画库。复用项目内压缩主视觉，通过整幅人物上下悬浮、伪元素光效和状态类完成 2.8 秒启动序列。
+**Architecture:** 使用单文件 `web-preview/launch-animation-demo.html` 承载 HTML 和 CSS，不引入框架或第三方动画库。复用项目内压缩主视觉，通过整幅人物缓慢上下悬浮、伪元素光效和状态类完成 2.95 秒启动序列。
 
 **Tech Stack:** HTML5、CSS 动画、原生 JavaScript、Node.js 静态回归测试。
 
@@ -12,7 +12,7 @@
 
 - 品牌名称必须为“智牌屋”。
 - 主视觉必须使用 `assets/branding/launch-phantom-five-cards-v1.jpg`，手牌恰好五张。
-- 动画目标时长 2.8 秒，硬上限 3000 ms。
+- 动画目标时长 2.95 秒，硬上限 3000 ms。
 - 不实现缓存逻辑，不修改微信小程序运行代码。
 - 不引入视频、GIF 或第三方动画库。
 - 必须支持 `prefers-reduced-motion`。
@@ -41,7 +41,7 @@ assert.match(html, /launch-phantom-five-cards-v1\.jpg/)
 assert.match(html, /href="launch-animation-demo\.html"/)
 assert.doesNotMatch(html, /onclick=/)
 assert.match(html, /prefers-reduced-motion/)
-assert.match(html, /--launch-duration:\s*2800ms/)
+assert.match(html, /--launch-duration:\s*2950ms/)
 assert.match(html, /@keyframes heroFloat/)
 assert.doesNotMatch(html, /cape-layer/)
 ```
