@@ -7,7 +7,7 @@
   <style>
     :root {
       color-scheme: dark;
-      --launch-duration: 1600ms;
+      --launch-duration: 2800ms;
       --exit-duration: 240ms;
       --red: #f0002f;
       --cyan: #00d1ff;
@@ -78,8 +78,7 @@
       transform: translateZ(0);
     }
 
-    .hero,
-    .cape-layer {
+    .hero {
       position: absolute;
       inset: 0;
       width: 100%;
@@ -89,14 +88,7 @@
       pointer-events: none;
     }
 
-    .hero { z-index: 1; }
-
-    .cape-layer {
-      z-index: 2;
-      clip-path: polygon(0 38%, 47% 42%, 54% 58%, 38% 83%, 0 84%);
-      transform-origin: 32% 58%;
-      opacity: .92;
-    }
+    .hero { z-index: 1; transform-origin: 50% 54%; }
 
     .edge-glow {
       position: absolute;
@@ -177,21 +169,18 @@
     }
 
     .launch.is-playing { animation: launchExit var(--exit-duration) ease-in calc(var(--launch-duration) - var(--exit-duration)) forwards; }
-    .launch.is-playing .hero { animation: heroEnter var(--launch-duration) cubic-bezier(.2, .78, .25, 1) both; }
-    .launch.is-playing .cape-layer { animation: capeDrift 760ms ease-in-out 260ms 2 alternate; }
-    .launch.is-playing .edge-glow { animation: glowPulse 720ms ease-in-out 240ms 2 alternate; }
-    .launch.is-playing .brand { animation: brandEnter 520ms cubic-bezier(.18, .88, .24, 1) 270ms both; }
-    .launch.is-playing .cut { animation: cutAcross 300ms cubic-bezier(.66, 0, .28, 1) calc(var(--launch-duration) - 300ms) both; }
+    .launch.is-playing .hero { animation: heroFloat var(--launch-duration) ease-in-out both; }
+    .launch.is-playing .edge-glow { animation: glowPulse 900ms ease-in-out 240ms 3 alternate; }
+    .launch.is-playing .brand { animation: brandEnter 560ms cubic-bezier(.18, .88, .24, 1) 320ms both; }
+    .launch.is-playing .cut { animation: cutAcross 320ms cubic-bezier(.66, 0, .28, 1) calc(var(--launch-duration) - 320ms) both; }
 
-    @keyframes heroEnter {
-      0% { opacity: 0; transform: scale(1.035); filter: brightness(.62); }
-      18% { opacity: 1; }
-      72%, 100% { opacity: 1; transform: scale(1); filter: brightness(1); }
-    }
-
-    @keyframes capeDrift {
-      from { transform: translate3d(-2px, 0, 0) skewY(-.25deg); }
-      to { transform: translate3d(5px, -1px, 0) skewY(.6deg); }
+    @keyframes heroFloat {
+      0% { opacity: 0; transform: translate3d(0, 12px, 0) scale(1.035); filter: brightness(.62); }
+      12% { opacity: 1; filter: brightness(1); }
+      30% { transform: translate3d(0, -7px, 0) scale(1.012); }
+      52% { transform: translate3d(0, 5px, 0) scale(1.006); }
+      74% { transform: translate3d(0, -6px, 0) scale(1.009); }
+      100% { opacity: 1; transform: translate3d(0, 1px, 0) scale(1); filter: brightness(1); }
     }
 
     @keyframes glowPulse { from { opacity: .45; } to { opacity: 1; } }
@@ -243,7 +232,6 @@
     @media (prefers-reduced-motion: reduce) {
       .launch.is-playing { animation-duration: 180ms; animation-delay: 520ms; }
       .launch.is-playing .hero { animation: reducedEnter 240ms ease both; }
-      .launch.is-playing .cape-layer,
       .launch.is-playing .edge-glow,
       .launch.is-playing .cut { animation: none; }
       .launch.is-playing .brand { animation: brandEnter 240ms ease 120ms both; }
@@ -262,7 +250,6 @@
 
       <div class="launch is-playing" id="launch" role="img" aria-label="手持五张扑克牌的红黑怪盗启动画面">
         <img class="hero" src="../assets/branding/launch-phantom-five-cards-v1.jpg" alt="">
-        <img class="cape-layer" src="../assets/branding/launch-phantom-five-cards-v1.jpg" alt="">
         <div class="edge-glow"></div>
         <div class="vignette"></div>
         <div class="brand">
