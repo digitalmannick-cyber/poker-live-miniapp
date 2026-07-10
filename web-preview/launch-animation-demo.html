@@ -9,6 +9,7 @@
       color-scheme: dark;
       --launch-duration: 2800ms;
       --exit-duration: 240ms;
+      --hero-x: -4.5%;
       --red: #f0002f;
       --cyan: #00d1ff;
       --black: #050507;
@@ -175,12 +176,12 @@
     .launch.is-playing .cut { animation: cutAcross 320ms cubic-bezier(.66, 0, .28, 1) calc(var(--launch-duration) - 320ms) both; }
 
     @keyframes heroFloat {
-      0% { opacity: 0; transform: translate3d(0, 12px, 0) scale(1.035); filter: brightness(.62); }
+      0% { opacity: 0; transform: translate3d(var(--hero-x), 12px, 0) scale(1.035); filter: brightness(.62); }
       12% { opacity: 1; filter: brightness(1); }
-      30% { transform: translate3d(0, -7px, 0) scale(1.012); }
-      52% { transform: translate3d(0, 5px, 0) scale(1.006); }
-      74% { transform: translate3d(0, -6px, 0) scale(1.009); }
-      100% { opacity: 1; transform: translate3d(0, 1px, 0) scale(1); filter: brightness(1); }
+      30% { transform: translate3d(var(--hero-x), -7px, 0) scale(1.012); }
+      52% { transform: translate3d(var(--hero-x), 5px, 0) scale(1.006); }
+      74% { transform: translate3d(var(--hero-x), -6px, 0) scale(1.009); }
+      100% { opacity: 1; transform: translate3d(var(--hero-x), 1px, 0) scale(1); filter: brightness(1); }
     }
 
     @keyframes glowPulse { from { opacity: .45; } to { opacity: 1; } }
@@ -235,7 +236,10 @@
       .launch.is-playing .edge-glow,
       .launch.is-playing .cut { animation: none; }
       .launch.is-playing .brand { animation: brandEnter 240ms ease 120ms both; }
-      @keyframes reducedEnter { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes reducedEnter {
+        from { opacity: 0; transform: translate3d(var(--hero-x), 0, 0); }
+        to { opacity: 1; transform: translate3d(var(--hero-x), 0, 0); }
+      }
     }
   </style>
 </head>
