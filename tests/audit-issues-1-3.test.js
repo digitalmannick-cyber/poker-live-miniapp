@@ -20,7 +20,7 @@ test('issue #1 uses persistent bankrollInitial across all stats paths', () => {
   assert.doesNotMatch(store, /12000\s*\+\s*totalProfit/)
 
   assert.match(cloudRepo, /getBankrollInitial/)
-  assert.match(cloudRepo, /bankrollCurrent\s*=\s*getBankrollInitial\(\)\s*\+\s*totalProfit/)
+  assert.match(cloudRepo, /bankrollCurrent\s*=\s*(?:store\.)?getBankrollInitial\(\)\s*\+\s*totalProfit/)
   assert.doesNotMatch(cloudRepo, /12000\s*\+\s*totalProfit/)
 
   assert.match(pokerData, /bankrollInitial/)

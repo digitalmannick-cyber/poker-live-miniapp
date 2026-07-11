@@ -45,6 +45,7 @@ const DEFAULT_PROFILE = {
 
 const DEFAULT_SETTINGS = {
   chipUnit: 'HKD',
+  bankrollInitial: 0,
   venues: ['MGM', '威尼斯人', 'Home Game'],
   blindPresets: ['100/200', '200/400', '300/600', '500/1000'],
   lastBlindPreset: '200/400',
@@ -736,6 +737,11 @@ function updateProfile(patch) {
 
 function getSettings() {
   return readStore().settings
+}
+
+function getBankrollInitial() {
+  const value = Number(getSettings().bankrollInitial)
+  return Number.isFinite(value) ? value : 0
 }
 
 function getDefaultSettings() {
@@ -1492,7 +1498,7 @@ function getStatsSummary() {
   const historySessionMinutes = historySessions.reduce((sum, item) => sum + (Number(item.durationMinutes) || 0), 0)
   const historyFallbackMinutes = historyHands.length && historySessionMinutes === 0 ? 360 * 60 : 0
   const totalMinutes = data.sessions.reduce((sum, item) => sum + (Number(item.durationMinutes) || 0), 0) + historyFallbackMinutes
-  const bankrollCurrent = 12000 + totalProfit
+  const bankrollCurrent = getBankrollInitial() + totalProfit
   return {
     sessionCount,
     handCount: data.hands.length,
@@ -1528,6 +1534,7 @@ module.exports = {
   getProfile,
   updateProfile,
   getSettings,
+  getBankrollInitial,
   getDefaultSettings,
   updateSettings,
   replaceSettings,

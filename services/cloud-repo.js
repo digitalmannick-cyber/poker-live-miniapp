@@ -808,7 +808,7 @@ async function getStatsSummary() {
   const sessionCount = sessions.length
   const totalProfit = sessions.reduce((sum, item) => sum + (Number(item.totalProfit) || 0), 0)
   const totalMinutes = sessions.reduce((sum, item) => sum + (Number(item.durationMinutes) || 0), 0) + historyImportMinutes(sessions, hands)
-  const bankrollCurrent = 12000 + totalProfit
+  const bankrollCurrent = store.getBankrollInitial() + totalProfit
   return {
     sessionCount,
     handCount: hands.length,
