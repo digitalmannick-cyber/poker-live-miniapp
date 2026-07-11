@@ -1,6 +1,7 @@
 const dataService = require('../../services/data-service')
 const tabBar = require('../../utils/tab-bar')
 const onboardingGuide = require('../../utils/onboarding-guide')
+const statsAnalytics = require('../../utils/stats-analytics')
 
 const RANGE_OPTIONS = [
   { key: 'all', label: '全部' },
@@ -20,6 +21,42 @@ const CURVE_PLOT = {
   right: 18,
   top: 8,
   bottom: 16
+}
+
+const MAX_CURVE_POINTS = 200
+
+function downsampleLabels(labels, maxPoints) {
+  const source = Array.isArray(labels) ? labels : []
+  if (source.length <= maxPoints) return source
+  return Array.from({ length: maxPoints }, (_, index) => {
+    const start = Math.floor(index * source.length / maxPoints)
+    const end = Math.max(start + 1, Math.floor((index + 1) * source.length / maxPoints))
+    return source[Math.min(source.length - 1, end - 1)]
+  })
+}
+
+function runFrameBatches(canvas, items, drawItem, batchSize) {
+  const source = Array.isArray(items) ? items : []
+  const size = Math.max(1, Number(batchSize) || 1)
+  const schedule = canvas && typeof canvas.requestAnimationFrame === 'function'
+    ? canvas.requestAnimationFrame.bind(canvas)
+    : typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : callback => setTimeout(callback, 0)
+  return new Promise(resolve => {
+    let index = 0
+    function drawBatch() {
+      const end = Math.min(source.length, index + size)
+      while (index < end) {
+        drawItem(source[index], index)
+        index += 1
+      }
+      if (index < source.length) schedule(drawBatch)
+      else resolve()
+    }
+    if (source.length) schedule(drawBatch)
+    else resolve()
+  })
 }
 
 function number(value) {
@@ -83,7 +120,15 @@ function toPlotY(y) {
 
 function buildCurveViewModel(graph) {
   const source = graph || {}
-  const series = Array.isArray(source.series) ? source.series : []
+  const rawSeries = Array.isArray(source.series) ? source.series : []
+  const rawLabels = Array.isArray(source.labels) ? source.labels : ['0h']
+  const shouldDownsample = rawLabels.length > MAX_CURVE_POINTS
+  const labels = shouldDownsample ? downsampleLabels(rawLabels, MAX_CURVE_POINTS) : rawLabels
+  const series = shouldDownsample
+    ? rawSeries.map(line => Object.assign({}, line, {
+      values: statsAnalytics.downsample(line.values, MAX_CURVE_POINTS)
+    }))
+    : rawSeries
   const visibleCurveSeries = series.filter(line => line.showInChart !== false)
   const values = visibleCurveSeries.reduce((result, line) => result.concat(Array.isArray(line.values) ? line.values : []), [0])
   const rawMin = Math.min.apply(null, values)
@@ -91,7 +136,6 @@ function buildCurveViewModel(graph) {
   const span = Math.max(1, rawMax - rawMin)
   const minValue = rawMin - span * 0.12
   const maxValue = rawMax + span * 0.12
-  const labels = Array.isArray(source.labels) ? source.labels : ['0h']
   const pointCount = Math.max(1, labels.length - 1)
   const lines = series.map(line => {
     const lineValues = Array.isArray(line.values) ? line.values : []
@@ -356,7 +400,7 @@ Page({
         if (rightLine.key === 'total') return -1
         return 0
       })
-      drawLines.forEach(line => {
+      runFrameBatches(canvas, drawLines, line => {
         if (!line.points || !line.points.length) return
         ctx.strokeStyle = line.color
         ctx.lineWidth = line.key === 'total' ? 3 : 2
@@ -370,7 +414,7 @@ Page({
           else ctx.lineTo(x, y)
         })
         ctx.stroke()
-      })
+      }, 1)
     })
   },
   onCurveTouch(event) {
@@ -457,5 +501,6 @@ Page({
 module.exports = {
   buildMetricCards,
   buildPageModel,
-  buildCurveViewModel
+  buildCurveViewModel,
+  runFrameBatches
 }

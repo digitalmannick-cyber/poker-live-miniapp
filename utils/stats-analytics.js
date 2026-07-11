@@ -6,6 +6,18 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function downsample(data, maxPoints) {
+  const source = Array.isArray(data) ? data : []
+  const limit = Math.max(1, Number(maxPoints) || 200)
+  if (source.length <= limit) return source
+  return Array.from({ length: limit }, (_, index) => {
+    const start = Math.floor(index * source.length / limit)
+    const end = Math.max(start + 1, Math.floor((index + 1) * source.length / limit))
+    const segment = source.slice(start, end)
+    return segment.reduce((sum, value) => sum + number(value), 0) / segment.length
+  })
+}
+
 function hasFiniteNumber(value) {
   return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value))
 }
@@ -552,6 +564,7 @@ function buildStatsAnalytics(input) {
 }
 
 module.exports = {
+  downsample,
   buildStatsAnalytics,
   __test: { dateMs, filterRange, sessionProfit, formatMoney, isShowdownHand, showdownClassification, allInEvProfit, buildBankrollGraph }
 }
