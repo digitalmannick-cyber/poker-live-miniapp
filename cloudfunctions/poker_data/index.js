@@ -639,14 +639,19 @@ function historyImportMinutes(sessions, hands) {
   return existingMinutes > 0 ? 0 : 360 * 60
 }
 
-function buildStatsSummary(sessions, hands) {
+function buildStatsSummary(sessions, hands, settings) {
   const totalProfit = sessions.reduce((sum, item) => sum + getSessionTotalProfit(item), 0)
   const totalMinutes = sessions.reduce((sum, item) => sum + (Number(item.durationMinutes) || 0), 0) + historyImportMinutes(sessions, hands)
+  const bankrollValue = settings && settings.bankrollInitial
+  const parsedBankrollInitial = Number(bankrollValue)
+  const bankrollInitial = bankrollValue !== '' && bankrollValue != null && Number.isFinite(parsedBankrollInitial)
+    ? parsedBankrollInitial
+    : 12000
   return {
     sessionCount: sessions.length,
     handCount: hands.length,
     totalProfit,
-    bankrollCurrent: 12000 + totalProfit,
+    bankrollCurrent: bankrollInitial + totalProfit,
     totalHours: (totalMinutes / 60).toFixed(1),
     hourlyRate: totalMinutes ? (totalProfit / (totalMinutes / 60)).toFixed(1) : '0.0'
   }
@@ -995,7 +1000,7 @@ async function syncStats(event, ownerOpenId) {
   return {
     code: 0,
     data: {
-      stats: buildStatsSummary(sessions, hands),
+      stats: buildStatsSummary(sessions, hands, settings),
       sessions: sessions.map(compactStatsSession),
       hands: hands.map(compactStatsHand),
       settings,

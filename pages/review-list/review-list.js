@@ -380,17 +380,6 @@ function normalizeDraftFilterPatch(patch) {
 
 function formatActionLine(summary) {
   return actionLine.formatStreetSummary(summary)
-  const source = String(summary || '').trim()
-  if (!source) return '\u6682\u65e0\u884c\u52a8\u7ebf'
-  return source
-    .replace(/preflop/gi, '翻前')
-    .replace(/flop/gi, '翻牌')
-    .replace(/turn/gi, '转牌')
-    .replace(/river/gi, '河牌')
-    .replace(/\s*[\uff1b;]\s*/g, '  /  ')
-    .replace(/\s*,\s*/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
 }
 
 function buildBoardVisual(board) {
