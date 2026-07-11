@@ -1,10 +1,13 @@
 const aiService = require('../../services/ai-service')
 const dataService = require('../../services/data-service')
+const aiReminders = require('../../utils/ai-reminders')
+const reminderCards = require('../../utils/agent-reminder-cards')
 
 const CHAT_STORAGE_KEY = 'poker-agent-chat-history-v1'
 const MAX_STORED_MESSAGES = 80
 const MAX_RENDERED_MESSAGES = 30
 const MAX_MESSAGE_TEXT_LENGTH = 1800
+const MAX_CHAT_HISTORY_MESSAGES = 8
 const IMAGE_URL_PATTERN = /((?:https?:\/\/|\/)[^\s"'<>]+?\.(?:svg|png|jpe?g|webp)(?:\?[^\s"'<>]*)?)/i
 
 const QUICK_ACTIONS = [
@@ -111,6 +114,61 @@ function extractPayloadImageUrl(payload) {
   )
 }
 
+function buildChatHistory(messages) {
+  if (!Array.isArray(messages)) return []
+  return messages
+    .filter(item => item && (item.role === 'user' || item.role === 'assistant') && (item.text || item.imageUrl))
+    .slice(-MAX_CHAT_HISTORY_MESSAGES)
+    .map(item => ({
+      role: item.role,
+      text: String(item.text || '').slice(0, 800),
+      intent: String(item.intent || '').trim(),
+      imageUrl: normalizeImageUrl(item.imageUrl)
+    }))
+}
+
+function parseRangeMatrixUrl(url) {
+  const source = String(url || '').trim()
+  if (!source || source.indexOf('/api/v1/ranges/matrix.png') < 0) return null
+  try {
+    const parsed = new URL(source, 'https://agent.local')
+    const params = parsed.searchParams
+    const stack = Number(params.get('stack') || '')
+    return {
+      table_size: params.get('table') || '',
+      blind_structure: params.get('structure') || '',
+      stack_depth_bb: Number.isFinite(stack) && stack > 0 ? stack : 0,
+      position: params.get('position') || '',
+      spot_type: params.get('spot') || ''
+    }
+  } catch (error) {
+    return null
+  }
+}
+
+function parseRangeMatrixText(text) {
+  const source = String(text || '')
+  const match = source.match(/\b(6max|8max|9max)\s+(\d{2,4})\s*BB\s+([A-Z]{2,3})\s+([A-Z0-9_]+)\b/i)
+  if (!match) return null
+  return {
+    table_size: match[1].toLowerCase(),
+    blind_structure: 'SB_BB',
+    stack_depth_bb: Number(match[2]) || 0,
+    position: match[3].toUpperCase(),
+    spot_type: match[4].toUpperCase()
+  }
+}
+
+function buildRangeFollowUpContext(messages) {
+  if (!Array.isArray(messages)) return {}
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const item = messages[index] || {}
+    const parsed = parseRangeMatrixUrl(item.imageUrl) || parseRangeMatrixText(item.text)
+    if (parsed && parsed.position && parsed.spot_type) return parsed
+  }
+  return {}
+}
+
 function createMessage(role, text, extra = {}) {
   const id = `${role}-${Date.now()}-${Math.floor(Math.random() * 10000)}`
   const cleanText = sanitizeAgentDisplayText(text)
@@ -121,8 +179,18 @@ function createMessage(role, text, extra = {}) {
     role,
     text: displayText || (imageUrl ? '范围图如下：' : cleanText),
     imageUrl,
-    intent: String(extra.intent || '').trim()
+    imageError: false,
+    intent: String(extra.intent || '').trim(),
+    reminder: !!extra.reminder,
+    reminderType: String(extra.reminderType || '').trim(),
+    severity: String(extra.severity || '').trim(),
+    reminderCard: reminderCards.normalizeReminderCard(extra.reminderCard, extra.reminderType)
   }
+}
+
+function createReminderMessage(reminder) {
+  const payload = reminderCards.buildReminderChatPayload(reminder)
+  return createMessage('assistant', payload.text, payload)
 }
 
 function createInitialMessages() {
@@ -138,6 +206,7 @@ function normalizeStoredMessages(messages) {
   if (!Array.isArray(messages)) return []
   return messages
     .slice(-MAX_STORED_MESSAGES)
+    .filter(item => !(item && item.reminder))
     .map(item => {
       const role = item && item.role === 'user' ? 'user' : 'assistant'
       const rawText = sanitizeAgentDisplayText(item && item.text)
@@ -149,7 +218,12 @@ function normalizeStoredMessages(messages) {
         role,
         text,
         imageUrl: normalizeImageUrl(item && item.imageUrl) || extractMessageImageUrl(text),
-        intent: String(item && item.intent || '').trim()
+        imageError: false,
+        intent: String(item && item.intent || '').trim(),
+        reminder: !!(item && item.reminder),
+        reminderType: String(item && item.reminderType || '').trim(),
+        severity: String(item && item.severity || '').trim(),
+        reminderCard: reminderCards.normalizeReminderCard(item && item.reminderCard, item && item.reminderType)
       }
     })
     .filter(item => item.text || item.imageUrl)
@@ -182,6 +256,117 @@ function getCurrentMessages(localMessages) {
   return normalizedLocalMessages.length ? normalizedLocalMessages : createInitialMessages()
 }
 
+function shouldOpenAgentOnAiReminder() {
+  return true
+}
+
+function parseLooseNumberToken(value) {
+  const raw = String(value || '').trim().replace(/,/g, '')
+  if (!raw) return 0
+  const match = raw.match(/(\d+(?:\.\d+)?)(\s*万)?/)
+  if (!match) return 0
+  const number = Number(match[1])
+  if (!Number.isFinite(number) || number < 0) return 0
+  return Math.round(number * (match[2] ? 10000 : 1))
+}
+
+function pickNumberNearKeyword(text, keywordPattern) {
+  const source = String(text || '')
+  const numberPattern = '(\\d+(?:\\.\\d+)?\\s*万?)'
+  const after = source.match(new RegExp('(?:' + keywordPattern + ')[^0-9]{0,12}' + numberPattern, 'i'))
+  if (after) return parseLooseNumberToken(after[1])
+  const before = source.match(new RegExp(numberPattern + '[^0-9]{0,12}(?:' + keywordPattern + ')', 'i'))
+  if (before) return parseLooseNumberToken(before[1])
+  return 0
+}
+
+function createTextReminderFromCommand(text) {
+  const source = String(text || '').trim()
+  if (!/(提醒我|添加|新增|设置|设定).{0,8}(纯文本|纪律|提醒)|^(提醒我)/.test(source)) return null
+  let content = source
+    .replace(/^(请|帮我)?\s*(添加|新增|设置|设定)?\s*(一个|一条)?\s*(纯文本|纪律)?\s*提醒[:：]?\s*/i, '')
+    .replace(/^提醒我\s*/i, '')
+    .trim()
+  if (!content || /(止盈|止损|移动止盈|session|Session|时长|预提醒|提前)/.test(content)) return null
+  if (content.length > 60) content = content.slice(0, 60)
+  return {
+    title: content.length > 12 ? content.slice(0, 12) : content,
+    content
+  }
+}
+
+function parseAiReminderSettingsCommand(text) {
+  const source = String(text || '').trim()
+  if (!source) return null
+  const command = {}
+  const profitTarget = pickNumberNearKeyword(source, '止盈|盈利目标|赢到')
+  const lossLimit = pickNumberNearKeyword(source, '止损|亏损上限|输到')
+  const trailingProfit = pickNumberNearKeyword(source, '移动止盈|盈利回撤|止盈回撤')
+  const postLossExtraRisk = pickNumberNearKeyword(source, '止损后|追加风险|再亏')
+  const sessionMaxHours = pickNumberNearKeyword(source, 'Session时长|session时长|时长上限|最长时长|不超过')
+  const sessionPreReminder = pickNumberNearKeyword(source, '提前|预提醒')
+  const textReminder = createTextReminderFromCommand(source)
+
+  if (profitTarget > 0) command.profitTarget = profitTarget
+  if (lossLimit > 0) command.lossLimit = lossLimit
+  if (trailingProfit > 0) command.trailingProfit = trailingProfit
+  if (postLossExtraRisk > 0) command.postLossExtraRisk = postLossExtraRisk
+  if (sessionMaxHours > 0) command.sessionMaxHours = sessionMaxHours
+  if (sessionPreReminder >= 0 && /(提前|预提醒)/.test(source)) command.sessionPreReminder = sessionPreReminder
+  if (textReminder) command.textReminder = textReminder
+
+  return Object.keys(command).length ? command : null
+}
+
+function applyAiReminderSettingsCommand(currentSettings, command) {
+  const base = aiReminders.normalizeAiReminderSettings(currentSettings && currentSettings.aiReminders)
+  const next = JSON.parse(JSON.stringify(base))
+  const patch = command || {}
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'profitTarget')) {
+    next.rules.profitTarget.amount = patch.profitTarget
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'lossLimit')) {
+    next.rules.lossLimit.amount = patch.lossLimit
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'trailingProfit')) {
+    next.rules.trailingProfit.percent = patch.trailingProfit
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'postLossExtraRisk')) {
+    next.rules.postLossExtraRisk.percent = patch.postLossExtraRisk
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'sessionMaxHours')) {
+    next.rules.sessionMaxHours.hours = patch.sessionMaxHours
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'sessionPreReminder')) {
+    next.rules.sessionPreReminder.hoursBefore = patch.sessionPreReminder
+  }
+  if (patch.textReminder) {
+    next.textReminders = next.textReminders.concat({
+      id: 'text_agent_' + Date.now(),
+      title: patch.textReminder.title,
+      content: patch.textReminder.content,
+      enabled: true,
+      subscribeMessage: false
+    })
+  }
+
+  return aiReminders.normalizeAiReminderSettings(next)
+}
+
+function formatAiReminderSettingsReply(command) {
+  const parts = []
+  const patch = command || {}
+  if (Object.prototype.hasOwnProperty.call(patch, 'profitTarget')) parts.push('止盈 HK$' + patch.profitTarget)
+  if (Object.prototype.hasOwnProperty.call(patch, 'lossLimit')) parts.push('止损 HK$' + patch.lossLimit)
+  if (Object.prototype.hasOwnProperty.call(patch, 'trailingProfit')) parts.push('移动止盈 ' + patch.trailingProfit + '%')
+  if (Object.prototype.hasOwnProperty.call(patch, 'postLossExtraRisk')) parts.push('止损后追加风险 ' + patch.postLossExtraRisk + '%')
+  if (Object.prototype.hasOwnProperty.call(patch, 'sessionMaxHours')) parts.push('Session 时长 ' + patch.sessionMaxHours + ' 小时')
+  if (Object.prototype.hasOwnProperty.call(patch, 'sessionPreReminder')) parts.push('提前 ' + patch.sessionPreReminder + ' 小时预提醒')
+  if (patch.textReminder) parts.push('纯文本提醒「' + patch.textReminder.title + '」')
+  return '已保存 AI 自动提醒设置：' + parts.join('；') + '。默认会在 Session 进行中时间轴提醒；EV脑提醒需要在设置里额外开启，订阅消息仍按每条规则单独开启。'
+}
+
 function getLocalAgentReply(text) {
   const source = String(text || '').trim()
   if (!source) return ''
@@ -189,7 +374,7 @@ function getLocalAgentReply(text) {
     return '我是 EV脑，小程序里的扑克助手，主要帮你查范围、复盘手牌、总结训练问题和做状态检查。底层请求会交给后端 EV脑 服务处理。'
   }
   if (/(设置|设定|改成|改为|保存|记录|配置).{0,12}(止盈|止损)|(止盈|止损).{0,12}(设置|设定|改成|改为|保存|记录|配置)/.test(source)) {
-    return '小程序目前还没有全局止盈止损线自动写入功能，所以我不能直接替你保存这个设置。你可以把本场买入、当前筹码、止盈线和止损线告诉我，我可以按这条线帮你判断继续、降级还是收工。'
+    return '你可以这样说：设置止盈10万、止损10万、移动止盈20%、Session时长8小时、提前2小时提醒。'
   }
   return ''
 }
@@ -295,10 +480,23 @@ Component({
         displayVisible: true,
         visible: true,
         messages
-      }, () => this.scrollToBottom())
+      }, () => {
+        this.scrollToBottom()
+        this.consumePendingAiReminders({ forceVisible: true })
+      })
     },
 
     closeChat() {
+      if (reminderCards.hasBlockingReminder(this.data.messages)) {
+        if (typeof wx !== 'undefined' && wx.showToast) {
+          wx.showToast({
+            title: '请先点击我已知晓',
+            icon: 'none',
+            duration: 1400
+          })
+        }
+        return
+      }
       this.setData({ visible: false })
       if (this._closeTimer) clearTimeout(this._closeTimer)
       this._closeTimer = setTimeout(() => {
@@ -307,6 +505,20 @@ Component({
           this.setData({ displayVisible: false })
         }
       }, 220)
+    },
+
+    acknowledgeReminderCard(e) {
+      const id = String(e.currentTarget.dataset.id || '').trim()
+      if (!id) return
+      const messages = (this.data.messages || []).map(item => {
+        if (!item || item.id !== id || !item.reminderCard) return item
+        return Object.assign({}, item, {
+          reminderCard: Object.assign({}, item.reminderCard, { acknowledged: true })
+        })
+      })
+      this.setData({ messages }, () => {
+        persistMessages(this.data.messages)
+      })
     },
 
     onInput(e) {
@@ -326,6 +538,16 @@ Component({
       const url = String(e.currentTarget.dataset.url || '').trim()
       if (!url || typeof wx === 'undefined' || !wx.previewImage) return
       wx.previewImage({ current: url, urls: [url] })
+    },
+
+    onMessageImageError(e) {
+      const id = String(e.currentTarget.dataset.id || '').trim()
+      if (!id) return
+      this.setData({
+        messages: this.data.messages.map(item => item.id === id
+          ? Object.assign({}, item, { imageError: true })
+          : item)
+      })
     },
 
     copyMessageText(e) {
@@ -350,6 +572,37 @@ Component({
       const last = messages[messages.length - 1]
       if (!last) return
       this.setData({ scrollAnchor: last.id })
+    },
+
+    async consumePendingAiReminders(options) {
+      if (this._consumingAiReminders) return
+      this._consumingAiReminders = true
+      try {
+        const reminders = await dataService.getPendingAiReminders()
+        const pending = (Array.isArray(reminders) ? reminders : []).filter(reminder => reminder && reminder.channels && reminder.channels.evBrain)
+        if (!pending.length) return
+        const forceVisible = !!(options && options.forceVisible)
+        if (!forceVisible && !this.data.visible && !shouldOpenAgentOnAiReminder()) return
+        const reminderMessages = pending.map(reminder => createReminderMessage(reminder))
+        const messages = getCurrentMessages(this.data.messages).concat(reminderMessages).slice(-MAX_RENDERED_MESSAGES)
+        this.setData({
+          displayVisible: true,
+          visible: true,
+          messages
+        }, () => {
+          persistMessages(this.data.messages)
+          this.scrollToBottom()
+        })
+        pending.forEach(reminder => {
+          dataService.markAiReminderShown(reminder._id).catch(error => {
+            console.warn('mark ai reminder shown failed: ' + (error && (error.message || error.errMsg) || error))
+          })
+        })
+      } catch (error) {
+        console.warn('consume ai reminders failed: ' + (error && (error.message || error.errMsg) || error))
+      } finally {
+        this._consumingAiReminders = false
+      }
     },
 
     async buildChatContext() {
@@ -391,24 +644,58 @@ Component({
       }
     },
 
+    async applyAiReminderSettingsCommand(command) {
+      const currentSettings = dataService.getAppSettings ? dataService.getAppSettings() : {}
+      const nextAiReminders = applyAiReminderSettingsCommand(currentSettings, command)
+      await dataService.updateSettings({ aiReminders: nextAiReminders })
+      return formatAiReminderSettingsReply(command)
+    },
+
     async sendMessage() {
       const text = String(this.data.inputText || '').trim()
       if (!text || this.data.busy) return
 
+      const previousMessages = this.data.messages
       const userMessage = createMessage('user', text)
-      const nextMessages = this.data.messages.concat(userMessage)
-      const nextIntent = inferChatIntent(text, this.data.activeIntent, this.data.messages)
-      const localReply = getLocalAgentReply(text)
+      const nextMessages = previousMessages.concat(userMessage)
+      const nextIntent = inferChatIntent(text, this.data.activeIntent, previousMessages)
+      const aiReminderSettingsCommand = parseAiReminderSettingsCommand(text)
+      const localReply = aiReminderSettingsCommand ? '' : getLocalAgentReply(text)
       this.setData({
         messages: nextMessages,
         inputText: '',
         activeIntent: '',
-        lastIntent: nextIntent || this.data.lastIntent || '',
-        busy: !localReply
+        lastIntent: aiReminderSettingsCommand ? 'ai_reminder_settings' : (nextIntent || this.data.lastIntent || ''),
+        busy: !!aiReminderSettingsCommand || !localReply
       }, () => {
         persistMessages(this.data.messages)
         this.scrollToBottom()
       })
+
+      if (aiReminderSettingsCommand) {
+        try {
+          const reply = await this.applyAiReminderSettingsCommand(aiReminderSettingsCommand)
+          this.setData({
+            messages: this.data.messages.concat(createMessage('assistant', reply, { intent: 'ai_reminder_settings' })),
+            lastIntent: 'ai_reminder_settings',
+            busy: false
+          }, () => {
+            persistMessages(this.data.messages)
+            this.scrollToBottom()
+          })
+        } catch (error) {
+          const message = sanitizeAgentErrorMessage(error)
+          this.setData({
+            messages: this.data.messages.concat(createMessage('assistant', 'AI 自动提醒设置保存失败：' + message, { intent: 'ai_reminder_settings' })),
+            lastIntent: 'ai_reminder_settings',
+            busy: false
+          }, () => {
+            persistMessages(this.data.messages)
+            this.scrollToBottom()
+          })
+        }
+        return
+      }
 
       if (localReply) {
         this.setData({
@@ -423,7 +710,10 @@ Component({
       }
 
       try {
-        const context = await this.buildChatContext()
+        const context = Object.assign(await this.buildChatContext(), {
+          chatHistory: buildChatHistory(previousMessages),
+          rangeMatrix: buildRangeFollowUpContext(previousMessages)
+        })
         const result = await aiService.chatWithPokerAgent({
           mode: 'chat',
           intent: nextIntent,
@@ -464,6 +754,7 @@ Component({
   lifetimes: {
     attached() {
       this.setData({ messages: [] })
+      this.consumePendingAiReminders()
     },
 
     detached() {
@@ -471,6 +762,12 @@ Component({
         clearTimeout(this._closeTimer)
         this._closeTimer = null
       }
+    }
+  },
+
+  pageLifetimes: {
+    show() {
+      this.consumePendingAiReminders()
     }
   }
 })

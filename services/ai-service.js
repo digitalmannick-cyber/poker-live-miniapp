@@ -31,8 +31,13 @@ async function summarizeSession(payload) {
   }))
 }
 
+async function calculateAllInEv(hand, context) {
+  return voiceService.calculateAllInEv(hand, context)
+}
+
 module.exports = {
   TASKS,
+  calculateAllInEv,
   reviewHandVoice,
   requestHandCoaching,
   chatWithPokerAgent,

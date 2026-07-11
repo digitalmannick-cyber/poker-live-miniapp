@@ -24,6 +24,15 @@ App({
     try {
       store.initStore()
       appendLaunchTrace('app:onLaunch:store-ready', '')
+      try {
+        const dataService = require('./services/data-service')
+        dataService.bootstrapCloudSync(false, { waitForCloud: false }).catch(syncError => {
+          appendLaunchTrace('app:onLaunch:cloud-sync-failed', syncError && (syncError.message || syncError.errMsg) || String(syncError))
+        })
+        appendLaunchTrace('app:onLaunch:cloud-sync-started', '')
+      } catch (syncStartError) {
+        appendLaunchTrace('app:onLaunch:cloud-sync-start-failed', syncStartError && (syncStartError.message || syncStartError.errMsg) || String(syncStartError))
+      }
     } catch (error) {
       const message = error && (error.stack || error.message || error.errMsg) || String(error)
       appendLaunchTrace('app:onLaunch:store-failed', message)

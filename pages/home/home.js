@@ -3,6 +3,8 @@ const display = require('../../utils/display')
 const cardUi = require('../../utils/card-ui')
 const tabBar = require('../../utils/tab-bar')
 
+const OPEN_CREATE_SESSION_KEY = 'pokerLiveOpenCreateSession'
+
 Page({
   data: {
     stats: {},
@@ -44,7 +46,8 @@ Page({
     })
   },
   goNewSession() {
-    wx.navigateTo({ url: '/pages/session-detail/session-detail?mode=create' })
+    wx.setStorageSync(OPEN_CREATE_SESSION_KEY, true)
+    wx.switchTab({ url: '/pages/session-list/session-list' })
   },
   async goContinue() {
     const active = (await dataService.getDashboardData()).activeSession

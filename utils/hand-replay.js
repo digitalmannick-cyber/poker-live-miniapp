@@ -1,0 +1,248 @@
+const cardUi = require('./card-ui')
+
+const PLAYER_POSITIONS_8_MAX = ['UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB']
+const STREET_ORDER = ['preflop', 'flop', 'turn', 'river']
+const STREET_LABELS = {
+  preflop: 'PF',
+  flop: 'Flop',
+  turn: 'Turn',
+  river: 'River'
+}
+const ACTION_SEPARATORS = /\s*(?:->|\u2192|,|\uFF0C|;|\uFF1B)\s*/g
+const PROTECTED_NUMBER_COMMA = '\u0001'
+const AGGRESSIVE_ACTION_PATTERN = /(OPEN|RAISE|BET|ALLIN|AI|[2345]B|\bR\b|R(?=\d)|\bB\b|B(?=\d))/i
+const ACTION_LABELS = {
+  open: 'OPEN',
+  raise: 'RAISE',
+  bet: 'BET',
+  call: 'CALL',
+  check: 'CHECK',
+  fold: 'FOLD',
+  allin: 'ALL-IN',
+  action: 'ACTION'
+}
+
+function normalizePosition(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function parseStakeLevel(value) {
+  const text = String(value || '').trim()
+  const match = text.match(/(\d{1,6})\s*[\/\\]\s*(\d{1,6})/)
+  return {
+    smallBlind: match ? Number(match[1]) || 0 : 0,
+    bigBlind: match ? Number(match[2]) || 0 : 0
+  }
+}
+
+function formatStackText(value) {
+  const amount = Math.round(Number(value) || 0)
+  return amount > 0 ? String(amount) : ''
+}
+
+function buildPlayers(hand) {
+  const source = hand || {}
+  const heroPosition = normalizePosition(source.heroPosition) || 'BTN'
+  const villainPosition = normalizePosition(source.villainPosition)
+  const opponentName = String(source.opponentName || '').trim()
+  const effectiveStack = Number(source.effectiveStack) || 0
+  const blinds = parseStakeLevel(source.stakeLevel)
+  const defaultStack = blinds.bigBlind ? blinds.bigBlind * 100 : 0
+  return PLAYER_POSITIONS_8_MAX.map(function (position) {
+    const isHero = position === heroPosition
+    const isVillain = !!(villainPosition && position === villainPosition)
+    const stack = isVillain && effectiveStack ? effectiveStack : defaultStack
+    return {
+      id: position.toLowerCase().replace(/\W+/g, '-'),
+      position,
+      name: isHero ? 'Hero' : (isVillain && opponentName ? opponentName : position),
+      stackText: formatStackText(stack),
+      isHero,
+      isVillain,
+      isDealer: position === 'BTN',
+      seatClass: 'seat-' + position.toLowerCase().replace(/\+/, 'plus').replace(/\W+/g, '-')
+    }
+  })
+}
+
+function getBoardCardsForStreet(board, street) {
+  const current = board || {}
+  if (street === 'flop') return cardUi.parseCardsInput(current.flop, 3)
+  if (street === 'turn') {
+    return cardUi.parseCardsInput(String(current.flop || '') + String(current.turn || ''), 4)
+  }
+  if (street === 'river') {
+    return cardUi.parseCardsInput(String(current.flop || '') + String(current.turn || '') + String(current.river || ''), 5)
+  }
+  return []
+}
+
+function splitActionLine(value) {
+  return String(value || '')
+    .replace(/(\d),(\d)/g, '$1' + PROTECTED_NUMBER_COMMA + '$2')
+    .replace(/\s*\/\s*/g, ' -> ')
+    .split(ACTION_SEPARATORS)
+    .map(function (item) {
+      return item.replace(new RegExp(PROTECTED_NUMBER_COMMA, 'g'), ',').trim()
+    })
+    .filter(Boolean)
+}
+
+function resolveActorPosition(actionText, heroPosition) {
+  const text = String(actionText || '').toUpperCase()
+  if (/\bHERO\b/.test(text)) {
+    const heroMatch = text.match(/\bHERO\s+(UTG\+1|UTG|MP|HJ|CO|BTN|SB|BB)\b/)
+    return heroMatch ? heroMatch[1] : heroPosition
+  }
+  const match = text.match(/\b(UTG\+1|UTG|MP|HJ|CO|BTN|SB|BB)\b/)
+  return match ? match[1] : ''
+}
+
+function extractBetText(actionText) {
+  const text = String(actionText || '').trim()
+  if (!AGGRESSIVE_ACTION_PATTERN.test(text)) return ''
+  const amount = extractActionAmount(text)
+  return amount
+}
+
+function classifyAction(actionText) {
+  const text = String(actionText || '').toUpperCase()
+  if (/\b(ALL[\s-]?IN|AI)\b/.test(text)) return 'allin'
+  if (/\bOPEN\b/.test(text)) return 'open'
+  if (/\b(RAISE|RAISES|RAISED|R)\b|R(?=\d)|\b[2345]B(?=\d|\b)/.test(text)) return 'raise'
+  if (/\b(BET|BETS|BETTED|B)\b|B(?=\d)/.test(text)) return 'bet'
+  if (/\b(CALL|CALLS|CALLED|C)\b/.test(text)) return 'call'
+  if (/\b(CHECK|CHECKS|CHECKED|X)\b/.test(text)) return 'check'
+  if (/\b(FOLD|FOLDS|FOLDED|F)\b/.test(text)) return 'fold'
+  return 'action'
+}
+
+function extractActionAmount(actionText) {
+  const withoutPositions = String(actionText || '')
+    .replace(/\bUTG\+1\b/gi, '')
+    .replace(/\b(UTG|MP|HJ|CO|BTN|SB|BB|HERO)\b/gi, '')
+    .replace(/\b[2345]B(?=\d|\b)/gi, '')
+  const amounts = withoutPositions.match(/[0-9][0-9.,]*/g) || []
+  if (!amounts.length) return ''
+  return amounts[amounts.length - 1].replace(/,/g, '')
+}
+
+function buildActionDisplay(actionText, actorPosition) {
+  const actionType = classifyAction(actionText)
+  const actionLabel = ACTION_LABELS[actionType] || ACTION_LABELS.action
+  const actionAmount = extractActionAmount(actionText)
+  const actionChipText = actionAmount ? actionLabel + ' ' + actionAmount : actionLabel
+  return {
+    actionType,
+    actionLabel,
+    actionAmount,
+    actionChipText,
+    displayActionText: actorPosition ? actorPosition + ' ' + actionChipText : actionChipText
+  }
+}
+
+function buildActionStepsForStreet(config) {
+  const source = config || {}
+  const parts = splitActionLine(source.actionText)
+  if (!parts.length) return []
+  return parts.map(function (part, index) {
+    const actorPosition = resolveActorPosition(part, source.heroPosition)
+    const display = buildActionDisplay(part, actorPosition)
+    return {
+      key: source.street + '-' + index,
+      street: source.street,
+      streetLabel: STREET_LABELS[source.street] || source.street,
+      actionText: part,
+      fullActionText: source.actionText,
+      actorPosition,
+      actionType: display.actionType,
+      actionLabel: display.actionLabel,
+      actionAmount: display.actionAmount,
+      actionChipText: display.actionChipText,
+      displayActionText: display.displayActionText,
+      betText: extractBetText(part),
+      potText: source.potText,
+      boardCards: source.boardCards,
+      progressText: ''
+    }
+  })
+}
+
+function buildSteps(hand) {
+  const source = hand || {}
+  const streetInputs = source.streetInputs || {}
+  const board = source.board || {}
+  const heroPosition = normalizePosition(source.heroPosition) || 'BTN'
+  const steps = []
+
+  STREET_ORDER.forEach(function (street) {
+    const input = streetInputs[street] || {}
+    const actionText = String(input.actionLine || '').trim()
+    const boardCards = getBoardCardsForStreet(board, street)
+    const potText = String(input.pot || '').trim()
+    if (!actionText && !boardCards.length && !potText) return
+    const actionSteps = buildActionStepsForStreet({
+      street,
+      actionText,
+      potText: potText || (source.potSize ? String(source.potSize) : ''),
+      boardCards,
+      heroPosition
+    })
+    if (actionSteps.length) {
+      actionSteps.forEach(function (step) { steps.push(step) })
+      return
+    }
+    steps.push({
+      key: street,
+      street,
+      streetLabel: STREET_LABELS[street] || street,
+      actionText: boardCards.length ? STREET_LABELS[street] + ' Deal' : 'Action',
+      fullActionText: actionText,
+      actorPosition: '',
+      actionType: 'action',
+      actionLabel: ACTION_LABELS.action,
+      actionAmount: '',
+      actionChipText: '',
+      displayActionText: boardCards.length ? STREET_LABELS[street] + ' Deal' : 'Action',
+      betText: '',
+      potText: potText || (source.potSize ? String(source.potSize) : ''),
+      boardCards,
+      progressText: ''
+    })
+  })
+
+  return steps.map(function (step, index) {
+    return Object.assign({}, step, {
+      progressText: (index + 1) + ' / ' + steps.length
+    })
+  })
+}
+
+function canReplayHand(hand) {
+  const source = hand || {}
+  return !!(
+    source &&
+    source._id &&
+    cardUi.parseHeroCardsInput(source.heroCardsInput).length === 2 &&
+    buildSteps(source).length > 0
+  )
+}
+
+function buildReplayView(hand) {
+  const source = hand || {}
+  const steps = buildSteps(source)
+  return {
+    handId: source._id || '',
+    title: normalizePosition(source.heroPosition) || 'Hero',
+    heroCards: cardUi.parseHeroCardsInput(source.heroCardsInput),
+    players: buildPlayers(source),
+    steps,
+    stepCount: steps.length,
+    available: canReplayHand(source)
+  }
+}
+
+module.exports = {
+  buildReplayView,
+  canReplayHand
+}

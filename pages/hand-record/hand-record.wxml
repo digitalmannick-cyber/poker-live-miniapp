@@ -17,7 +17,7 @@
           <view class="muted quick-page-desc">先选两张手牌，再补输赢和关键字段；需要时再展开补充详情。</view>
         </view>
       </view>
-      <view class="quick-session-bar" bindtap="openSessionSelector">
+      <view class="quick-session-bar onboarding-target-record-session" bindtap="openSessionSelector">
         <view class="quick-session-main">
           <view class="quick-session-label">当前场次</view>
           <view class="quick-session-name">{{session.title}}</view>
@@ -30,7 +30,7 @@
       </view>
     </view>
 
-    <view class="card quick-flow-card">
+    <view class="card quick-flow-card onboarding-target-record">
       <view class="quick-flow-head">
         <view>
           <view class="section-kicker">Main Entry</view>
@@ -40,7 +40,7 @@
       </view>
 
       <view class="quick-card-layout">
-        <view class="quick-hand-card">
+        <view class="quick-hand-card onboarding-target-record-hand">
           <view class="quick-card-head">
             <view class="quick-card-title">手牌选择</view>
             <view class="badge-outline">{{heroCardsVisual.length >= 2 ? '已选 2 张' : '未选择'}}</view>
@@ -62,7 +62,7 @@
           <view class="quick-hand-caption">{{heroCardsVisual.length >= 2 ? '需要修改手牌时，直接点上面的区域重新选择。' : '先选两张 Hero 手牌，选满 2 张会自动收起。'}}</view>
         </view>
 
-        <view class="quick-profit-card">
+        <view class="quick-profit-card onboarding-target-record-profit">
           <view class="quick-card-head">
             <view class="quick-card-title">输赢录入</view>
             <view class="badge-outline">{{form.currentProfit !== '' ? '可保存' : '待补输赢'}}</view>
@@ -78,7 +78,7 @@
 
       <view class="quick-helper-row">
         <view class="quick-helper-text">{{heroCardsVisual.length >= 2 ? '手牌已经选好，补完输赢就可以直接保存。' : '先完成手牌选择，再补输赢即可快速记录。'}}</view>
-        <button class="secondary-btn quick-save-btn" bindtap="saveHand">记录手牌</button>
+        <button class="secondary-btn quick-save-btn onboarding-target-record-save" bindtap="saveHand" loading="{{savingHand}}" disabled="{{savingHand}}">{{savingHand ? '保存中' : '记录手牌'}}</button>
       </view>
     </view>
 
@@ -110,7 +110,7 @@
             <view class="unified-field-card">
               <view class="label">人数</view>
               <view class="unified-field-action">编辑</view>
-              <input class="input compact-input unified-field-value" type="number" value="{{form.playerCount}}" data-key="playerCount" bindinput="onInput" />
+              <input class="input compact-input unified-field-value" type="number" value="{{form.playerCount}}" data-key="playerCount" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
             </view>
             <view class="unified-field-card">
               <view class="label">是否 Straddle</view>
@@ -140,22 +140,32 @@
             <view class="unified-field-card">
               <view class="label">有效筹码</view>
               <view class="unified-field-action">编辑</view>
-              <input class="input compact-input unified-field-value" type="number" placeholder="" value="{{form.effectiveStack}}" data-key="effectiveStack" bindinput="onInput" />
+              <input class="input compact-input unified-field-value" type="number" placeholder="" value="{{form.effectiveStack}}" data-key="effectiveStack" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
             </view>
             <view class="unified-field-card">
               <view class="label">当前底池</view>
               <view class="unified-field-action">编辑</view>
-              <input class="input compact-input unified-field-value" type="number" placeholder="" value="{{form.potSize}}" data-key="potSize" bindinput="onInput" />
+              <input class="input compact-input unified-field-value" type="number" placeholder="" value="{{form.potSize}}" data-key="potSize" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
             </view>
             <view class="unified-field-card">
               <view class="label">本手输赢</view>
               <view class="unified-field-action">编辑</view>
-              <input class="input compact-input unified-field-value" type="number" value="{{form.currentProfit}}" data-key="currentProfit" bindinput="onInput" />
+              <input class="input compact-input unified-field-value" type="number" value="{{form.currentProfit}}" data-key="currentProfit" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
+            </view>
+            <view class="unified-field-card">
+              <view class="label">River 前 All-in</view>
+              <view class="unified-field-action">勾选</view>
+              <switch checked="{{form.isAllIn}}" color="#00d1ff" bindchange="toggleAllIn" />
+            </view>
+            <view wx:if="{{form.isAllIn}}" class="unified-field-card">
+              <view class="label">All-in EV</view>
+              <view class="unified-field-action">编辑</view>
+              <input class="input compact-input unified-field-value" type="digit" value="{{form.allInEv}}" data-key="allInEv" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
             </view>
             <view class="unified-field-card">
               <view class="label">对手昵称</view>
               <view class="unified-field-action">编辑</view>
-              <input class="input compact-input unified-field-value" value="{{form.opponentName}}" data-key="opponentName" bindinput="onInput" />
+              <input class="input compact-input unified-field-value" value="{{form.opponentName}}" data-key="opponentName" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
             </view>
             <view class="unified-field-card">
               <view class="label">对手手牌</view>
@@ -167,6 +177,7 @@
                     <text class="mini-card-suit">{{card.suitSymbol}}</text>
                   </view>
                 </view>
+                <text wx:elif="{{showdownText}}" class="rank-only-card-text">{{showdownText}}</text>
                 <text wx:else class="board-empty-text"></text>
               </view>
             </view>
@@ -192,15 +203,22 @@
               <view class="grid-2 compact-grid">
                 <view>
                   <view class="label">动作线</view>
-                  <input class="input compact-input" value="{{form.preflopActionLine}}" data-key="preflopActionLine" bindinput="onInput" />
+                  <input class="input compact-input" value="{{form.preflopActionLine}}" data-key="preflopActionLine" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
                 </view>
                 <view>
                   <view class="label">底池</view>
-                  <input class="input compact-input" type="number" value="{{form.preflopPot}}" data-key="preflopPot" bindinput="onInput" />
+                  <input class="input compact-input" type="number" value="{{form.preflopPot}}" data-key="preflopPot" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
                 </view>
               </view>
+              <view class="preflop-allin-row">
+                <view>
+                  <view class="preflop-allin-title">翻前双方已全下</view>
+                  <view class="preflop-allin-desc">开启后只补 Flop / Turn / River 公共牌，不再录入翻后行动。</view>
+                </view>
+                <switch checked="{{form.preflopAllIn}}" color="#00d1ff" bindchange="togglePreflopAllIn" />
+              </view>
             </view>
-            <view class="street-block">
+            <view class="street-block {{form.preflopAllIn ? 'board-only-street' : ''}}">
               <view class="street-title">翻牌</view>
               <view class="street-flow-grid">
                 <view>
@@ -220,17 +238,17 @@
                     <text wx:else class="board-empty-text">{{boardEditorVisual[0].emptyText}}</text>
                   </view>
                 </view>
-                <view>
+                <view wx:if="{{!form.preflopAllIn}}">
                   <view class="label">动作线</view>
-                  <input class="input compact-input" value="{{form.flopActionLine}}" data-key="flopActionLine" bindinput="onInput" />
+                  <input class="input compact-input" value="{{form.flopActionLine}}" data-key="flopActionLine" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
                 </view>
-                <view>
+                <view wx:if="{{!form.preflopAllIn}}">
                   <view class="label">底池</view>
-                  <input class="input compact-input" type="number" value="{{form.flopPot}}" data-key="flopPot" bindinput="onInput" />
+                  <input class="input compact-input" type="number" value="{{form.flopPot}}" data-key="flopPot" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
                 </view>
               </view>
             </view>
-            <view class="street-block">
+            <view class="street-block {{form.preflopAllIn ? 'board-only-street' : ''}}">
               <view class="street-title">转牌</view>
               <view class="street-flow-grid">
                 <view>
@@ -250,17 +268,17 @@
                     <text wx:else class="board-empty-text">{{boardEditorVisual[1].emptyText}}</text>
                   </view>
                 </view>
-                <view>
+                <view wx:if="{{!form.preflopAllIn}}">
                   <view class="label">动作线</view>
-                  <input class="input compact-input" value="{{form.turnActionLine}}" data-key="turnActionLine" bindinput="onInput" />
+                  <input class="input compact-input" value="{{form.turnActionLine}}" data-key="turnActionLine" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
                 </view>
-                <view>
+                <view wx:if="{{!form.preflopAllIn}}">
                   <view class="label">底池</view>
-                  <input class="input compact-input" type="number" value="{{form.turnPot}}" data-key="turnPot" bindinput="onInput" />
+                  <input class="input compact-input" type="number" value="{{form.turnPot}}" data-key="turnPot" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
                 </view>
               </view>
             </view>
-            <view class="street-block">
+            <view class="street-block {{form.preflopAllIn ? 'board-only-street' : ''}}">
               <view class="street-title">河牌</view>
               <view class="street-flow-grid">
                 <view>
@@ -280,13 +298,13 @@
                     <text wx:else class="board-empty-text">{{boardEditorVisual[2].emptyText}}</text>
                   </view>
                 </view>
-                <view>
+                <view wx:if="{{!form.preflopAllIn}}">
                   <view class="label">动作线</view>
-                  <input class="input compact-input" value="{{form.riverActionLine}}" data-key="riverActionLine" bindinput="onInput" />
+                  <input class="input compact-input" value="{{form.riverActionLine}}" data-key="riverActionLine" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
                 </view>
-                <view>
+                <view wx:if="{{!form.preflopAllIn}}">
                   <view class="label">底池</view>
-                  <input class="input compact-input" type="number" value="{{form.riverPot}}" data-key="riverPot" bindinput="onInput" />
+                  <input class="input compact-input" type="number" value="{{form.riverPot}}" data-key="riverPot" bindinput="onInput" bindblur="commitInputValue" bindconfirm="commitInputValue" />
                 </view>
               </view>
             </view>
@@ -296,11 +314,11 @@
         <view class="card advanced-card edit-detail-card edit-detail-analysis">
           <view class="section-title">复盘分析</view>
           <view class="label">行动总结</view>
-          <textarea class="textarea analysis-textarea" placeholder="" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput"></textarea>
+          <textarea class="textarea analysis-textarea" placeholder="" value="{{form.streetSummary}}" data-key="streetSummary" bindinput="onInput" bindblur="commitInputValue"></textarea>
           <view class="label">心路历程</view>
-          <textarea class="textarea analysis-textarea" value="{{form.notes}}" data-key="notes" bindinput="onInput"></textarea>
-          <view class="label">Hero 疑问点</view>
-          <textarea class="textarea analysis-textarea hero-question-textarea" maxlength="160" value="{{form.heroQuestion}}" data-key="heroQuestion" bindinput="onInput"></textarea>
+          <textarea class="textarea analysis-textarea" value="{{form.notes}}" data-key="notes" bindinput="onInput" bindblur="commitInputValue"></textarea>
+          <view class="label">Hero 疑问点、待确认、需研究</view>
+          <textarea class="textarea analysis-textarea hero-question-textarea" maxlength="160" value="{{form.heroQuestion}}" data-key="heroQuestion" bindinput="onInput" bindblur="commitInputValue"></textarea>
           <view class="label">标签</view>
           <view class="edit-tag-list">
             <view
@@ -534,4 +552,5 @@
     </view>
   </view>
 </view>
-<agent-chat />
+<onboarding-guide visible="{{onboardingGuideVisible}}" step="{{onboardingGuideStep}}" bindnext="onOnboardingNext" bindskip="onOnboardingSkip" />
+<agent-chat wx:if="{{agentChatReady}}" />

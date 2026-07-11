@@ -11,10 +11,6 @@
         "type": "prefix"
       },
       {
-        "value": "assets",
-        "type": "prefix"
-      },
-      {
         "value": "batch3",
         "type": "prefix"
       },
@@ -47,6 +43,38 @@
         "type": "prefix"
       },
       {
+        "value": ".web-preview",
+        "type": "folder"
+      },
+      {
+        "value": "assets/session-icons/_preview-current",
+        "type": "prefix"
+      },
+      {
+        "value": "assets/session-icons/p5-buyin-v248.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/session-icons/p5-comment-v248.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/session-icons/p5-full-v248.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/session-icons/p5-quick-v248.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/branding/generate-miniapp-avatar",
+        "type": "prefix"
+      },
+      {
+        "value": "assets/p5-reference-character.svg",
+        "type": "file"
+      },
+      {
         "value": "CLOUD_SETUP",
         "type": "prefix"
       },
@@ -56,6 +84,42 @@
       },
       {
         "value": ".codex",
+        "type": "folder"
+      },
+      {
+        "value": ".codex-tools",
+        "type": "folder"
+      },
+      {
+        "value": ".codex-downloaded-poker-review",
+        "type": "folder"
+      },
+      {
+        "value": ".codex-upload",
+        "type": "prefix"
+      },
+      {
+        "value": ".codex-auto-preview",
+        "type": "prefix"
+      },
+      {
+        "value": ".codex-upload-all-in-ev-20260623",
+        "type": "folder"
+      },
+      {
+        "value": ".pytest-tmp-agent",
+        "type": "folder"
+      },
+      {
+        "value": ".minium-python",
+        "type": "folder"
+      },
+      {
+        "value": ".worktrees",
+        "type": "folder"
+      },
+      {
+        "value": ".cloudbase",
         "type": "folder"
       },
       {
@@ -72,10 +136,6 @@
       },
       {
         "value": "_local-artifacts",
-        "type": "folder"
-      },
-      {
-        "value": "assets",
         "type": "folder"
       },
       {
@@ -100,6 +160,14 @@
       },
       {
         "value": "web-preview",
+        "type": "folder"
+      },
+      {
+        "value": ".web-preview",
+        "type": "folder"
+      },
+      {
+        "value": "minium",
         "type": "folder"
       },
       {
@@ -181,6 +249,26 @@
       {
         "value": "upload-manifest.json",
         "type": "file"
+      },
+      {
+        "value": ".codex-tools",
+        "type": "prefix"
+      },
+      {
+        "value": ".codex-remote-attachments",
+        "type": "prefix"
+      },
+      {
+        "value": ".superpowers",
+        "type": "prefix"
+      },
+      {
+        "value": ".agents",
+        "type": "prefix"
+      },
+      {
+        "value": ".git",
+        "type": "prefix"
       }
     ],
     "include": []
@@ -189,7 +277,7 @@
     "bundle": false,
     "es6": true,
     "postcss": true,
-    "minified": false,
+    "minified": true,
     "enhance": false,
     "showShadowRootInWxmlPanel": true,
     "urlCheck": false,
@@ -198,8 +286,8 @@
     "uploadWithSourceMap": false,
     "packNpmManually": false,
     "packNpmRelationList": [],
-    "minifyWXSS": false,
-    "minifyWXML": false,
+    "minifyWXSS": true,
+    "minifyWXML": true,
     "localPlugins": false,
     "disableUseStrict": false,
     "useCompilerPlugins": false,

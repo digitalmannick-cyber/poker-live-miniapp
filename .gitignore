@@ -18,6 +18,10 @@ _local-artifacts/
 .env.local
 .cloudbase/
 .codex/
+.codex-downloaded-poker-review/
+.codex-auto-preview*/
+.codex-upload*/
 .codex-remote-attachments/
 .pytest-tmp-agent/
+.minium-python/
 logs/

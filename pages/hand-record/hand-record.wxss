@@ -213,6 +213,17 @@
   overflow: hidden;
 }
 
+.rank-only-card-text {
+  min-width: 0;
+  color: #f7fbff;
+  font-size: 30rpx;
+  font-weight: 800;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .full-span {
   grid-column: span 2;
 }
@@ -370,11 +381,43 @@
   color: #ffffff;
 }
 
+.preflop-allin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 16rpx 18rpx;
+  border-radius: 20rpx;
+  background: rgba(0, 209, 255, 0.08);
+  border: 1rpx solid rgba(0, 209, 255, 0.22);
+}
+
+.preflop-allin-title {
+  font-size: 26rpx;
+  font-weight: 900;
+  color: #f7fbff;
+}
+
+.preflop-allin-desc {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  line-height: 1.45;
+  color: rgba(255,255,255,0.62);
+}
+
 .street-flow-grid {
   display: grid;
   grid-template-columns: minmax(168rpx, 1fr) minmax(220rpx, 1.4fr) minmax(124rpx, 0.8fr);
   gap: 14rpx;
   align-items: end;
+}
+
+.board-only-street .street-flow-grid {
+  grid-template-columns: 1fr;
+}
+
+.board-only-street .compact-board-trigger {
+  min-height: 104rpx;
 }
 
 .compact-board-trigger {

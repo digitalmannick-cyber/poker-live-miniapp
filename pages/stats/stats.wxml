@@ -1,6 +1,6 @@
 <view class="app-bg"></view>
 <view class="container stats-container">
-  <view class="stats-hero">
+  <view class="stats-hero onboarding-target-stats">
     <image class="stats-hero-art" src="/assets/p5-character.svg" mode="aspectFit"></image>
     <view class="stats-slash stats-slash-a"></view>
     <view class="stats-hero-head">
@@ -8,154 +8,133 @@
         <view class="stats-kicker">TAKE YOUR STATS</view>
         <view class="stats-title">统计</view>
       </view>
-      <view class="stats-status {{prototype.statusTone}}">{{prototype.statusText}}</view>
+      <view class="stats-status {{analytics.statusTone}}">{{analytics.statusText}}</view>
     </view>
+
     <view class="stats-range-segment">
+      <view wx:for="{{rangeOptions}}" wx:key="key" class="stats-range-item {{selectedRangeKey === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="onRangeTap">{{item.label}}</view>
+    </view>
+
+    <view wx:if="{{loading && !hasLoaded}}" class="stats-loading">正在整理战报...</view>
+    <view wx:elif="{{errorMessage}}" class="stats-empty">
+      <view class="stats-empty-title">统计暂时不可用</view>
+      <view class="stats-empty-copy">{{errorMessage}}</view>
+    </view>
+    <block wx:else>
+      <view class="stats-hero-main">
+        <view>
+          <view class="stats-hero-label">{{analytics.rangeLabel}} · 总盈利</view>
+          <view class="stats-hero-profit">{{analytics.hero.totalProfit}}</view>
+          <view class="stats-hero-sub">小时收益 {{analytics.hero.hourlyRate}} · 胜率 {{analytics.hero.winRate}}</view>
+        </view>
+        <view class="stats-bankroll">
+          <view class="stats-bankroll-label">BANKROLL</view>
+          <view class="stats-bankroll-value">{{analytics.hero.bankroll}}</view>
+        </view>
+      </view>
+      <view class="stats-hero-grid">
+        <view class="stats-hero-cell"><view class="stats-cell-value">{{analytics.hero.sessions}}</view><view class="stats-cell-label">完成场次</view></view>
+        <view class="stats-hero-cell"><view class="stats-cell-value">{{analytics.hero.hands}}</view><view class="stats-cell-label">记录手牌</view></view>
+        <view class="stats-hero-cell"><view class="stats-cell-value stats-cell-value-small">{{analytics.hero.hourlyRate}}</view><view class="stats-cell-label">小时收益</view></view>
+      </view>
+    </block>
+  </view>
+
+  <view wx:if="{{!loading && !errorMessage && !analytics.hasSamples}}" class="stats-section stats-empty stats-empty-report">
+    <view class="section-kicker">NO DATA</view>
+    <view class="section-title">暂无统计样本</view>
+    <view class="stats-empty-copy">完成一场牌局或记录手牌后，这里会自动生成经营表现、战术诊断与复盘优先级。</view>
+  </view>
+
+  <block wx:if="{{!(loading && !hasLoaded) && !errorMessage && analytics.hasSamples}}">
+    <view class="stats-section stats-curve-section">
+      <view class="stats-section-head stats-curve-head">
+        <view>
+          <view class="section-kicker">BANKROLL GRAPH</view>
+          <view class="section-title">资金曲线</view>
+        </view>
+        <view class="stats-curve-total">
+          <view>{{analytics.bankrollGraph.totalDisplay}}</view>
+          <text>{{analytics.bankrollGraph.handCount}} 手牌</text>
+        </view>
+      </view>
       <view
-        wx:for="{{rangeOptions}}"
-        wx:key="key"
-        class="stats-range-item {{selectedRangeKey === item.key ? 'active' : ''}}"
-        data-key="{{item.key}}"
-        bindtap="onRangeTap"
+        class="stats-curve-chart {{curveReloading ? 'reloading' : ''}}"
+        bindtouchmove="onCurveTouch"
+        bindtap="onCurveTouch"
+        bindtouchend="onCurveTouchEnd"
       >
-        {{item.label}}
+        <view class="stats-curve-axis-layer">
+          <view wx:for="{{analytics.bankrollGraph.yTicks}}" wx:key="label" class="stats-curve-axis-tick y" style="top: {{item.top}}%;">{{item.label}}</view>
+          <view wx:for="{{analytics.bankrollGraph.xTicks}}" wx:key="label" class="stats-curve-axis-tick x" style="left: {{item.left}}%;">{{item.label}}</view>
+        </view>
+        <canvas type="2d" id="bankrollCurve" canvas-id="bankrollCurve" class="stats-curve-canvas"></canvas>
+        <view wx:if="{{curveFocus.visible}}" class="stats-curve-focus-layer">
+          <view class="stats-curve-focus-guide" style="left: {{curveFocus.x}}%;"></view>
+          <view class="stats-curve-focus-guide horizontal" style="top: {{curveFocus.totalY}}%;"></view>
+          <view wx:for="{{curveFocus.markers}}" wx:key="key" class="stats-curve-focus-marker {{item.total ? 'total' : ''}}" style="left: {{item.left}}%; top: {{item.top}}%; background: {{item.color}};"></view>
+          <view class="stats-curve-focus-value" style="left: {{curveFocus.valueTag.left}}%; top: {{curveFocus.valueTag.top}}%; color: {{curveFocus.valueTag.color}};">{{curveFocus.valueTag.value}}</view>
+        </view>
+        <view wx:if="{{curveTooltip.visible}}" class="stats-curve-tooltip" style="left: {{curveTooltip.left}}%; top: {{curveTooltip.top}}%;">
+          <view class="stats-curve-tooltip-label">{{curveTooltip.label}}</view>
+          <view wx:for="{{curveTooltip.rows}}" wx:key="key" class="stats-curve-tooltip-row">
+            <view class="stats-curve-dot" style="background: {{item.color}};"></view>
+            <view class="stats-curve-tooltip-name">{{item.label}}</view>
+            <view class="stats-curve-tooltip-value">{{item.value}}</view>
+          </view>
+        </view>
+        <view class="stats-curve-y-label">{{analytics.bankrollGraph.yAxisLabel}}</view>
+        <view class="stats-curve-x-label">{{analytics.bankrollGraph.xAxisLabel}}</view>
+      </view>
+      <view class="stats-curve-note">注：此图曲线按已记录手牌实际数据统计；不是session总盈利统计。</view>
+      <view class="stats-curve-note">注：allin ev只计算了双方allin并且对手亮牌的情况，未亮牌按照实际输赢计算</view>
+      <view class="stats-curve-legend">
+        <block wx:for="{{analytics.bankrollGraph.series}}" wx:key="key">
+          <view wx:if="{{item.showInLegend}}" class="stats-curve-legend-item">
+            <view class="stats-curve-swatch" style="background: {{item.color}};"></view>
+            <view>{{item.label}}</view>
+            <text>{{item.english}}</text>
+          </view>
+        </block>
       </view>
     </view>
-    <view class="stats-hero-main">
-      <view>
-        <view class="stats-hero-label">{{prototype.rangeLabel}} · 总盈利</view>
-        <view class="stats-hero-profit">{{prototype.hero.totalProfit}}</view>
-        <view class="stats-hero-sub">小时收益 {{prototype.hero.hourlyRate}} · 胜率 {{prototype.hero.winRate}}</view>
-      </view>
-      <view class="stats-bankroll">
-        <view class="stats-bankroll-label">BANKROLL</view>
-        <view class="stats-bankroll-value">{{prototype.hero.bankroll}}</view>
-      </view>
-    </view>
-    <view class="stats-hero-grid">
-      <view class="stats-hero-cell">
-        <view class="stats-cell-value">{{prototype.hero.sessions}}</view>
-        <view class="stats-cell-label">完成场次</view>
-      </view>
-      <view class="stats-hero-cell">
-        <view class="stats-cell-value">{{prototype.hero.hands}}</view>
-        <view class="stats-cell-label">记录手牌</view>
-      </view>
-      <view class="stats-hero-cell">
-        <view class="stats-cell-value">{{prototype.hero.hourlyRate}}</view>
-        <view class="stats-cell-label">小时收益</view>
-      </view>
-    </view>
-    <view class="stats-prototype-note">界面原型数据 · 待确认后接入真实统计</view>
-  </view>
 
-  <view class="stats-section">
-    <view class="stats-section-head">
-      <view>
-        <view class="section-kicker">PERFORMANCE</view>
-        <view class="section-title">经营表现</view>
-      </view>
+    <view class="stats-section">
+      <view class="stats-section-head"><view><view class="section-kicker">PERFORMANCE</view><view class="section-title">经营表现</view></view></view>
+      <view class="stats-metric-grid"><view wx:for="{{analytics.metrics}}" wx:key="label" class="stats-metric-card"><view class="stats-metric-label">{{item.label}}</view><view class="stats-metric-value {{item.tone}}">{{item.value}}</view></view></view>
+      <view class="stats-subsection-title">场馆排行</view>
+      <view wx:if="{{analytics.venueRows.length}}"><view wx:for="{{analytics.venueRows}}" wx:key="label" class="stats-rank-row"><view class="stats-rank-copy"><view class="stats-rank-label">{{item.label}}</view><view class="stats-rank-meta">{{item.meta}}</view></view><view class="stats-rank-value {{item.tone}}">{{item.value}}</view><view class="stats-bar"><view class="stats-bar-fill {{item.tone}}" style="width: {{item.barWidth}}%;"></view></view></view></view>
+      <view wx:else class="stats-inline-empty">完成场次后生成场馆排行</view>
+      <view class="stats-subsection-title">级别排行</view>
+      <view wx:if="{{analytics.stakeRows.length}}"><view wx:for="{{analytics.stakeRows}}" wx:key="label" class="stats-rank-row"><view class="stats-rank-copy"><view class="stats-rank-label">{{item.label}}</view><view class="stats-rank-meta">{{item.meta}}</view></view><view class="stats-rank-value {{item.tone}}">{{item.value}}</view><view class="stats-bar"><view class="stats-bar-fill {{item.tone}}" style="width: {{item.barWidth}}%;"></view></view></view></view>
+      <view wx:else class="stats-inline-empty">记录手牌级别后生成排行</view>
     </view>
-    <view class="stats-metric-grid">
-      <view wx:for="{{prototype.metrics}}" wx:key="label" class="stats-metric-card">
-        <view class="stats-metric-label">{{item.label}}</view>
-        <view class="stats-metric-value {{item.tone}}">{{item.value}}</view>
-      </view>
-    </view>
-    <view class="stats-subsection-title">场馆排行</view>
-    <view wx:for="{{prototype.venueRows}}" wx:key="label" class="stats-rank-row">
-      <view class="stats-rank-copy">
-        <view class="stats-rank-label">{{item.label}}</view>
-        <view class="stats-rank-meta">{{item.meta}}</view>
-      </view>
-      <view class="stats-rank-value {{item.tone}}">{{item.value}}</view>
-      <view class="stats-bar"><view class="stats-bar-fill {{item.tone}}" style="width: {{item.barWidth}}%;"></view></view>
-    </view>
-    <view class="stats-subsection-title">级别排行</view>
-    <view wx:for="{{prototype.stakeRows}}" wx:key="label" class="stats-rank-row">
-      <view class="stats-rank-copy">
-        <view class="stats-rank-label">{{item.label}}</view>
-        <view class="stats-rank-meta">{{item.meta}}</view>
-      </view>
-      <view class="stats-rank-value {{item.tone}}">{{item.value}}</view>
-      <view class="stats-bar"><view class="stats-bar-fill {{item.tone}}" style="width: {{item.barWidth}}%;"></view></view>
-    </view>
-  </view>
 
-  <view class="stats-section">
-    <view class="stats-section-head">
-      <view>
-        <view class="section-kicker">TACTICS</view>
-        <view class="section-title">战术诊断</view>
-      </view>
+    <view class="stats-section">
+      <view class="stats-section-head"><view><view class="section-kicker">TACTICS</view><view class="section-title">战术诊断</view></view></view>
+      <view class="stats-intel-grid"><view wx:for="{{analytics.intelCards}}" wx:key="label" class="stats-intel-card {{item.tone}}"><view class="stats-intel-label">{{item.label}}</view><view class="stats-intel-value">{{item.value}}</view><view class="stats-intel-sub">{{item.sub}}</view></view></view>
+      <view wx:for="{{analytics.diagnosisRows}}" wx:key="label" class="stats-diagnosis-row"><view class="stats-rank-copy"><view class="stats-rank-label">{{item.label}}</view><view class="stats-rank-meta">{{item.meta}}</view></view><view class="stats-rank-value {{item.tone}}">{{item.value}}</view><view class="stats-bar"><view class="stats-bar-fill {{item.tone}}" style="width: {{item.barWidth}}%;"></view></view></view>
     </view>
-    <view class="stats-intel-grid">
-      <view wx:for="{{prototype.intelCards}}" wx:key="label" class="stats-intel-card {{item.tone}}">
-        <view class="stats-intel-label">{{item.label}}</view>
-        <view class="stats-intel-value">{{item.value}}</view>
-        <view class="stats-intel-sub">{{item.sub}}</view>
-      </view>
-    </view>
-    <view wx:for="{{prototype.diagnosisRows}}" wx:key="label" class="stats-diagnosis-row">
-      <view class="stats-rank-copy">
-        <view class="stats-rank-label">{{item.label}}</view>
-        <view class="stats-rank-meta">{{item.meta}}</view>
-      </view>
-      <view class="stats-rank-value {{item.tone}}">{{item.value}}</view>
-      <view class="stats-bar"><view class="stats-bar-fill {{item.tone}}" style="width: {{item.barWidth}}%;"></view></view>
-    </view>
-  </view>
 
-  <view class="stats-section">
-    <view class="stats-section-head">
-      <view>
-        <view class="section-kicker">VOLATILITY</view>
-        <view class="section-title">波动与大底池</view>
+    <view class="stats-section">
+      <view class="stats-section-head"><view><view class="section-kicker">VOLATILITY</view><view class="section-title">波动与大底池</view></view></view>
+      <view class="stats-vol-grid">
+        <view class="stats-vol-card positive"><view class="stats-vol-label">最大赢手</view><view class="stats-vol-value">{{analytics.volatility.biggestWin}}</view></view>
+        <view class="stats-vol-card negative"><view class="stats-vol-label">最大输手</view><view class="stats-vol-value">{{analytics.volatility.biggestLoss}}</view></view>
+        <view class="stats-vol-card"><view class="stats-vol-label">平均底池</view><view class="stats-vol-value">{{analytics.volatility.averagePot}}</view></view>
+        <view class="stats-vol-card"><view class="stats-vol-label">大底池 / 盈亏因子</view><view class="stats-vol-value">{{analytics.volatility.bigPotCount}} / {{analytics.volatility.profitFactor}}</view></view>
       </view>
+      <view wx:for="{{analytics.volatility.distribution}}" wx:key="label" class="stats-distribution-row"><view class="stats-rank-copy"><view class="stats-rank-label">{{item.label}}</view></view><view class="stats-rank-value {{item.tone}}">{{item.value}}</view><view class="stats-bar"><view class="stats-bar-fill {{item.tone}}" style="width: {{item.barWidth}}%;"></view></view></view>
     </view>
-    <view class="stats-vol-grid">
-      <view class="stats-vol-card positive">
-        <view class="stats-vol-label">最大赢手</view>
-        <view class="stats-vol-value">{{prototype.volatility.biggestWin}}</view>
-      </view>
-      <view class="stats-vol-card negative">
-        <view class="stats-vol-label">最大输手</view>
-        <view class="stats-vol-value">{{prototype.volatility.biggestLoss}}</view>
-      </view>
-      <view class="stats-vol-card">
-        <view class="stats-vol-label">平均底池</view>
-        <view class="stats-vol-value">{{prototype.volatility.averagePot}}</view>
-      </view>
-      <view class="stats-vol-card">
-        <view class="stats-vol-label">大底池 / 盈亏因子</view>
-        <view class="stats-vol-value">{{prototype.volatility.bigPotCount}} / {{prototype.volatility.profitFactor}}</view>
-      </view>
-    </view>
-    <view wx:for="{{prototype.volatility.distribution}}" wx:key="label" class="stats-distribution-row">
-      <view class="stats-rank-copy">
-        <view class="stats-rank-label">{{item.label}}</view>
-      </view>
-      <view class="stats-rank-value {{item.tone}}">{{item.value}}</view>
-      <view class="stats-bar"><view class="stats-bar-fill {{item.tone}}" style="width: {{item.barWidth}}%;"></view></view>
-    </view>
-  </view>
 
-  <view class="stats-section stats-review-section">
-    <view class="stats-section-head">
-      <view>
-        <view class="section-kicker">NEXT ACTION</view>
-        <view class="section-title">复盘优先级</view>
-      </view>
+    <view class="stats-section stats-review-section">
+      <view class="stats-section-head"><view><view class="section-kicker">NEXT ACTION</view><view class="section-title">复盘优先级</view></view></view>
+      <view wx:if="{{analytics.reviewItems.length}}"><view wx:for="{{analytics.reviewItems}}" wx:key="title" class="stats-review-item {{item.tone}}"><view class="stats-review-icon"></view><view class="stats-review-copy"><view class="stats-review-title">{{item.title}}</view><view class="stats-review-meta">{{item.meta}}</view></view></view></view>
+      <view wx:else class="stats-inline-empty">当前没有可生成的复盘优先级</view>
     </view>
-    <view wx:for="{{prototype.reviewItems}}" wx:key="title" class="stats-review-item {{item.tone}}">
-      <view class="stats-review-icon"></view>
-      <view class="stats-review-copy">
-        <view class="stats-review-title">{{item.title}}</view>
-        <view class="stats-review-meta">{{item.meta}}</view>
-      </view>
-    </view>
-  </view>
+  </block>
 
   <view class="tab-bar-spacer"></view>
 </view>
-<agent-chat />
+<onboarding-guide visible="{{onboardingGuideVisible}}" step="{{onboardingGuideStep}}" bindnext="onOnboardingNext" bindskip="onOnboardingSkip" />
+<agent-chat wx:if="{{agentChatReady}}" />

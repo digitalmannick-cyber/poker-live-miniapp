@@ -1,15 +1,19 @@
-const dataService = require('../../services/data-service')
-const voiceParser = require('../../utils/voice-parser')
+﻿const dataService = require('../../services/data-service')
 const aiService = require('../../services/ai-service')
 const cardUi = require('../../utils/card-ui')
 const tabBar = require('../../utils/tab-bar')
 const display = require('../../utils/display')
-const aiNormalizer = require('../../utils/ai-normalizer')
 const reviewTags = require('../../utils/review-tags')
 const actionLine = require('../../utils/action-line')
 const handDetailFields = require('../../utils/hand-detail-fields')
+const handReplay = require('../../utils/hand-replay')
+const ledgerDerived = require('../../utils/ledger-derived-fields')
+const onboardingGuide = require('../../utils/onboarding-guide')
+const handExport = require('../../utils/hand-export')
 
 const REVIEW_PENDING_FILTER_KEY = 'pokerReviewPendingFilters'
+const REVIEW_PENDING_ENTRY_KEY = 'pokerReviewPendingEntry'
+const ONBOARDING_REVIEW_DEMO_HAND = 'QdQs'
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = [
   { key: 's', symbol: '\u2660', className: 'spade' },
@@ -49,13 +53,92 @@ const SORT_OPTIONS = [
   { key: 'potAsc', label: '\u5e95\u6c60\u5c0f\u5230\u5927' }
 ]
 const SORT_CONTROLS = [
-  { field: 'date', label: '时间', desc: 'dateDesc', asc: 'dateAsc' },
+  { field: 'updated', label: '时间', desc: 'updatedDesc', asc: 'updatedAsc' },
   { field: 'profit', label: '输赢', desc: 'profitDesc', asc: 'profitAsc' },
   { field: 'resultBb', label: 'BB\u6570', desc: 'resultBbDesc', asc: 'resultBbAsc' }
 ]
 const SWIPE_OPEN_DISTANCE = 72
 const SWIPE_CLOSE_DISTANCE = 24
+const REVIEW_INITIAL_RENDER_LIMIT = 20
+const REVIEW_RENDER_CHUNK_SIZE = 30
 const LOCKED_QUICK_ENTRY_FIELDS = ['heroCardsInput', 'currentProfit']
+const SESSION_STATUS_OPTIONS = [
+  { key: 'active', label: '\u8fdb\u884c\u4e2d' },
+  { key: 'finished', label: '\u5df2\u7ed3\u675f' }
+]
+const VOICE_PROGRESS_STEPS = [
+  '\u63d0\u53d6\u539f\u59cb\u53e3\u8ff0',
+  '\u5339\u914d\u724c\u5c40\u5b57\u6bb5',
+  '\u6821\u51c6\u884c\u52a8\u7ebf',
+  '\u51c6\u5907\u56de\u586b\u7ed3\u679c'
+]
+const VOICE_PROGRESS_START_PERCENT = 4
+const VOICE_PROGRESS_SOFT_CAP = 88
+const VOICE_PROGRESS_HARD_CAP = 96
+const VOICE_PROGRESS_SOFT_DURATION_MS = 18000
+const VOICE_PROGRESS_HARD_DURATION_MS = 45000
+
+function buildVoiceProgressSteps(percent) {
+  const current = Number(percent) || 0
+  return VOICE_PROGRESS_STEPS.map((label, index) => ({
+    label,
+    activeClass: current >= index * 25 ? 'active' : ''
+  }))
+}
+
+function getVoiceProgressPercent(startedAt, now) {
+  const started = Number(startedAt) || Number(now) || Date.now()
+  const current = Number(now) || Date.now()
+  const elapsed = Math.max(0, current - started)
+  if (elapsed <= VOICE_PROGRESS_SOFT_DURATION_MS) {
+    const range = VOICE_PROGRESS_SOFT_CAP - VOICE_PROGRESS_START_PERCENT
+    return Math.min(
+      VOICE_PROGRESS_SOFT_CAP,
+      Math.round(VOICE_PROGRESS_START_PERCENT + elapsed / VOICE_PROGRESS_SOFT_DURATION_MS * range)
+    )
+  }
+  const slowElapsed = Math.min(
+    VOICE_PROGRESS_HARD_DURATION_MS - VOICE_PROGRESS_SOFT_DURATION_MS,
+    elapsed - VOICE_PROGRESS_SOFT_DURATION_MS
+  )
+  const slowRange = VOICE_PROGRESS_HARD_CAP - VOICE_PROGRESS_SOFT_CAP
+  return Math.min(
+    VOICE_PROGRESS_HARD_CAP,
+    Math.round(VOICE_PROGRESS_SOFT_CAP + slowElapsed / (VOICE_PROGRESS_HARD_DURATION_MS - VOICE_PROGRESS_SOFT_DURATION_MS) * slowRange)
+  )
+}
+
+function hasActiveSession(sessions) {
+  return (sessions || []).some(item => item && item.status === 'active')
+}
+
+function getDefaultSessionStatus(sessions) {
+  return hasActiveSession(sessions) ? 'active' : 'finished'
+}
+
+function resolveSessionStatus(options) {
+  const config = options || {}
+  const sessions = config.sessions || []
+  const legacySession = config.legacySessionId
+    ? sessions.find(item => item && item._id === config.legacySessionId)
+    : null
+  const requested = config.requestedStatus || (legacySession && legacySession.status)
+  const normalized = requested === 'active' || requested === 'finished'
+    ? requested
+    : getDefaultSessionStatus(sessions)
+  return normalized === 'active' && !hasActiveSession(sessions) ? 'finished' : normalized
+}
+
+function buildSessionStatusOptions(status) {
+  const normalized = status === 'active' ? 'active' : 'finished'
+  return SESSION_STATUS_OPTIONS.map(item => Object.assign({}, item, {
+    active: item.key === normalized
+  }))
+}
+
+function getSessionStatusLabel(status) {
+  return status === 'active' ? '进行中牌局' : '已结束牌局'
+}
 
 function readPendingFilters() {
   const filters = wx.getStorageSync(REVIEW_PENDING_FILTER_KEY)
@@ -71,22 +154,9 @@ function buildFilterOptions(options, activeKey) {
   }))
 }
 
-function buildSessionOptions(sessions, selectedSessionId) {
-  return [{ _id: '', title: '全部牌局', active: !selectedSessionId }]
-    .concat((sessions || []).map(item => Object.assign({}, item, {
-      active: selectedSessionId === item._id
-    })))
-}
-
-function getSessionFilterLabel(sessions, sessionId) {
-  if (!sessionId) return '全部牌局'
-  const session = (sessions || []).find(item => item._id === sessionId)
-  return session ? session.title : '当前牌局'
-}
-
 function buildFilterSummary(filters, sessions) {
   const parts = []
-  parts.push(getSessionFilterLabel(sessions, filters.sessionId))
+  parts.push(getSessionStatusLabel(filters.sessionStatus))
   const dateLabel = (DATE_FILTERS.find(item => item.key === filters.dateRange) || DATE_FILTERS[0]).label
   const resultLabel = (RESULT_FILTERS.find(item => item.key === filters.resultFilter) || RESULT_FILTERS[0]).label
   const sortLabel = (SORT_OPTIONS.find(item => item.key === filters.sortBy) || SORT_OPTIONS[0]).label
@@ -99,7 +169,7 @@ function buildFilterSummary(filters, sessions) {
 }
 
 function buildSortControlOptions(sortBy) {
-  const current = String(sortBy || 'dateDesc')
+  const current = String(sortBy || 'updatedDesc')
   return SORT_CONTROLS.map(item => {
     const active = current === item.desc || current === item.asc
     return Object.assign({}, item, {
@@ -167,24 +237,96 @@ function buildReviewListMetaText(hand, quickOnly) {
   const source = hand || {}
   const parts = []
   if (hasReviewListDetailValue(source.potSize)) parts.push('底池 ' + source.potSize)
-  if (hasReviewListDetailValue(source.effectiveStack)) parts.push('有效筹码 ' + source.effectiveStack)
   const opponent = buildOpponentDisplayName(source)
   if (opponent) parts.push(opponent)
   return parts.join(' · ')
 }
 
+function normalizeHandComments(hand) {
+  const source = Array.isArray(hand && hand.handComments)
+    ? hand.handComments
+    : (Array.isArray(hand && hand.reviewComments) ? hand.reviewComments : [])
+  return source
+    .map((item, index) => {
+      if (typeof item === 'string') {
+        return {
+          id: 'legacy_comment_' + index,
+          text: item.trim(),
+          createdAt: ''
+        }
+      }
+      return {
+        id: String(item && item.id || 'comment_' + index),
+        text: String(item && item.text || '').trim(),
+        createdAt: String(item && item.createdAt || '')
+      }
+    })
+    .filter(item => item.text)
+}
+
+function formatHandCommentTime(value) {
+  const text = String(value || '').trim()
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}:\d{2})/)
+  if (match) return match[2] + '/' + match[3] + ' ' + match[4]
+  const parsed = text ? new Date(text) : null
+  if (parsed && !Number.isNaN(parsed.getTime())) {
+    return String(parsed.getMonth() + 1).padStart(2, '0') + '/' +
+      String(parsed.getDate()).padStart(2, '0') + ' ' +
+      String(parsed.getHours()).padStart(2, '0') + ':' +
+      String(parsed.getMinutes()).padStart(2, '0')
+  }
+  return ''
+}
+
+function buildHandCommentViewItems(comments) {
+  return (comments || []).map(item => Object.assign({}, item, {
+    timeDisplay: formatHandCommentTime(item.createdAt)
+  }))
+}
+
+function buildHandCommentTimestamp() {
+  const now = new Date()
+  return now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0') + ' ' +
+    String(now.getHours()).padStart(2, '0') + ':' +
+    String(now.getMinutes()).padStart(2, '0')
+}
+
+function resolveAiReviewStatus(hand, aiReviewView) {
+  if (aiReviewView && aiReviewView.visible) return 'ready'
+  return String(hand && hand.aiReviewStatus || '').trim()
+}
+
 function buildReviewListHandView(item, chipUnit, swipedHandId) {
+  item = ledgerDerived.withLedgerDerivedFields(item, { includeEv: false })
   const quickOnly = isReviewListQuickOnlyHand(item)
-  const aiReviewView = item.aiReview && buildAiReviewView(item.aiReview)
+  const aiReviewView = item.aiReview && buildAiReviewView(item.aiReview, item)
+  const isOnboardingReviewDemoHand = item.heroCardsInput === ONBOARDING_REVIEW_DEMO_HAND
   const heroPosition = quickOnly ? '' : String(item.heroPosition || '').trim()
   const actionText = quickOnly ? '' : buildCompactStreetSummary(item)
   const tags = reviewTags.normalizeReviewTags(item.tags)
   const metaText = buildReviewListMetaText(item, quickOnly)
+  const replayData = hasCompletedReview(item) ? handReplay.buildReplayView(item) : null
+  const handComments = normalizeHandComments(item)
+  const completedReview = hasCompletedReview(item) && !quickOnly
+  const aiReviewReady = !!(aiReviewView && aiReviewView.visible)
+  const aiReviewStatus = resolveAiReviewStatus(item, aiReviewView)
+  const aiReviewGenerating = aiReviewStatus === 'generating'
+  const aiReviewFailed = aiReviewStatus === 'failed'
   return Object.assign({}, item, {
-    aiReviewReady: !!(aiReviewView && aiReviewView.visible),
-    aiReviewGenerating: item.aiReviewStatus === 'generating',
-    aiReviewFailed: item.aiReviewStatus === 'failed',
+    aiReviewStatus,
+    aiReviewView,
+    aiReviewReady,
+    aiReviewGenerating,
+    aiReviewFailed,
+    canRequestAiAdvice: completedReview && !aiReviewReady && !aiReviewGenerating && !aiReviewFailed,
     swiped: item._id === swipedHandId,
+    onboardingReviewEntryTargetClass: isOnboardingReviewDemoHand ? 'onboarding-target-review-entry' : '',
+    onboardingReviewSwipeTargetClass: isOnboardingReviewDemoHand ? 'onboarding-target-review-swipe-actions' : '',
+    onboardingReviewDeleteTargetClass: isOnboardingReviewDemoHand ? 'onboarding-target-review-delete' : '',
+    onboardingReviewAiAdviceTargetClass: isOnboardingReviewDemoHand ? 'onboarding-target-review-ai-advice' : '',
+    onboardingReviewReplayTargetClass: isOnboardingReviewDemoHand ? 'onboarding-target-review-replay' : '',
     actionLine: actionText,
     showActionLine: !!String(actionText || '').trim(),
     currentProfitDisplay: display.formatAmount(item.currentProfit, chipUnit),
@@ -197,14 +339,24 @@ function buildReviewListHandView(item, chipUnit, swipedHandId) {
     tagItems: tags.map(label => ({ label })),
     opponentDisplayName: quickOnly ? '' : buildOpponentDisplayName(item),
     metaText,
-    hasMetaText: !!metaText
+    hasMetaText: !!metaText,
+    replayAvailable: !!(replayData && replayData.available),
+    replayData,
+    handComments,
+    handCommentCount: handComments.length,
+    hasHandComments: handComments.length > 0,
+    canHandComment: completedReview
   })
+}
+
+function buildReviewListHandViews(items, chipUnit, swipedHandId) {
+  return (items || []).map(item => buildReviewListHandView(item, chipUnit, swipedHandId))
 }
 
 function normalizeActiveFilterPatch(patch) {
   const source = patch || {}
   const next = {}
-  if (Object.prototype.hasOwnProperty.call(source, 'selectedSessionId')) next.sessionId = source.selectedSessionId
+  if (Object.prototype.hasOwnProperty.call(source, 'selectedSessionStatus')) next.sessionStatus = source.selectedSessionStatus
   if (Object.prototype.hasOwnProperty.call(source, 'dateRange')) next.dateRange = source.dateRange
   if (Object.prototype.hasOwnProperty.call(source, 'startDate')) next.startDate = source.startDate
   if (Object.prototype.hasOwnProperty.call(source, 'endDate')) next.endDate = source.endDate
@@ -217,7 +369,7 @@ function normalizeActiveFilterPatch(patch) {
 function normalizeDraftFilterPatch(patch) {
   const source = patch || {}
   const next = {}
-  if (Object.prototype.hasOwnProperty.call(source, 'draftSelectedSessionId')) next.sessionId = source.draftSelectedSessionId
+  if (Object.prototype.hasOwnProperty.call(source, 'draftSessionStatus')) next.sessionStatus = source.draftSessionStatus
   if (Object.prototype.hasOwnProperty.call(source, 'draftDateRange')) next.dateRange = source.draftDateRange
   if (Object.prototype.hasOwnProperty.call(source, 'draftStartDate')) next.startDate = source.draftStartDate
   if (Object.prototype.hasOwnProperty.call(source, 'draftEndDate')) next.endDate = source.draftEndDate
@@ -275,8 +427,11 @@ function buildSelectorOptions(list, currentValue) {
 
 function buildVoicePickerForm(parsedVoice) {
   const board = parsedVoice && parsedVoice.board || {}
+  const showdown = parsedVoice && (parsedVoice.showdown || parsedVoice.opponentCards || parsedVoice.villainCards) || ''
   return {
     heroCardsInput: parsedVoice && parsedVoice.heroCardsInput || '',
+    showdown,
+    opponentCards: parsedVoice && parsedVoice.opponentCards || showdown,
     flop: board.flop || '',
     turn: board.turn || '',
     river: board.river || ''
@@ -387,7 +542,7 @@ function buildVoiceShowdownPickerDeck(parsedVoice) {
           suitSymbol: suit.symbol,
           suitClass: suit.className,
           selected: selected.indexOf(token) > -1,
-          disabled: occupied.indexOf(token) > -1
+          disabled: occupied.indexOf(token) > -1 && selected.indexOf(token) === -1
         }
       })
     }
@@ -434,10 +589,17 @@ function buildStreetItems(streetInputs, board) {
   ].map(item => {
     const cards = buildStreetBoardCards(board, item.key)
     const boardState = Object.assign({ flop: '', turn: '', river: '' }, board || {})
+    const requiredBoardCards = item.key === 'flop' ? 3 : (item.key === 'turn' || item.key === 'river' ? 1 : 0)
+    const isBoardComplete = !requiredBoardCards || cards.length === requiredBoardCards
     return Object.assign({}, item, {
       label: actionLine.normalizeStreetName(item.key),
+      potField: 'streetInputs.' + item.key + '.pot',
+      actionField: 'streetInputs.' + item.key + '.actionLine',
       boardCards: cards,
-      hasBoardCards: cards.length > 0,
+      hasBoardCards: isBoardComplete && cards.length > 0,
+      boardNeedsCompletion: !!requiredBoardCards && cards.length !== requiredBoardCards,
+      boardEditText: item.key === 'preflop' ? '' : (cards.length ? '点击修改' : '点击补牌'),
+      boardEditClass: !!requiredBoardCards && cards.length !== requiredBoardCards ? 'needs-completion' : '',
       displayActionLine: actionLine.formatActionLine(item.actionLine, item.key) || '-',
       compactStreetLine: actionLine.formatStreetLine(item.key, item.actionLine, boardState[item.key] || '')
     })
@@ -464,6 +626,16 @@ function formatSignedNumber(value) {
   return String(numeric)
 }
 
+function getReliableSummaryText(parsedVoice, reviewResult) {
+  return String(
+    (reviewResult && reviewResult.naturalLanguageSummary) ||
+    (parsedVoice && parsedVoice.naturalLanguageSummary) ||
+    (parsedVoice && parsedVoice.feedbackText) ||
+    (parsedVoice && parsedVoice.noteSummary) ||
+    ''
+  ).trim()
+}
+
 function hasLockedQuickEntryValue(value) {
   if (value === '' || value == null) return false
   if (typeof value === 'number') return !Number.isNaN(value)
@@ -481,6 +653,40 @@ function preserveLockedQuickEntryFields(parsedVoice, detailHand) {
   return next
 }
 
+function getDefaultPlayerCount(detailHand, detailSession) {
+  return Number(detailHand && detailHand.playerCount) ||
+    Number(detailSession && detailSession.playerCount) ||
+    Number(detailSession && detailSession.tableSize) ||
+    0
+}
+
+function getDefaultHasStraddle(detailHand, detailSession) {
+  return !!((detailSession && detailSession.hasStraddle) || (detailHand && detailHand.hasStraddle))
+}
+
+function getDefaultStraddleAmount(detailHand, detailSession) {
+  const bigBlind = handDetailFields.getBigBlindFromLevel(
+    detailHand && detailHand.stakeLevel,
+    detailSession
+  )
+  return getDefaultHasStraddle(detailHand, detailSession) && bigBlind ? bigBlind * 2 : 0
+}
+
+function applySessionVoiceDefaults(parsedVoice, detailHand, detailSession) {
+  const next = Object.assign({}, parsedVoice || {})
+  if (!Number(next.playerCount)) {
+    next.playerCount = getDefaultPlayerCount(detailHand, detailSession)
+  }
+  if (!Object.prototype.hasOwnProperty.call(next, 'hasStraddle') && getDefaultHasStraddle(detailHand, detailSession)) {
+    next.hasStraddle = true
+  }
+  if (!Number(next.straddleAmount)) {
+    const straddleAmount = getDefaultStraddleAmount(detailHand, detailSession)
+    if (straddleAmount) next.straddleAmount = straddleAmount
+  }
+  return next
+}
+
 function cleanVoiceShowdownValue(value) {
   const text = String(value || '').trim()
   if (!text) return ''
@@ -490,11 +696,51 @@ function cleanVoiceShowdownValue(value) {
   return text
 }
 
+function cleanOpponentCardsValue(value) {
+  const text = cleanVoiceShowdownValue(value)
+    .replace(/^(?:Villain|Opponent)\s+/i, '')
+    .replace(/^(?:\u5bf9\u624b|\u5bf9\u65b9)\s*[:\uff1a]?\s*/i, '')
+    .trim()
+  return text
+}
+
+function getVoiceOpponentCards(source) {
+  const data = source || {}
+  return (
+    resolveOpponentCardsValue(data.opponentCards, data) ||
+    resolveOpponentCardsValue(data.villainCards, data) ||
+    resolveOpponentCardsValue(data.opponentHand, data) ||
+    resolveOpponentCardsValue(data.showdown, data)
+  )
+}
+
+function cardsToInput(cards) {
+  return (cards || []).map(function (card) {
+    return card.rank + card.suit
+  }).join('')
+}
+
+function resolveOpponentCardsValue(value, source) {
+  const text = cleanOpponentCardsValue(value)
+  if (!text) return ''
+  const context = source || {}
+  const cards = cardUi.parseOpponentCardsInput(text, {
+    board: context.board,
+    heroCardsInput: context.heroCardsInput
+  })
+  return cards.length === 2 ? cardsToInput(cards) : ''
+}
+
 
 const MISSING_FIELD_META = {
+  playedDate: { field: 'playedDate', label: '\u65e5\u671f', hint: '\u8bf7\u8865\u5145\u8fd9\u624b\u724c\u7684\u65e5\u671f' },
+  stakeLevel: { field: 'stakeLevel', label: '\u7ea7\u522b', hint: '\u8bf7\u9009\u62e9\u76f2\u6ce8\u7ea7\u522b' },
   table_size: { field: 'playerCount', label: '\u4eba\u6570', hint: '\u9ed8\u8ba4 8 \u4eba\uff0c\u5982\u679c\u53e3\u8ff0\u201c\u5269 5 \u4e2a\u4eba\u201d\u5219\u6539\u4e3a 5' },
   tableSize: { field: 'playerCount', label: '\u4eba\u6570', hint: '\u9ed8\u8ba4 8 \u4eba\uff0c\u5982\u679c\u53e3\u8ff0\u201c\u5269 5 \u4e2a\u4eba\u201d\u5219\u6539\u4e3a 5' },
   playerCount: { field: 'playerCount', label: '\u4eba\u6570', hint: '\u9ed8\u8ba4 8 \u4eba\uff0c\u5982\u679c\u53e3\u8ff0\u201c\u5269 5 \u4e2a\u4eba\u201d\u5219\u6539\u4e3a 5' },
+  hasStraddle: { field: 'hasStraddle', label: '\u662f\u5426 Straddle', hint: '\u8bf7\u660e\u786e\u9009\u62e9\u201c\u662f\u201d\u6216\u201c\u5426\u201d' },
+  heroPosition: { field: 'heroPosition', label: 'Hero \u4f4d\u7f6e', hint: '\u8bf7\u9009\u62e9 Hero \u4f4d\u7f6e' },
+  heroCardsInput: { field: 'heroCardsInput', label: 'Hero \u624b\u724c', hint: '\u8bf7\u9009\u62e9 2 \u5f20 Hero \u624b\u724c' },
   effective_stack: { field: 'effectiveStack', label: '\u6709\u6548\u7b79\u7801', hint: '\u5f71\u54cd SPR \u548c\u4e0b\u6ce8\u5c3a\u5ea6\u5224\u65ad' },
   effectiveStack: { field: 'effectiveStack', label: '\u6709\u6548\u7b79\u7801', hint: '\u5f71\u54cd SPR \u548c\u4e0b\u6ce8\u5c3a\u5ea6\u5224\u65ad' },
   pot_size: { field: 'potSize', label: '\u5f53\u524d\u5e95\u6c60', hint: '\u5f71\u54cd\u9010\u8857 pot \u548c\u4e0b\u6ce8\u6bd4\u4f8b\u5224\u65ad' },
@@ -507,6 +753,13 @@ const MISSING_FIELD_META = {
   opponentType: { field: 'opponentType', label: '\u5bf9\u624b\u7c7b\u578b', hint: '\u5f71\u54cd exploit \u5efa\u8bae' },
   opponent_name: { field: 'opponentName', label: '\u5bf9\u624b\u6635\u79f0', hint: '\u65b9\u4fbf\u4ee5\u540e\u8bc6\u522b\u540c\u4e00\u5bf9\u624b' },
   opponentName: { field: 'opponentName', label: '\u5bf9\u624b\u6635\u79f0', hint: '\u65b9\u4fbf\u4ee5\u540e\u8bc6\u522b\u540c\u4e00\u5bf9\u624b' },
+  board_flop: { field: 'board.flop', label: '\u7ffb\u724c\u516c\u724c', hint: '\u8bf7\u8865\u9f50 3 \u5f20\u7ffb\u724c\u516c\u724c' },
+  board_turn: { field: 'board.turn', label: '\u8f6c\u724c\u516c\u724c', hint: '\u8bf7\u8865\u5145\u8f6c\u724c\u516c\u724c' },
+  board_river: { field: 'board.river', label: '\u6cb3\u724c\u516c\u724c', hint: '\u8bf7\u8865\u5145\u6cb3\u724c\u516c\u724c' },
+  preflop_pot: { field: 'streetInputs.preflop.pot', label: '\u7ffb\u524d Pot', hint: '\u8bf7\u8865\u5145\u7ffb\u524d\u5e95\u6c60' },
+  flop_pot: { field: 'streetInputs.flop.pot', label: '\u7ffb\u724c Pot', hint: '\u8bf7\u8865\u5145\u7ffb\u724c\u5e95\u6c60' },
+  turn_pot: { field: 'streetInputs.turn.pot', label: '\u8f6c\u724c Pot', hint: '\u8bf7\u8865\u5145\u8f6c\u724c\u5e95\u6c60' },
+  river_pot: { field: 'streetInputs.river.pot', label: '\u6cb3\u724c Pot', hint: '\u8bf7\u8865\u5145\u6cb3\u724c\u5e95\u6c60' },
   preflop_action: { field: 'streetInputs.preflop.actionLine', label: '\u7ffb\u524d\u884c\u52a8', hint: '\u8c01 open\u3001\u8c01 3B\u3001\u8c01\u8ddf\u6ce8' },
   flop_action: { field: 'streetInputs.flop.actionLine', label: '\u7ffb\u724c\u884c\u52a8', hint: '\u4e0b\u6ce8\u3001\u8fc7\u724c\u3001\u8ddf\u6ce8\u3001\u5f03\u724c' },
   turn_action: { field: 'streetInputs.turn.actionLine', label: '\u8f6c\u724c\u884c\u52a8', hint: '\u4e0b\u6ce8\u3001\u52a0\u6ce8\u3001\u8ddf\u6ce8\u3001\u5f03\u724c' },
@@ -552,16 +805,225 @@ function getParsedVoiceFieldValue(parsedVoice, field) {
 }
 
 function isParsedVoiceFieldFilled(parsedVoice, field) {
+  if (field === 'hasStraddle') {
+    return !!(parsedVoice && Object.prototype.hasOwnProperty.call(parsedVoice, 'hasStraddle'))
+  }
   const value = getParsedVoiceFieldValue(parsedVoice, field)
   if (value == null) return false
+  if (field === 'heroCardsInput') {
+    return cardUi.parseHeroCardsInput(value).length === 2
+  }
   if (typeof value === 'number') {
     if (Number.isNaN(value)) return false
     return field === 'currentProfit' || value !== 0
   }
   const text = String(value).trim()
   if (!text) return false
+  if (text === '-' || text === '\u8bf7\u9009\u62e9') return false
   if (field === 'currentProfit') return true
   return text !== '0'
+}
+
+const VOICE_REQUIRED_MAIN_FIELDS = [
+  'playedDate',
+  'stakeLevel',
+  'playerCount',
+  'hasStraddle',
+  'heroPosition',
+  'villainPosition',
+  'heroCardsInput',
+  'effectiveStack',
+  'potSize',
+  'currentProfit'
+]
+
+const VOICE_OPTIONAL_FIELDS = {
+  opponentType: true,
+  opponentName: true,
+  showdown: true,
+  heroQuestion: true,
+  tags: true,
+  mindJourney: true,
+  streetSummary: true
+}
+
+const VOICE_STREET_ORDER = ['preflop', 'flop', 'turn', 'river']
+
+function buildRequiredFieldItem(field, index) {
+  const meta = Object.keys(MISSING_FIELD_META).reduce((found, key) => {
+    return found || (MISSING_FIELD_META[key].field === field ? MISSING_FIELD_META[key] : null)
+  }, null) || { field, label: field, hint: '\u8bf7\u8865\u5145\u8fd9\u4e2a\u5fc5\u586b\u5b57\u6bb5' }
+  return {
+    key: 'required-' + String(index) + '-' + field.replace(/\W+/g, '-'),
+    raw: field,
+    field: meta.field,
+    label: meta.label,
+    hint: meta.hint,
+    text: meta.label + '\u9700\u8981\u586b\u5199'
+  }
+}
+
+function getStreetInput(parsedVoice, street) {
+  const streetInputs = parsedVoice && parsedVoice.streetInputs || {}
+  return Object.assign({ pot: '', actionLine: '' }, streetInputs[street] || {})
+}
+
+function hasStreetData(parsedVoice, street) {
+  const input = getStreetInput(parsedVoice, street)
+  const board = parsedVoice && parsedVoice.board || {}
+  return !!(
+    isParsedVoiceFieldFilled(parsedVoice, 'streetInputs.' + street + '.pot') ||
+    String(input.actionLine || '').trim() ||
+    (street !== 'preflop' && String(board[street] || '').trim())
+  )
+}
+
+function isTerminalActionLine(actionLine) {
+  return /(?:\bfold\b|\bF\b|弃牌|弃了|fold掉|fold了)/i.test(String(actionLine || ''))
+}
+
+function isAllInCalloffActionLine(actionLine) {
+  const source = String(actionLine || '')
+  if (!source.trim()) return false
+  const hasAllIn = /(?:\bAI\b|\ball[\s-]*in\b|\ballin\b|\u5168\u4e0b|\u63a8)/i.test(source)
+  const hasCall = /(?:\bC\b|\bcall\b|\u8ddf|\u8ddf\u6ce8)/i.test(source)
+  return hasAllIn && hasCall
+}
+
+function detectAllInCalloffStreet(streetInputs) {
+  const source = streetInputs || {}
+  return VOICE_STREET_ORDER.find(street => isAllInCalloffActionLine(source[street] && source[street].actionLine)) || ''
+}
+
+function getTerminalStreetFromAgent(parsedVoice) {
+  const source = parsedVoice || {}
+  const value = String(source.terminalStreet || source.allInStreet || '').trim().toLowerCase()
+  return VOICE_STREET_ORDER.indexOf(value) > -1 ? value : ''
+}
+
+function boardAtAllInStreet(board, street) {
+  const source = Object.assign({ flop: '', turn: '', river: '' }, board || {})
+  if (street === 'flop') return String(source.flop || '')
+  if (street === 'turn') return String(source.flop || '') + String(source.turn || '')
+  if (street === 'river') return String(source.flop || '') + String(source.turn || '') + String(source.river || '')
+  return ''
+}
+
+function inferHeroInvestedForAllIn(hand) {
+  const source = hand || {}
+  const loss = Number(source.currentProfit)
+  if (loss < 0) return Math.abs(loss)
+  return Number(source.effectiveStack) || 0
+}
+
+function buildVoiceAllInEvInput(hand) {
+  const source = hand || {}
+  const streetInputs = source.streetInputs || {}
+  const allInStreet = getTerminalStreetFromAgent(source) || detectAllInCalloffStreet(streetInputs)
+  if (!allInStreet) return null
+  const opponentCards = resolveOpponentCardsValue(getVoiceOpponentCards(source), source)
+  if (!opponentCards || !String(source.opponentCardsSource || '').trim()) return null
+  const heroInvested = inferHeroInvestedForAllIn(source)
+  const potSize = Number(source.potSize) || 0
+  if (!heroInvested || !potSize) return null
+  return {
+    isAllIn: true,
+    allInStreet,
+    heroCardsInput: source.heroCardsInput || '',
+    heroCards: source.heroCardsInput || '',
+    opponentCards,
+    villainCards: opponentCards,
+    opponentCardsSource: source.opponentCardsSource || '',
+    villainCardsSource: source.opponentCardsSource || '',
+    boardAtAllIn: boardAtAllInStreet(source.board, allInStreet),
+    allInBoard: boardAtAllInStreet(source.board, allInStreet),
+    potSize,
+    allInPot: potSize,
+    heroInvested,
+    currentProfit: Number(source.currentProfit) || 0
+  }
+}
+
+function getRequiredStreetKeys(parsedVoice) {
+  let lastIndex = 0
+  const terminalStreet = getTerminalStreetFromAgent(parsedVoice)
+  if (terminalStreet) {
+    return VOICE_STREET_ORDER.slice(0, VOICE_STREET_ORDER.indexOf(terminalStreet) + 1)
+  }
+  VOICE_STREET_ORDER.forEach((street, index) => {
+    if (hasStreetData(parsedVoice, street)) lastIndex = Math.max(lastIndex, index)
+  })
+  VOICE_STREET_ORDER.forEach((street, index) => {
+    const actionLine = getStreetInput(parsedVoice, street).actionLine
+    if (index < lastIndex && (isTerminalActionLine(actionLine) || isAllInCalloffActionLine(actionLine))) {
+      lastIndex = Math.min(lastIndex, index)
+    }
+  })
+  return VOICE_STREET_ORDER.slice(0, lastIndex + 1)
+}
+
+function getVoiceFieldStreet(field) {
+  const value = String(field || '')
+  const boardMatch = value.match(/^board\.(flop|turn|river)$/)
+  if (boardMatch) return boardMatch[1]
+  const streetMatch = value.match(/^streetInputs\.(preflop|flop|turn|river)\./)
+  return streetMatch ? streetMatch[1] : ''
+}
+
+function isVoiceFieldRequiredForRunout(parsedVoice, field) {
+  const street = getVoiceFieldStreet(field)
+  if (!street) return true
+  return getRequiredStreetKeys(parsedVoice).indexOf(street) > -1
+}
+
+function isBoardStreetFilled(parsedVoice, street) {
+  const board = parsedVoice && parsedVoice.board || {}
+  const limit = street === 'flop' ? 3 : 1
+  return cardUi.parseCardsInput(board[street] || '', limit).length === limit
+}
+
+function buildVoiceRequiredMissingItems(parsedVoice) {
+  const missing = []
+  VOICE_REQUIRED_MAIN_FIELDS.forEach(field => {
+    if (!isParsedVoiceFieldFilled(parsedVoice, field)) missing.push(field)
+  })
+  getRequiredStreetKeys(parsedVoice).forEach(street => {
+    if (!isParsedVoiceFieldFilled(parsedVoice, 'streetInputs.' + street + '.pot')) {
+      missing.push('streetInputs.' + street + '.pot')
+    }
+    if (!isParsedVoiceFieldFilled(parsedVoice, 'streetInputs.' + street + '.actionLine')) {
+      missing.push('streetInputs.' + street + '.actionLine')
+    }
+    if (street !== 'preflop' && !isBoardStreetFilled(parsedVoice, street)) {
+      missing.push('board.' + street)
+    }
+  })
+  const seen = {}
+  return missing
+    .filter(field => {
+      if (seen[field]) return false
+      seen[field] = true
+      return true
+    })
+    .map(buildRequiredFieldItem)
+}
+
+function applyParsedVoiceFocusState(parsedVoice, focusField) {
+  if (!parsedVoice) return parsedVoice
+  const target = String(focusField || '')
+  return Object.assign({}, parsedVoice, {
+    focusPlayedDate: target === 'playedDate',
+    focusPlayerCount: target === 'playerCount',
+    focusEffectiveStack: target === 'effectiveStack',
+    focusPotSize: target === 'potSize',
+    focusCurrentProfit: target === 'currentProfit',
+    focusOpponentName: target === 'opponentName',
+    focusHeroQuestion: target === 'heroQuestion',
+    streetItems: (parsedVoice.streetItems || []).map(item => Object.assign({}, item, {
+      potFocused: target === item.potField,
+      actionFocused: target === item.actionField
+    }))
+  })
 }
 
 function buildConfirmItems(missingFields, followUpQuestions, voiceNeedsRefresh, parsedVoice) {
@@ -580,6 +1042,8 @@ function buildConfirmItems(missingFields, followUpQuestions, voiceNeedsRefresh, 
     .map((item, index) => typeof item === 'string' ? buildMissingFieldItem(item, index) : Object.assign({ key: String(index) }, item))
     .filter(item => {
       const key = item.field || item.text
+      if (VOICE_OPTIONAL_FIELDS[item.field]) return false
+      if (!isVoiceFieldRequiredForRunout(parsedVoice, item.field)) return false
       if (item.field !== 'voiceNote' && isParsedVoiceFieldFilled(parsedVoice, item.field)) return false
       if (seen[key]) return false
       seen[key] = true
@@ -643,17 +1107,17 @@ function inferReviewTagsFromReview(parsedVoice, aiReview) {
   const tags = []
 
   if (/clear[_\s-]?mistake|mistake|bad[_\s-]?play|error|明显|重大|错误|不应该|自相矛盾/i.test(text)) tags.push('mistake')
-  if (/optimi[sz]e|issue|problem|建议|优化|可优化|应该|需要|替代线/i.test(text)) tags.push('optimization')
+  if (/optimi[sz]e|issue|problem|建议|优化|可优化|应该|需要|替代/i.test(text)) tags.push('optimization')
   if (/good|great|nice[_\s-]?hand|打得好|精彩/i.test(text)) tags.push('good')
   if (/\bhero_call\b|bluff[_\s-]?catch|call[_\s-]?down|Hero.{0,12}(?:抓诈|抓鸡|接诈)|(?:抓诈|抓鸡|接诈).{0,12}Hero/i.test(text)) tags.push('hero_call')
   if (/over[_\s-]?fold|river[_\s-]?overfold|过度弃牌|弃太多|fold太多/i.test(text)) tags.push('overfold')
   if (/bad[_\s-]?fold|错误弃牌|弃错|fold错/i.test(text)) tags.push('bad_fold')
   if (/value[_\s-]?bet|thin[_\s-]?value|价值下注|薄价值|打价值/i.test(text)) tags.push('value_bet')
-  if (/semi[_\s-]?bluff|bluff|诈唬|半诈唬|偷池|偷/i.test(text)) tags.push('bluff')
+  if (/semi[_\s-]?bluff|bluff|诈唬|半诈唬|偷池|偷鸡/i.test(text)) tags.push('bluff')
   if (/multi[_\s-]?way|多人池|多人底池|三人池|四人池|3人池|4人池/i.test(text)) tags.push('multiway')
   if (/deep[_\s-]?stack|deepstack|200bb|深筹|深筹码/i.test(text)) tags.push('deep_stack')
-  if (/3\s*b|3bet|3-bet|three[_\s-]?bet|三bet|三逼/i.test(text)) tags.push('3bet_pot')
-  if (/4\s*b|4bet|4-bet|four[_\s-]?bet|四bet|四逼/i.test(text)) tags.push('4bet_pot')
+  if (/3\s*b|3bet|3-bet|three[_\s-]?bet|三bet|三贝/i.test(text)) tags.push('3bet_pot')
+  if (/4\s*b|4bet|4-bet|four[_\s-]?bet|四bet|四贝/i.test(text)) tags.push('4bet_pot')
 
   const effectiveStack = Number(source.effectiveStack) || 0
   const stake = String(source.stakeLevel || '')
@@ -667,7 +1131,8 @@ function inferReviewTagsFromReview(parsedVoice, aiReview) {
 function buildParsedVoicePreview(parsedVoice, reviewResult) {
   if (!parsedVoice) return null
   const meta = reviewResult || {}
-  const board = Object.assign({ flop: '', turn: '', river: '' }, parsedVoice.board || {})
+  const sourceVoice = parsedVoice || {}
+  const board = Object.assign({ flop: '', turn: '', river: '' }, sourceVoice.board || {})
   const streetInputs = Object.assign(
     {
       preflop: { actionLine: '', pot: '' },
@@ -675,49 +1140,57 @@ function buildParsedVoicePreview(parsedVoice, reviewResult) {
       turn: { actionLine: '', pot: '' },
       river: { actionLine: '', pot: '' }
     },
-    parsedVoice.streetInputs || {}
+    sourceVoice.streetInputs || {}
   )
-  const previewSource = Object.assign({}, parsedVoice, {
+  const rawOpponentCards = getVoiceOpponentCards(sourceVoice)
+  const opponentCards = resolveOpponentCardsValue(rawOpponentCards, sourceVoice)
+  const previewSource = Object.assign({}, sourceVoice, {
     board,
     streetInputs,
-    showdown: cleanVoiceShowdownValue(parsedVoice.showdown)
+    opponentCards,
+    showdown: opponentCards
   })
-  const detailView = handDetailFields.buildHandDetailViewModel(parsedVoice, {
+  const detailView = handDetailFields.buildHandDetailViewModel(previewSource, {
     mode: 'confirm',
     backfilled: true,
     positions: dataService.getAppSettings().positions || []
   })
-  const tags = reviewTags.normalizeReviewTags([]
-    .concat(Array.isArray(parsedVoice.tags) ? parsedVoice.tags : sanitizeStringArray(parsedVoice.tags))
-    .concat(inferReviewTagsFromReview(parsedVoice, meta.analysis || parsedVoice.aiReview))
-  )
+  const provider = String(meta.provider || sourceVoice.provider || '').trim()
+  const tags = reviewTags.normalizeReviewTags(sourceVoice.tags).slice(0, 3)
+  const hasStraddleSelected = Object.prototype.hasOwnProperty.call(sourceVoice, 'hasStraddle')
   const missingFields = sanitizeStringArray(
-    parsedVoice.missingFields || meta.missingFields
+    sourceVoice.missingFields || meta.missingFields
   )
   const followUpQuestions = sanitizeStringArray(
-    parsedVoice.followUpQuestions || meta.followUpQuestions
+    sourceVoice.followUpQuestions || meta.followUpQuestions
   )
-  const provider = String(meta.provider || parsedVoice.provider || '').trim()
   const feedbackText = String(
     meta.naturalLanguageSummary ||
-    parsedVoice.naturalLanguageSummary ||
-    parsedVoice.noteSummary ||
-    parsedVoice.mindJourney ||
+    sourceVoice.naturalLanguageSummary ||
+    sourceVoice.noteSummary ||
+    sourceVoice.mindJourney ||
     ''
   ).trim()
-  return Object.assign({}, parsedVoice, {
+  return Object.assign({}, sourceVoice, {
     board,
-    streetSummary: buildCompactStreetSummary(previewSource),
+    streetSummary: provider === 'poker-agent'
+      ? buildCompactStreetSummary(previewSource)
+      : buildCompactStreetSummary(previewSource),
     streetInputs,
     tags,
     tagsText: tags.join(' · '),
     tagItems: tags.map(label => ({ label })),
-    opponentTypeText: parsedVoice.opponentType || '',
-    villainPositionText: parsedVoice.villainPosition || '',
+    opponentTypeText: sourceVoice.opponentType || '',
+    villainPositionText: sourceVoice.villainPosition || '',
     hasStraddle: detailView.form.hasStraddle,
+    hasStraddleSelected,
+    straddleYesClass: hasStraddleSelected && detailView.form.hasStraddle ? 'active' : '',
+    straddleNoClass: hasStraddleSelected && !detailView.form.hasStraddle ? 'active' : '',
     heroQuestion: detailView.form.heroQuestion,
     opponentName: detailView.form.opponentName,
-    showdown: cleanVoiceShowdownValue(detailView.form.showdown),
+    opponentCards,
+    opponentCardsSource: sourceVoice.opponentCardsSource || '',
+    showdown: opponentCards,
     detailRows: detailView.rows,
     missingFields,
     missingFieldsText: buildConfirmItems(missingFields, [], false, parsedVoice).map(item => item.label).join(' · '),
@@ -725,8 +1198,8 @@ function buildParsedVoicePreview(parsedVoice, reviewResult) {
     confirmItems: buildConfirmItems(
       missingFields,
       followUpQuestions,
-      !!parsedVoice.voiceNeedsRefresh,
-      parsedVoice
+      !!sourceVoice.voiceNeedsRefresh,
+      sourceVoice
     ),
     feedbackText,
     aiReview: meta.analysis || parsedVoice.aiReview || null,
@@ -734,12 +1207,58 @@ function buildParsedVoicePreview(parsedVoice, reviewResult) {
       ? (provider === 'openai' ? 'OpenAI' : provider === 'kimi' ? 'Kimi' : provider === 'local' ? '本地兜底' : provider)
       : '本地兜底',
     confidenceText: missingFields.length ? '\u9700\u8981\u8865\u5145' : '\u53ef\u56de\u586b',
-    playerCountDisplayText: Number(parsedVoice.playerCount) > 0 ? String(Number(parsedVoice.playerCount)) : '',
-    currentProfitDisplayText: formatSignedNumber(parsedVoice.currentProfit),
-    heroCardsVisual: cardUi.parseHeroCardsInput(parsedVoice.heroCardsInput),
-    showdownCardsVisual: cardUi.parseHeroCardsInput(cleanVoiceShowdownValue(detailView.form.showdown)),
+    playerCountDisplayText: Number(sourceVoice.playerCount) > 0 ? String(Number(sourceVoice.playerCount)) : '',
+    currentProfitDisplayText: formatSignedNumber(sourceVoice.currentProfit),
+    heroCardsVisual: cardUi.parseHeroCardsInput(sourceVoice.heroCardsInput),
+    showdownText: opponentCards,
+    showdownCardsVisual: cardUi.parseOpponentCardsInput(opponentCards, {
+      board,
+      heroCardsInput: sourceVoice.heroCardsInput
+    }),
     boardVisual: buildBoardVisual(board),
     streetItems: buildStreetItems(streetInputs, board)
+  })
+}
+
+function buildOnboardingParsedVoicePreview(hand, session) {
+  const parsed = Object.assign({}, hand || {}, {
+    provider: 'onboarding_demo',
+    playedDate: (hand && hand.playedDate) || (session && session.date) || '2026-06-29',
+    stakeLevel: (hand && hand.stakeLevel) || '300/600',
+    playerCount: 8,
+    hasStraddle: false,
+    heroPosition: 'CO',
+    villainPosition: 'SB',
+    opponentType: '紧凶',
+    heroCardsInput: ONBOARDING_REVIEW_DEMO_HAND,
+    currentProfit: -42000,
+    effectiveStack: 300000,
+    potSize: 96000,
+    board: {
+      flop: 'Qd7d3c',
+      turn: '8d',
+      river: '2s'
+    },
+    opponentCards: 'AdJd',
+    opponentCardsSource: 'voice',
+    showdown: 'AdJd',
+    streetInputs: {
+      preflop: { pot: 3900, actionLine: 'Hero CO open 1500，SB call，BB fold' },
+      flop: { pot: 14600, actionLine: 'Qd7d3c，SB check，Hero bet 2500，SB raise 7800，Hero call' },
+      turn: { pot: 29200, actionLine: '8d，SB check，Hero check back' },
+      river: { pot: 96000, actionLine: '2s，SB bet 42000，Hero call' }
+    },
+    tags: ['River 决策', '可优化'],
+    mindJourney: '河牌觉得对手可能有错过的听牌，但忽略了转牌同花已经完成。',
+    naturalLanguageSummary: '已从 QdQs 口述中识别出位置、手牌、牌面、底池、摊牌和本手亏损 -42000。',
+    missingFields: [],
+    followUpQuestions: []
+  })
+  return buildParsedVoicePreview(parsed, {
+    provider: 'onboarding_demo',
+    naturalLanguageSummary: parsed.naturalLanguageSummary,
+    missingFields: [],
+    followUpQuestions: []
   })
 }
 
@@ -769,103 +1288,38 @@ function mergeBlankStreetInputs(primary, fallback) {
   return result
 }
 
-function mergeLocalVoiceFallback(parsedVoice, voiceNote) {
-  const source = parsedVoice || {}
-  const text = String(voiceNote || '').trim()
-  if (!text) return source
-  const local = voiceParser.parseVoiceText(text)
-  const merged = Object.assign({}, source)
-  ;[
-    'playedDate',
-    'stakeLevel',
-    'heroPosition',
-    'heroCardsInput',
-    'effectiveStack',
-    'potSize',
-    'currentProfit',
-    'opponentType',
-    'opponentName',
-    'hasStraddle',
-    'heroQuestion',
-    'villainPosition',
-    'streetSummary',
-    'showdown',
-    'mindJourney'
-  ].forEach(key => {
-    if (isBlankVoiceValue(merged[key]) && !isBlankVoiceValue(local[key])) {
-      merged[key] = local[key]
-    }
-  })
-  merged.board = Object.assign({}, source.board || {})
-  const localBoard = local.board || {}
-  ;['flop', 'turn', 'river'].forEach(key => {
-    if (isBlankVoiceValue(merged.board[key]) && !isBlankVoiceValue(localBoard[key])) {
-      merged.board[key] = localBoard[key]
-    }
-  })
-  merged.streetInputs = mergeBlankStreetInputs(source.streetInputs, local.streetInputs)
-  if (!Array.isArray(merged.tags) || !merged.tags.length) merged.tags = local.tags || []
-  merged.tags = reviewTags.normalizeReviewTags(merged.tags)
-  return merged
-}
-
-function normalizeParsedVoice(parsedVoice, reviewResult, voiceNote, detailHand) {
-  const mergedVoice = mergeLocalVoiceFallback(parsedVoice, voiceNote)
-  const agentInferredTags = inferReviewTagsFromReview(mergedVoice, reviewResult && reviewResult.analysis)
-  const processed = aiNormalizer.postProcessReviewResult(
-    Object.assign({}, reviewResult || {}, { extractedHand: mergedVoice || {} }),
-    voiceNote,
-    detailHand
-  )
+function normalizeParsedVoice(parsedVoice, reviewResult, voiceNote, detailHand, detailSession) {
+  const provider = String((reviewResult && reviewResult.provider) || (parsedVoice && parsedVoice.provider) || '').trim()
+  if (provider === 'poker-agent') {
+    const rawOpponentCards = getVoiceOpponentCards(parsedVoice)
+    const opponentCards = resolveOpponentCardsValue(rawOpponentCards, parsedVoice)
+    const extracted = Object.assign({}, parsedVoice || {}, {
+      missingFields: (reviewResult && reviewResult.missingFields) || [],
+      followUpQuestions: (reviewResult && reviewResult.followUpQuestions) || [],
+      naturalLanguageSummary: getReliableSummaryText(parsedVoice, reviewResult),
+      aiReview: (reviewResult && reviewResult.analysis) || (parsedVoice && parsedVoice.aiReview) || null,
+      opponentCards,
+      opponentCardsSource: (parsedVoice && parsedVoice.opponentCardsSource) || '',
+      showdown: opponentCards,
+      tags: reviewTags.normalizeReviewTags(parsedVoice && parsedVoice.tags).slice(0, 3)
+    })
+    return applySessionVoiceDefaults(preserveLockedQuickEntryFields(extracted, detailHand), detailHand, detailSession)
+  }
   const extracted = Object.assign(
     {},
-    processed.extractedHand || mergedVoice || {},
+    parsedVoice || {},
     {
-      missingFields: processed.missingFields || (reviewResult && reviewResult.missingFields) || [],
-      followUpQuestions: processed.followUpQuestions || (reviewResult && reviewResult.followUpQuestions) || [],
-      naturalLanguageSummary: processed.naturalLanguageSummary || (reviewResult && reviewResult.naturalLanguageSummary) || '',
+      missingFields: (reviewResult && reviewResult.missingFields) || (parsedVoice && parsedVoice.missingFields) || [],
+      followUpQuestions: (reviewResult && reviewResult.followUpQuestions) || (parsedVoice && parsedVoice.followUpQuestions) || [],
+      naturalLanguageSummary: (reviewResult && reviewResult.naturalLanguageSummary) || (parsedVoice && (parsedVoice.naturalLanguageSummary || parsedVoice.feedbackText || parsedVoice.noteSummary)) || '',
       aiReview: reviewResult && reviewResult.analysis || parsedVoice && parsedVoice.aiReview || null
     }
   )
-  const provider = String((reviewResult && reviewResult.provider) || (mergedVoice && mergedVoice.provider) || '').trim()
-  const hasVoiceContext = !!String(voiceNote || '').trim()
-  if (provider === 'poker-agent') {
-    ;[
-      'potSize',
-      'streetSummary',
-      'mindJourney',
-      'showdown',
-      'opponentName',
-      'villainPosition',
-      'heroPosition',
-      'effectiveStack'
-    ].forEach(key => {
-      if ((!hasVoiceContext || isBlankVoiceValue(extracted[key])) && !isBlankVoiceValue(mergedVoice[key])) {
-        extracted[key] = mergedVoice[key]
-      }
-    })
-    if (hasVoiceContext) {
-      const mergedBoard = Object.assign({}, extracted.board || {})
-      const providerBoard = mergedVoice.board || {}
-      ;['flop', 'turn', 'river'].forEach(key => {
-        if (isBlankVoiceValue(mergedBoard[key]) && !isBlankVoiceValue(providerBoard[key])) {
-          mergedBoard[key] = providerBoard[key]
-        }
-      })
-      extracted.board = mergedBoard
-      extracted.streetInputs = mergeBlankStreetInputs(extracted.streetInputs, mergedVoice.streetInputs)
-    } else {
-      extracted.board = Object.assign({}, extracted.board || {}, mergedVoice.board || {})
-      extracted.streetInputs = mergeBlankStreetInputs(mergedVoice.streetInputs, extracted.streetInputs)
-    }
-  }
-  extracted.showdown = cleanVoiceShowdownValue(extracted.showdown)
-  extracted.tags = reviewTags.normalizeReviewTags([]
-    .concat(Array.isArray(extracted.tags) ? extracted.tags : sanitizeStringArray(extracted.tags))
-    .concat(agentInferredTags)
-    .concat(inferReviewTagsFromReview(extracted, extracted.aiReview))
-  )
-  return preserveLockedQuickEntryFields(extracted, detailHand)
+  extracted.opponentCards = resolveOpponentCardsValue(getVoiceOpponentCards(extracted), extracted)
+  extracted.opponentCardsSource = extracted.opponentCardsSource || ''
+  extracted.showdown = extracted.opponentCards
+  extracted.tags = reviewTags.normalizeReviewTags(extracted.tags).slice(0, 3)
+  return applySessionVoiceDefaults(preserveLockedQuickEntryFields(extracted, detailHand), detailHand, detailSession)
 }
 
 function buildStoredVoiceExtract(parsedVoice) {
@@ -895,48 +1349,19 @@ function buildStoredVoiceExtract(parsedVoice) {
       parsedVoice.streetInputs || {}
     ),
     streetSummary: parsedVoice.streetSummary || '',
-    showdown: cleanVoiceShowdownValue(parsedVoice.showdown),
+    opponentCards: resolveOpponentCardsValue(getVoiceOpponentCards(parsedVoice), parsedVoice),
+    opponentCardsSource: parsedVoice.opponentCardsSource || '',
+    showdown: resolveOpponentCardsValue(getVoiceOpponentCards(parsedVoice), parsedVoice),
     mindJourney: parsedVoice.mindJourney || '',
-    tags: reviewTags.normalizeReviewTags(parsedVoice.tags),
+    tags: reviewTags.normalizeReviewTags(parsedVoice.tags).slice(0, 3),
     missingFields: sanitizeStringArray(parsedVoice.missingFields),
     followUpQuestions: sanitizeStringArray(parsedVoice.followUpQuestions),
+    terminalStreet: parsedVoice.terminalStreet || '',
+    allInStreet: parsedVoice.allInStreet || '',
     naturalLanguageSummary: parsedVoice.feedbackText || parsedVoice.naturalLanguageSummary || '',
     aiReview: parsedVoice.aiReview || null,
     provider: parsedVoice.providerText || parsedVoice.provider || ''
   }
-}
-
-function buildLocalReviewFallback(detailHand, detailSession, voiceNote) {
-  const settings = dataService.getAppSettings()
-  const normalizedNote = aiNormalizer.applyUserTerms(voiceNote, settings.voiceTerms).text
-  const parsed = aiNormalizer.postProcessReviewResult(
-    voiceParser.parseVoiceText(normalizedNote),
-    normalizedNote
-  )
-  const sessionSmallBlind = detailSession && detailSession.smallBlind
-  const sessionBigBlind = detailSession && detailSession.bigBlind
-  return buildParsedVoicePreview(
-    Object.assign(
-      {
-        playedDate: (detailHand && detailHand.playedDate) || (detailSession && detailSession.date) || '',
-        stakeLevel:
-          (detailHand && detailHand.stakeLevel) ||
-          ((sessionSmallBlind || sessionBigBlind)
-            ? String(sessionSmallBlind || 0) + '/' + String(sessionBigBlind || 0)
-            : ''),
-        opponentType: (detailHand && detailHand.opponentType) || '',
-        villainPosition: (detailHand && detailHand.villainPosition) || '',
-        streetInputs: (detailHand && detailHand.streetInputs) || {}
-      },
-      parsed
-    ),
-    {
-      provider: 'local',
-      naturalLanguageSummary: parsed.noteSummary || normalizedNote,
-      missingFields: parsed.missingFields || [],
-      followUpQuestions: parsed.followUpQuestions || []
-    }
-  )
 }
 
 function hasUsefulVoiceFields(parsedVoice) {
@@ -961,34 +1386,56 @@ function hasUsefulVoiceFields(parsedVoice) {
 }
 
 function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote, options) {
+  detailHand = ledgerDerived.withLedgerDerivedFields(detailHand)
   const settings = dataService.getAppSettings()
   const profile = dataService.getCurrentProfile ? dataService.getCurrentProfile() : {}
   const config = options || {}
-  const bigBlind = handDetailFields.getBigBlindFromLevel(
-    detailHand && detailHand.stakeLevel,
-    detailSession
-  )
-  const hasStraddle = !!(detailHand && detailHand.hasStraddle)
-  const straddleAmount = hasStraddle ? bigBlind * 2 : 0
-  return {
-    mode: config.mode || 'extract',
-    transcript: voiceNote,
-    userId: (profile && profile.playerId) || '',
-    playerId: (profile && profile.playerId) || '',
-    userTerms: settings.voiceTerms || [],
-    corrections: config.corrections || null,
-    hand: {
-      _id: (detailHand && detailHand._id) || '',
-      playerCount: Number(detailHand && detailHand.playerCount) || 0,
-      playedDate: (detailHand && detailHand.playedDate) || '',
-      stakeLevel: (detailHand && detailHand.stakeLevel) || '',
-      hasStraddle,
-      straddleAmount,
-      heroPosition: (detailHand && detailHand.heroPosition) || '',
-      heroCardsInput: (detailHand && detailHand.heroCardsInput) || '',
+  const mode = config.mode || 'extract'
+  const hasStraddle = getDefaultHasStraddle(detailHand, detailSession)
+  const straddleAmount = getDefaultStraddleAmount(detailHand, detailSession)
+  const handContext = {
+    _id: (detailHand && detailHand._id) || '',
+    playerCount: getDefaultPlayerCount(detailHand, detailSession),
+    playedDate: (detailHand && detailHand.playedDate) || '',
+    stakeLevel: (detailHand && detailHand.stakeLevel) || '',
+    hasStraddle,
+    straddleAmount,
+    heroPosition: (detailHand && detailHand.heroPosition) || '',
+    heroCardsInput: (detailHand && detailHand.heroCardsInput) || '',
+    effectiveStack: 0,
+    potSize: 0,
+    currentProfit: (detailHand && detailHand.currentProfit) || 0,
+    opponentType: '',
+    opponentName: '',
+    villainPosition: '',
+    villainType: '',
+    board: { flop: '', turn: '', river: '' },
+    streetInputs: {},
+    streetSummary: '',
+    notes: (detailHand && detailHand.notes) || '',
+    heroQuestion: (detailHand && detailHand.heroQuestion) || '',
+    showdown: '',
+    isAllIn: false,
+    allInStreet: '',
+    terminalStreet: '',
+    handEndedStreet: '',
+    postAllInRunoutOnly: false,
+    analysisFocus: '',
+    allInPot: 0,
+    heroInvested: 0,
+    rawAllInPot: 0,
+    rawHeroInvested: 0,
+    heroEquityPct: '',
+    allInEv: '',
+    allInEvStatus: '',
+    allInEvSource: '',
+    analysisInstruction: '',
+    voiceNote: (detailHand && detailHand.voiceNote) || ''
+  }
+  if (mode !== 'extract') {
+    Object.assign(handContext, {
       effectiveStack: (detailHand && detailHand.effectiveStack) || 0,
       potSize: (detailHand && detailHand.potSize) || 0,
-      currentProfit: (detailHand && detailHand.currentProfit) || 0,
       opponentType: (detailHand && detailHand.opponentType) || '',
       opponentName: (detailHand && detailHand.opponentName) || '',
       villainPosition: (detailHand && detailHand.villainPosition) || '',
@@ -996,11 +1443,34 @@ function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote,
       board: (detailHand && detailHand.board) || { flop: '', turn: '', river: '' },
       streetInputs: (detailHand && detailHand.streetInputs) || {},
       streetSummary: (detailHand && detailHand.streetSummary) || '',
-      notes: (detailHand && detailHand.notes) || '',
-      heroQuestion: (detailHand && detailHand.heroQuestion) || '',
       showdown: (detailHand && detailHand.showdown) || '',
-      voiceNote: (detailHand && detailHand.voiceNote) || ''
-    },
+      isAllIn: !!(detailHand && detailHand.isAllIn),
+      allInStreet: (detailHand && detailHand.allInStreet) || '',
+      terminalStreet: (detailHand && detailHand.terminalStreet) || '',
+      handEndedStreet: (detailHand && detailHand.handEndedStreet) || '',
+      postAllInRunoutOnly: !!(detailHand && detailHand.postAllInRunoutOnly),
+      analysisFocus: (detailHand && detailHand.analysisFocus) || '',
+      allInPot: (detailHand && detailHand.allInPot) || 0,
+      heroInvested: (detailHand && detailHand.heroInvested) || 0,
+      rawAllInPot: (detailHand && detailHand.rawAllInPot) || 0,
+      rawHeroInvested: (detailHand && detailHand.rawHeroInvested) || 0,
+      heroEquityPct: (detailHand && detailHand.heroEquityPct) || '',
+      allInEv: (detailHand && detailHand.allInEv) || '',
+      allInEvStatus: (detailHand && detailHand.allInEvStatus) || '',
+      allInEvSource: (detailHand && detailHand.allInEvSource) || ''
+    })
+    if (handContext.isAllIn && handContext.allInStreet && handContext.allInStreet !== 'river') {
+      handContext.analysisInstruction = '本手牌在 ' + handContext.allInStreet + ' 已经全下并终止后续决策；只分析全下前和全下决策本身，不要输出 flop/turn/river 后续行动建议。'
+    }
+  }
+  return {
+    mode,
+    transcript: voiceNote,
+    userId: (profile && profile.playerId) || '',
+    playerId: (profile && profile.playerId) || '',
+    userTerms: settings.voiceTerms || [],
+    corrections: config.corrections || null,
+    hand: handContext,
     session: detailSession
       ? {
           title: detailSession.title || '',
@@ -1008,7 +1478,10 @@ function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote,
           date: detailSession.date || String(detailSession.startTime || '').split(' ')[0] || '',
           venue: detailSession.venue || '',
           smallBlind: detailSession.smallBlind || 0,
-          bigBlind: detailSession.bigBlind || 0
+          bigBlind: detailSession.bigBlind || 0,
+          tableSize: Number(detailSession.tableSize) || Number(detailSession.playerCount) || 0,
+          hasStraddle: !!detailSession.hasStraddle,
+          straddleAmount: detailSession.hasStraddle ? straddleAmount : 0
         }
       : null,
     actions: (detailActions || []).map(item => ({
@@ -1021,15 +1494,6 @@ function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote,
   }
 }
 
-function learnTermsFromVoiceNote(voiceNote) {
-  const settings = dataService.getAppSettings()
-  const learned = aiNormalizer.extractExplicitTermDefinitions(voiceNote)
-  if (!learned.length) return []
-  const merged = aiNormalizer.mergeUserTerms(settings.voiceTerms || [], learned)
-  dataService.updateSettings({ voiceTerms: merged })
-  return learned
-}
-
 function buildAgentCorrectionPayload(detailHand, parsedVoice, voiceNote) {
   return {
     source: 'miniapp_voice_review_confirm',
@@ -1040,19 +1504,64 @@ function buildAgentCorrectionPayload(detailHand, parsedVoice, voiceNote) {
   }
 }
 
+function buildParsedVoiceCorrectionNote(parsedVoice) {
+  const source = parsedVoice || {}
+  const parts = []
+  const add = function (label, value) {
+    if (value === undefined || value === null) return
+    const text = typeof value === 'string' ? value.trim() : String(value)
+    if (!text) return
+    parts.push(label + ':' + text)
+  }
+  add('日期', source.playedDate)
+  add('级别', source.stakeLevel)
+  add('人数', source.playerCount)
+  if (Object.prototype.hasOwnProperty.call(source, 'hasStraddle')) {
+    parts.push('Straddle:' + (source.hasStraddle ? '是' : '否'))
+  }
+  add('Hero位置', source.heroPosition)
+  add('对手位置', source.villainPosition)
+  add('Hero手牌', source.heroCardsInput)
+  add('当前底池', source.potSize)
+  add('本手输赢', source.currentProfit)
+  add('对手类型', source.opponentType)
+  add('对手昵称', source.opponentName)
+  add('对手手牌', source.showdown || source.opponentCards)
+  const board = source.board || {}
+  add('翻牌', board.flop)
+  add('转牌', board.turn)
+  add('河牌', board.river)
+  const streets = source.streetInputs || {}
+  ;['preflop', 'flop', 'turn', 'river'].forEach(function (street) {
+    const item = streets[street] || {}
+    add(street + '底池', item.pot)
+    add(street + '行动', item.actionLine)
+  })
+  return parts.length ? '用户已确认/补填字段：' + parts.join('；') : ''
+}
+
+function appendVoiceCorrectionNote(voiceNote, correctionNote) {
+  const base = String(voiceNote || '').trim()
+  const correction = String(correctionNote || '').trim()
+  if (!correction) return base
+  return base ? base + '\n' + correction : correction
+}
+
 function buildVoicePatch(detailHand, parsedVoice, voiceNote) {
   const current = detailHand || {}
   const lockedParsedVoice = preserveLockedQuickEntryFields(Object.assign({}, parsedVoice, {
-    showdown: cleanVoiceShowdownValue(parsedVoice && parsedVoice.showdown)
+    opponentCards: resolveOpponentCardsValue(getVoiceOpponentCards(parsedVoice), parsedVoice),
+    opponentCardsSource: (parsedVoice && parsedVoice.opponentCardsSource) || '',
+    showdown: resolveOpponentCardsValue(getVoiceOpponentCards(parsedVoice), parsedVoice)
   }), detailHand)
+  const opponentCards = resolveOpponentCardsValue(getVoiceOpponentCards(lockedParsedVoice), lockedParsedVoice)
   const parsedBoard = lockedParsedVoice.board || {}
   const currentBoard = current.board || {}
   const baseNotes = stripAutoVoiceReviewNotes(current.notes)
-  const tags = reviewTags.normalizeReviewTags([]
-    .concat(Array.isArray(current.tags) ? current.tags : [])
-    .concat(sanitizeStringArray(lockedParsedVoice.tags))
-    .concat(inferReviewTagsFromReview(lockedParsedVoice, lockedParsedVoice.aiReview || current.aiReview))
-  )
+  const parsedTags = reviewTags.normalizeReviewTags(lockedParsedVoice.tags).slice(0, 3)
+  const tags = parsedTags.length
+    ? parsedTags
+    : reviewTags.normalizeReviewTags(current.tags).slice(0, 3)
   const streetInputs = mergeBlankStreetInputs(lockedParsedVoice.streetInputs, current.streetInputs)
   const hasParsedStraddle = Object.prototype.hasOwnProperty.call(lockedParsedVoice, 'hasStraddle')
 
@@ -1081,7 +1590,9 @@ function buildVoicePatch(detailHand, parsedVoice, voiceNote) {
     },
     streetInputs,
     streetSummary: lockedParsedVoice.streetSummary || current.streetSummary || '',
-    showdown: cleanVoiceShowdownValue(lockedParsedVoice.showdown) || current.showdown || '',
+    opponentCards,
+    opponentCardsSource: lockedParsedVoice.opponentCardsSource || current.opponentCardsSource || '',
+    showdown: opponentCards,
     tags,
     mindJourney: lockedParsedVoice.mindJourney || current.mindJourney || '',
     voiceNote: voiceNote || current.voiceNote || '',
@@ -1091,6 +1602,36 @@ function buildVoicePatch(detailHand, parsedVoice, voiceNote) {
     reviewStatus: 'extracted',
     detailBackfilled: true,
     notes: baseNotes || ''
+  }
+}
+
+function extractAllInEvPatch(result) {
+  const data = result && (result.data || result.raw && result.raw.data || result)
+  if (!data || data.allInEvStatus !== 'calculated') return null
+  return {
+    allInEv: Number(data.allInEv) || 0,
+    allInEvStatus: data.allInEvStatus || '',
+    allInEvEligible: data.allInEvEligible === true,
+    allInEvSource: data.allInEvSource || '',
+    allInEvFormula: data.allInEvFormula || '',
+    allInEvLuckDelta: Number(data.allInEvLuckDelta) || 0,
+    heroEquityPct: Number(data.heroEquityPct) || 0
+  }
+}
+
+async function maybeAttachVoiceAllInEv(voicePatch, detailSession) {
+  const input = buildVoiceAllInEvInput(voicePatch)
+  if (!input) return voicePatch
+  try {
+    const result = await aiService.calculateAllInEv(input, {
+      session: detailSession || {},
+      hand: input
+    })
+    const evPatch = extractAllInEvPatch(result)
+    return evPatch ? Object.assign({}, voicePatch, evPatch) : voicePatch
+  } catch (error) {
+    console.warn('all-in EV calculation failed: ' + (error && (error.errMsg || error.message) || String(error)))
+    return voicePatch
   }
 }
 
@@ -1201,6 +1742,18 @@ function buildAgentStreetStatusClass(status) {
   return 'neutral'
 }
 
+function buildAgentStreetBadge(statusClass) {
+  if (statusClass === 'danger') return { text: '错误', className: 'error' }
+  if (statusClass === 'warn') return { text: '优化', className: 'optimize' }
+  return { text: '', className: '' }
+}
+
+function getAdviceHighlightTypeForStreetBadge(className) {
+  if (className === 'error') return 'danger'
+  if (className === 'optimize') return 'warn'
+  return ''
+}
+
 function sanitizeAgentStreetBreakdown(list) {
   return (Array.isArray(list) ? list : [])
     .map(function (item, index) {
@@ -1215,15 +1768,178 @@ function sanitizeAgentStreetBreakdown(list) {
       const text = cleanAgentAdviceText(source.text || source.summary || '')
       const nextPoints = points.length ? points : (text ? [text] : [])
       if (!street && !status && !nextPoints.length) return null
+      const statusClass = buildAgentStreetStatusClass(status)
+      const badge = buildAgentStreetBadge(statusClass)
+      const highlightType = getAdviceHighlightTypeForStreetBadge(badge.className)
       return {
         key: String(index),
         street,
+        streetLabel: String(street || '').trim().toUpperCase(),
+        streetDisplay: String(street || '').trim().toUpperCase() || street,
         status,
-        statusClass: buildAgentStreetStatusClass(status),
-        points: nextPoints
+        statusClass,
+        displayStatusText: badge.text,
+        displayStatusClass: badge.className,
+        rowClass: badge.className ? 'is-' + badge.className : '',
+        hasDisplayStatus: !!badge.text,
+        points: nextPoints,
+        pointItems: nextPoints.map(function (point, pointIndex) {
+          return {
+            key: String(pointIndex),
+            text: point,
+            segments: buildAdviceHighlightSegments(point, highlightType)
+          }
+        })
       }
     })
     .filter(Boolean)
+}
+
+function normalizeAdviceStreetName(value) {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text) return ''
+  if (text === 'pre' || text === 'pf' || text === 'preflop' || text === 'pre-flop') return 'preflop'
+  if (text === 'flop' || text === 'turn' || text === 'river') return text
+  return text
+}
+
+function terminalStreetIndex(hand) {
+  const street = normalizeAdviceStreetName(hand && (hand.terminalStreet || hand.handEndedStreet || hand.allInStreet))
+  return ['preflop', 'flop', 'turn', 'river'].indexOf(street)
+}
+
+function filterStreetBreakdownByTerminalStreet(streetBreakdown, hand) {
+  const terminalIndex = terminalStreetIndex(hand)
+  if (terminalIndex < 0 || !(hand && hand.postAllInRunoutOnly)) return streetBreakdown
+  return (streetBreakdown || []).filter(item => {
+    const index = ['preflop', 'flop', 'turn', 'river'].indexOf(normalizeAdviceStreetName(item.street || item.streetLabel || item.streetDisplay))
+    return index < 0 || index <= terminalIndex
+  })
+}
+
+function buildAiAdviceHeroFact(streetBreakdown) {
+  const streets = Array.isArray(streetBreakdown) ? streetBreakdown : []
+  for (let i = 0; i < streets.length; i += 1) {
+    const points = streets[i].points || []
+    for (let j = 0; j < points.length; j += 1) {
+      const text = String(points[j] || '').trim()
+      const match = text.match(/^Hero\s*牌力[:：]\s*(.+)$/i)
+      if (match && match[1]) {
+        return {
+          street: streets[i].streetLabel || streets[i].street || '',
+          label: '牌力校验' + (streets[i].streetLabel || streets[i].street ? ' · ' + (streets[i].streetLabel || streets[i].street) : ''),
+          text: match[1].trim()
+        }
+      }
+    }
+  }
+  return { street: '', label: '牌力校验', text: '' }
+}
+
+function buildAiAdviceSpotMeta(hand) {
+  const source = hand || {}
+  const board = source.board || {}
+  const runout = [board.flop, board.turn, board.river]
+    .map(function (item) { return cleanAgentAdviceText(item || '') })
+    .filter(Boolean)
+    .join(' / ')
+  const effectiveStack = Number(source.effectiveStack)
+  return {
+    heroHandText: cleanAgentAdviceText(source.heroCardsInput || '-'),
+    positionText: cleanAgentAdviceText(source.heroPosition || '-'),
+    boardText: runout || '-',
+    turnText: cleanAgentAdviceText(board.turn || '-'),
+    effectiveStackText: Number.isFinite(effectiveStack) && effectiveStack > 0 ? String(effectiveStack) : '-'
+  }
+}
+
+function buildAiAdviceInsightCard(key, label, type, indexText, list) {
+  const points = sanitizeAgentAdviceList(list)
+  return points.length ? {
+    key,
+    label,
+    type,
+    indexText,
+    text: points[0],
+    segments: buildAdviceHighlightSegments(points[0], type),
+    points
+  } : null
+}
+
+function uniqueNonEmptyStrings(list) {
+  const seen = {}
+  return (list || [])
+    .map(function (item) { return String(item || '').trim() })
+    .filter(function (item) {
+      if (!item || seen[item]) return false
+      seen[item] = true
+      return true
+    })
+}
+
+function collectAdviceHighlightPhrases(text, type) {
+  const source = String(text || '')
+  const phrases = []
+  if (type === 'danger') {
+    source.replace(/(?:\u9519\u8bef\u6838\u5fc3|\u4e8b\u5b9e\u9519\u8bef|\u9519\u8bef)[:\uff1a][^\u3002\uff1b;!?\uff01\uff1f]{2,42}/ig, function (match) {
+      phrases.push(match)
+      return match
+    })
+    source.replace(/(?:\u4e0d\u80fd\u628a|\u4e0d\u5e94|Hero\s*\u4e0d\u662f|flop\s*\u4e0d\u662f)[^\uff0c,;\uff1b\u3002.!?\uff01\uff1f]{2,28}/ig, function (match) {
+      phrases.push(match)
+      return match
+    })
+    source.replace(/[^\uff0c,;\uff1b\u3002.!?\uff01\uff1f]{0,10}(?:set|\u5361\u987a|\u8fc7\u4e8e\u88ab\u52a8|\u5931\u8861|\u514d\u8d39|\u592a\u6e7f|\u592a\u7d27|\u592a\u5f31|-EV|\u8d1fEV|\u8bc8\u552c|\u65e0\u540e\u7eed\u51fa\u724c)[^\uff0c,;\uff1b\u3002.!?\uff01\uff1f]{0,16}/ig, function (match) {
+      phrases.push(match)
+      return match
+    })
+  } else if (type === 'warn') {
+    source.replace(/(?:\u66f4\u4f18\u9009\u62e9\u662f|\u66ff\u4ee3\u65b9\u6848|\u9700\u660e\u786e\u8ba1\u5212|\u9700\u8981\u660e\u786e\u8ba1\u5212|\u5e94|\u5e94\u8be5|\u53ef\u4ee5|\u9700\u8981)[^\uff0c,;\uff1b\u3002.!?\uff01\uff1f]{2,36}/ig, function (match) {
+      phrases.push(match)
+      return match
+    })
+    source.replace(/[^\uff0c,;\uff1b\u3002.!?\uff01\uff1f]{0,8}(?:3bet|check\s*behind|\u9694\u79bb|\u52a0\u6ce8\u5c3a\u5ea6|river\s*\u8ba1\u5212|\u4ef7\u503c|\u4fdd\u62a4|\u65bd\u538b|\u53cd\u63a8|\u4e0b\u6ce8\u610f\u56fe|\u5e95\u6c60\u63a7\u5236)[^\uff0c,;\uff1b\u3002.!?\uff01\uff1f]{0,14}/ig, function (match) {
+      phrases.push(match)
+      return match
+    })
+  }
+  return uniqueNonEmptyStrings(phrases)
+    .sort(function (a, b) { return b.length - a.length })
+    .slice(0, 3)
+}
+
+function buildAdviceHighlightSegments(text, type) {
+  const source = String(text || '')
+  const phrases = collectAdviceHighlightPhrases(source, type)
+  if (!source || !phrases.length) return [{ text: source, highlight: false }]
+  const ranges = []
+  phrases.forEach(function (phrase) {
+    const start = source.indexOf(phrase)
+    if (start < 0) return
+    const end = start + phrase.length
+    const overlaps = ranges.some(function (range) {
+      return start < range.end && end > range.start
+    })
+    if (!overlaps) ranges.push({ start, end })
+  })
+  if (!ranges.length) return [{ text: source, highlight: false }]
+  ranges.sort(function (a, b) { return a.start - b.start })
+  const segments = []
+  let cursor = 0
+  ranges.forEach(function (range) {
+    if (range.start > cursor) {
+      segments.push({ text: source.slice(cursor, range.start), highlight: false })
+    }
+    segments.push({ text: source.slice(range.start, range.end), highlight: true })
+    cursor = range.end
+  })
+  if (cursor < source.length) segments.push({ text: source.slice(cursor), highlight: false })
+  return segments
+}
+
+function buildAiAdvicePointSection(key, label, type, indexText, list) {
+  const points = sanitizeAgentAdviceList(list)
+  return points.length ? { key, label, type, indexText, points } : null
 }
 
 function compactAgentAdviceText(value, maxLength) {
@@ -1231,15 +1947,143 @@ function compactAgentAdviceText(value, maxLength) {
   const limit = Number(maxLength) || 120
   if (!source) return ''
   const firstPart = source
-    .split(/[\n。！？!?]/)
+    .split(/[\n。！？]/)
     .map(function (item) { return item.trim() })
     .filter(Boolean)[0] || source
   const compact = firstPart.length <= 12 ? source : firstPart
   return compact.length > limit ? compact.slice(0, limit) + '...' : compact
 }
 
-function buildAiReviewView(aiReview) {
+function buildAiReviewFingerprint(hand) {
+  const source = hand || {}
+  const board = source.board || {}
+  const streetInputs = source.streetInputs || {}
+  return [
+    source._id || '',
+    source.stakeLevel || '',
+    source.heroPosition || '',
+    source.heroCardsInput || '',
+    source.effectiveStack || '',
+    source.potSize || '',
+    board.flop || '',
+    board.turn || '',
+    board.river || '',
+    ['preflop', 'flop', 'turn', 'river'].map(function (street) {
+      const item = streetInputs[street] || {}
+      return [street, item.pot || '', item.actionLine || ''].join('=')
+    }).join('|')
+  ].map(function (item) {
+    return String(item || '').trim().toLowerCase()
+  }).join('||')
+}
+
+function attachAiReviewMeta(aiReview, hand) {
   if (!aiReview) return null
+  return Object.assign({}, aiReview, {
+    sourceHandId: hand && hand._id || '',
+    sourceFingerprint: buildAiReviewFingerprint(hand)
+  })
+}
+
+function collectAiReviewText(value) {
+  if (!value) return ''
+  if (typeof value === 'string' || typeof value === 'number') return String(value)
+  if (Array.isArray(value)) return value.map(collectAiReviewText).join(' ')
+  if (typeof value === 'object') {
+    return Object.keys(value)
+      .filter(function (key) { return !/^source(?:HandId|Fingerprint)$/i.test(key) })
+      .map(function (key) { return collectAiReviewText(value[key]) })
+      .join(' ')
+  }
+  return ''
+}
+
+function normalizeAdviceCardToken(rank, suit) {
+  const suitMap = {
+    s: 's',
+    h: 'h',
+    d: 'd',
+    c: 'c',
+    '\u2660': 's',
+    '\u2665': 'h',
+    '\u2666': 'd',
+    '\u2663': 'c'
+  }
+  const normalizedSuit = suitMap[String(suit || '').toLowerCase()] || ''
+  return String(rank || '').toUpperCase() + normalizedSuit
+}
+
+function extractAdviceCardTokens(text) {
+  const tokens = []
+  String(text || '').replace(/([2-9TJQKA])([shdc\u2660\u2665\u2666\u2663])/ig, function (_, rank, suit) {
+    tokens.push(normalizeAdviceCardToken(rank, suit))
+    return _
+  })
+  return tokens
+}
+
+function aiReviewTextBoardConflictsHand(aiReview, hand) {
+  const board = hand && hand.board || {}
+  const flop = cardUi.parseCardsInput(board.flop, 3)
+    .map(function (card) { return card.rank + card.suit })
+  if (flop.length !== 3) return false
+  const text = collectAiReviewText(aiReview)
+  if (!/(牌面|flop|turn|river|board)/i.test(text)) return false
+  const tokens = extractAdviceCardTokens(text)
+  if (tokens.length < 3) return false
+  const mentionedFlop = tokens.slice(0, 3).join('')
+  return mentionedFlop && mentionedFlop !== flop.join('')
+}
+
+function aiReviewMatchesHand(aiReview, hand) {
+  if (!aiReview || !hand) return !!aiReview
+  const sourceHandId = String(aiReview.sourceHandId || '').trim()
+  if (sourceHandId && hand._id) return sourceHandId === String(hand._id)
+  const sourceFingerprint = String(aiReview.sourceFingerprint || '').trim()
+  if (sourceFingerprint && sourceFingerprint !== buildAiReviewFingerprint(hand)) return false
+  return true
+}
+
+function buildAiReviewMismatchError(hand, aiReview) {
+  const handId = String(hand && hand._id || '').trim()
+  const sourceHandId = String(aiReview && aiReview.sourceHandId || '').trim()
+  const parts = ['AI建议已生成，但和当前手牌字段不匹配，请重新生成。']
+  if (handId || sourceHandId) {
+    parts.push('handId=' + (handId || '-') + ', sourceHandId=' + (sourceHandId || '-'))
+  }
+  return parts.join('\n')
+}
+
+function buildAiAdviceErrorText(error) {
+  const raw = error && error.raw || {}
+  const candidates = [
+    error && error.aiReviewError,
+    error && error.debugError,
+    raw.aiReviewError,
+    raw.debugError,
+    raw.message,
+    raw.answer,
+    raw.data && raw.data.message,
+    raw.data && raw.data.error,
+    error && error.message,
+    error && error.errMsg,
+    error
+  ]
+  const message = candidates
+    .map(function (item) { return String(item || '').trim() })
+    .filter(Boolean)[0] || 'EV脑出问题啦，请稍后再重新生成AI建议。'
+  const meta = []
+  const code = String(error && error.code || raw.code || raw.errCode || '').trim()
+  const requestId = String(error && error.requestId || raw.requestId || '').trim()
+  if (code) meta.push('code=' + code)
+  if (requestId) meta.push('requestId=' + requestId)
+  return (meta.length ? message + '\n' + meta.join('\n') : message).slice(0, 900)
+}
+
+function buildAiReviewView(aiReview) {
+  const hand = arguments[1]
+  if (!aiReview) return null
+  if (!aiReviewMatchesHand(aiReview, hand)) return null
   const rawAnswer = cleanAgentAdviceText(aiReview.answer || aiReview.naturalLanguageSummary || '')
   const summary = cleanAgentAdviceText(aiReview.summary || '')
   const verdict = cleanAgentAdviceText(aiReview.verdict || '')
@@ -1250,9 +2094,21 @@ function buildAiReviewView(aiReview) {
   const exploitAdjustments = sanitizeAgentAdviceList(aiReview.exploitAdjustments || aiReview.exploit_adjustments)
   const trainingPlan = sanitizeAgentAdviceList(aiReview.trainingPlan || aiReview.training_plan)
   const leakTags = sanitizeAgentAdviceTags(aiReview.leakTags || aiReview.leak_tags)
-  const streetBreakdown = sanitizeAgentStreetBreakdown(aiReview.streetBreakdown || aiReview.street_breakdown)
+  const streetBreakdown = filterStreetBreakdownByTerminalStreet(
+    sanitizeAgentStreetBreakdown(aiReview.streetBreakdown || aiReview.street_breakdown),
+    hand
+  )
   const keyTakeaway = cleanAgentAdviceText(aiReview.keyTakeaway || aiReview.key_takeaway || aiReview.humanRule || aiReview.human_rule || '')
   const missingFields = sanitizeStringArray(aiReview.missingFields)
+  const heroFact = buildAiAdviceHeroFact(streetBreakdown)
+  const spotMeta = buildAiAdviceSpotMeta(hand)
+  const insightCards = [
+    buildAiAdviceInsightCard('mistake', '错误', 'danger', '01', clearMistakes.length ? clearMistakes : issues),
+    buildAiAdviceInsightCard('optimize', '优化', 'warn', '02', optimizations),
+    buildAiAdviceInsightCard('highlight', '精彩', 'good', '03', goodPoints)
+  ].filter(Boolean)
+  const exploitSection = buildAiAdvicePointSection('exploit', '剥削调整', 'info', '04', exploitAdjustments)
+  const trainingSection = buildAiAdvicePointSection('training', '训练计划', 'warn', '05', trainingPlan)
   const confidence = aiReview.confidence == null || aiReview.confidence === ''
     ? ''
     : String(aiReview.confidence)
@@ -1267,8 +2123,10 @@ function buildAiReviewView(aiReview) {
     exploitAdjustments.length
   )
   const answer = hasStructuredAdvice ? '' : compactAgentAdviceText(rawAnswer || summary, 120)
+  const provider = aiReview.provider || 'poker-agent'
   return {
-    provider: aiReview.provider || 'poker-agent',
+    provider,
+    providerDisplay: formatAiProviderDisplay(provider),
     answer,
     summary,
     verdict,
@@ -1280,6 +2138,15 @@ function buildAiReviewView(aiReview) {
     streetBreakdown,
     keyTakeaway,
     humanRule: keyTakeaway,
+    heroFact,
+    hasHeroFact: !!heroFact.text,
+    spotMeta,
+    insightCards,
+    hasInsightCards: insightCards.length > 0,
+    exploitSection,
+    hasExploitSection: !!exploitSection,
+    trainingSection,
+    hasTrainingSection: !!trainingSection,
     trainingPlan,
     leakTags: [],
     missingFields,
@@ -1300,12 +2167,38 @@ function buildAiReviewView(aiReview) {
   }
 }
 
+function formatAiProviderDisplay(provider) {
+  const value = String(provider || '').trim()
+  if (value === 'poker-agent') return 'EV脑'
+  if (value === 'openai') return 'OpenAI'
+  if (value === 'kimi') return 'Kimi'
+  if (value === 'local' || value === 'local-fallback') return '本地兜底'
+  return value || 'EV脑'
+}
+
 function stripAutoVoiceReviewNotes(value) {
   return String(value || '')
     .split(/\r?\n/)
     .map(item => item.trim())
-    .filter(item => item && !/^\[(?:\u8bed\u97f3\u590d\u76d8|璇煶澶嶇洏)\]/.test(item))
+    .filter(item => item && !/^\[(?:\u8bed\u97f3\u590d\u76d8|\u7487\uE145\u7162\u6FBE\u5D76\u6D3F)\]/.test(item))
     .join('\n')
+}
+
+function buildAllInEvDisplay(hand, chipUnit) {
+  if (!hand) return ''
+  const street = String(hand.allInStreet || hand.allInRound || hand.allInStage || hand.allInEvStreet || '').trim().toLowerCase()
+  const normalizedStreet = /^(pre|preflop|pre-flop|pf)$/.test(street) ? 'preflop' : street
+  const isPreRiverAllIn = normalizedStreet === 'preflop' || normalizedStreet === 'flop' || normalizedStreet === 'turn' ||
+    (!normalizedStreet && (hand.isAllIn === true || hand.allInEvEligible === true))
+  if (!isPreRiverAllIn) return ''
+  const raw = hand.allInEv !== undefined && hand.allInEv !== null
+    ? hand.allInEv
+    : (hand.allInEvProfit !== undefined && hand.allInEvProfit !== null
+      ? hand.allInEvProfit
+      : hand.allInEvAdjustedProfit)
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return ''
+  return display.formatAmount(value, chipUnit)
 }
 
 function buildDetailHandView(hand, chipUnit) {
@@ -1314,39 +2207,59 @@ function buildDetailHandView(hand, chipUnit) {
     mode: 'readonly',
     backfilled: !!hand.detailBackfilled,
     positions: dataService.getAppSettings().positions || [],
-    excludeRowKeys: ['heroCardsInput', 'streetSummary', 'mindJourney']
+    excludeRowKeys: ['heroCardsInput', 'streetSummary', 'mindJourney', 'tags']
   })
   const boardVisual = buildBoardVisual(hand.board)
   const streetItems = buildStreetItems(hand.streetInputs, hand.board)
   const resultBBDisplay = String(hand.resultBB || '').trim() || buildResultBbDisplay(hand)
-  const aiReviewView = buildAiReviewView(hand.aiReview)
-  const aiReviewStatus = hand.aiReviewStatus || (aiReviewView && aiReviewView.visible ? 'ready' : '')
-  const savedTags = reviewTags.normalizeReviewTags(hand.tags)
-  const displayInferredTags = inferReviewTagsFromReview(hand, hand.aiReview)
-  const normalizedTags = reviewTags.normalizeReviewTags([].concat(savedTags).concat(displayInferredTags))
+  const aiReviewView = buildAiReviewView(hand.aiReview, hand)
+  const aiReviewMismatch = !!(hand.aiReview && !aiReviewView && hand.aiReviewStatus === 'ready')
+  const aiReviewStatus = resolveAiReviewStatus(hand, aiReviewView)
+  const normalizedTags = reviewTags.normalizeReviewTags(hand.tags).slice(0, 3)
   const notesText = stripAutoVoiceReviewNotes(hand.notes)
+  const allInEvDisplay = buildAllInEvDisplay(hand, chipUnit)
   const detailRows = detailView.rows.map(item => {
     if (item.key === 'currentProfit') {
       return Object.assign({}, item, {
+        rowClass: '',
         displayValue: display.formatAmount(hand.currentProfit, chipUnit)
       })
     }
     if (item.key === 'playerCount') {
       return Object.assign({}, item, {
+        rowClass: '',
         displayValue: Number(hand.playerCount) > 0 ? String(Number(hand.playerCount)) : '-'
       })
     }
     if (item.key === 'villainType') {
       return Object.assign({}, item, {
+        rowClass: '',
         displayValue: hand.villainType || hand.opponentType || '-'
       })
     }
-    return item
+    if (item.key === 'showdown') {
+      const showdownValue = detailView.form.opponentCards || detailView.form.showdown || hand.opponentCards || hand.showdown || ''
+      const showdownCards = cardUi.parseOpponentCardsInput(showdownValue, {
+        board: hand.board,
+        heroCardsInput: hand.heroCardsInput
+      })
+      const displayValue = showdownCards.length === 2 ? cardsToInput(showdownCards) : ''
+      return Object.assign({}, item, {
+        rowClass: '',
+        opponentCardsVisual: showdownCards.length === 2 ? showdownCards : [],
+        displayValue: displayValue || '-'
+      })
+    }
+    return Object.assign({}, item, {
+      rowClass: item.key === 'heroQuestion' ? 'readonly-field-card-full' : ''
+    })
   })
   return Object.assign({}, hand, {
     currentProfitDisplay: display.formatAmount(hand.currentProfit, chipUnit),
     playerCountDisplayText: Number(hand.playerCount) > 0 ? String(Number(hand.playerCount)) : '',
     resultBBDisplay,
+    allInEvDisplay,
+    hasAllInEvDisplay: !!allInEvDisplay,
     actionLine: buildCompactStreetSummary(hand),
     boardVisual,
     detailRows,
@@ -1358,7 +2271,7 @@ function buildDetailHandView(hand, chipUnit) {
     opponentName: detailView.form.opponentName,
     showdown: detailView.form.showdown,
     streetItems,
-    tags: reviewTags.normalizeReviewTags([].concat(normalizedTags).concat(displayInferredTags)),
+    tags: normalizedTags,
     tagsText: normalizedTags.join(' · '),
     tagItems: normalizedTags.map(label => ({ label })),
     heroCardsVisual: cardUi.parseHeroCardsInput(hand.heroCardsInput),
@@ -1368,13 +2281,14 @@ function buildDetailHandView(hand, chipUnit) {
     aiReviewView,
     aiReviewStatus,
     aiReviewReady: !!(aiReviewView && aiReviewView.visible),
+    hasCompletedReview: hasCompletedReview(hand),
     aiReviewGenerating: aiReviewStatus === 'generating',
-    aiReviewFailed: aiReviewStatus === 'failed',
-    aiReviewErrorText: hand.aiReviewError || 'EV脑 \u6682\u65f6\u6ca1\u6709\u751f\u6210\u5efa\u8bae\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002',
+    aiReviewFailed: aiReviewStatus === 'failed' || aiReviewMismatch,
+    aiReviewErrorText: hand.aiReviewError || (aiReviewMismatch ? buildAiReviewMismatchError(hand, hand.aiReview) : 'EV脑暂时没有生成建议，请稍后再试'),
     villainTypeText: hand.villainType || hand.opponentType || '',
     boardHasCards: boardVisual.some(item => item.cards.length),
     hasStreetItems: streetItems.some(item => item.actionLine || item.pot),
-    hasReflectionContent: !!(normalizedTags.length || String(hand.showdown || '').trim() || notesText)
+    hasReflectionContent: !!(normalizedTags.length || notesText)
   })
 }
 
@@ -1410,7 +2324,9 @@ function hasCompletedReview(hand) {
 
 Page({
   data: {
+    agentChatReady: false,
     hands: [],
+    handRenderComplete: true,
     sessions: [],
     summary: {
       totalHands: 0,
@@ -1418,30 +2334,30 @@ Page({
     },
     chipUnit: 'BB',
     loading: false,
-    selectedSessionId: '',
+    selectedSessionStatus: '',
     filterInitialized: false,
     dateRange: 'all',
     startDate: '',
     endDate: '',
     resultFilter: 'all',
     tagFilter: 'all',
-    sortBy: 'dateDesc',
-    sessionOptions: [],
+    sortBy: 'updatedDesc',
+    sessionStatusOptions: buildSessionStatusOptions('finished'),
     dateFilterOptions: buildFilterOptions(DATE_FILTERS, 'all'),
     resultFilterOptions: buildFilterOptions(RESULT_FILTERS, 'all'),
     tagFilterOptions: reviewTags.getReviewTagOptions('all'),
-    sortOptions: buildFilterOptions(SORT_OPTIONS, 'dateDesc'),
-    sortControlOptions: buildSortControlOptions('dateDesc'),
+    sortOptions: buildFilterOptions(SORT_OPTIONS, 'updatedDesc'),
+    sortControlOptions: buildSortControlOptions('updatedDesc'),
     filterSummary: '\u6700\u65b0\u8bb0\u5f55',
     filterModalVisible: false,
-    defaultSessionId: '',
-    draftSelectedSessionId: '',
+    defaultSessionStatus: 'finished',
+    draftSessionStatus: 'finished',
     draftDateRange: 'all',
     draftStartDate: '',
     draftEndDate: '',
     draftResultFilter: 'all',
     draftTagFilter: 'all',
-    draftSessionOptions: [],
+    draftSessionStatusOptions: buildSessionStatusOptions('finished'),
     draftDateFilterOptions: buildFilterOptions(DATE_FILTERS, 'all'),
     draftResultFilterOptions: buildFilterOptions(RESULT_FILTERS, 'all'),
     draftTagFilterOptions: reviewTags.getReviewTagOptions('all'),
@@ -1450,16 +2366,26 @@ Page({
     detailHand: null,
     detailSession: null,
     detailActions: [],
+    detailExportVisible: false,
+    detailExportText: '',
     voicePanelVisible: false,
     voiceBusy: false,
     voiceRecording: false,
     voiceStatus: '',
     voiceNote: '',
+    voiceNoteHasText: false,
+    voiceNoteLength: 0,
     voiceCorrectionNote: '',
     parsedVoice: null,
     parsedVoiceSourceText: '',
     voiceNeedsRefresh: false,
+    voiceReviewRequestId: 0,
+    voiceProgressVisible: false,
+    voiceProgressPercent: 0,
+    voiceProgressStep: VOICE_PROGRESS_STEPS[0],
+    voiceProgressSteps: buildVoiceProgressSteps(0),
     voiceFocusField: '',
+    voiceStraddleMissingClass: '',
     blindPresets: [],
     positions: [],
     opponentTypes: [],
@@ -1483,11 +2409,26 @@ Page({
     voiceShowdownPickerHint: '',
     voiceShowdownPickerPreview: [],
     voiceShowdownPickerDeck: [],
+    replayVisible: false,
+    replayData: null,
+    aiAdviceSheetVisible: false,
+    aiAdviceSheetHand: null,
+    aiAdviceSheetView: null,
+    handCommentVisible: false,
+    handCommentHandId: '',
+    handCommentTitle: '',
+    handCommentDraft: '',
+    handCommentItems: [],
+    handCommentSaving: false,
+    reviewChoiceVisible: false,
+    reviewChoiceHandId: '',
     swipedHandId: '',
     touchStartX: 0,
     touchStartY: 0,
     touchActiveHandId: '',
     touchMoved: false,
+    onboardingGuideVisible: false,
+    onboardingGuideStep: null,
     voiceShortcutExamples: [
       {
         label: '标准口述',
@@ -1507,13 +2448,156 @@ Page({
       }
     ]
   },
-  onShow() {
+  async onShow() {
     tabBar.syncCustomTabBar('/pages/review-list/review-list')
-    this.refresh()
+    await this.refresh()
+    await this.consumePendingReviewEntry()
+    this.syncOnboardingGuide()
   },
+  onReady() {
+    setTimeout(() => {
+      if (!this.data.agentChatReady) {
+        this.setData({ agentChatReady: true })
+      }
+    }, 240)
+  },
+  onHide() {
+    this.clearProgressiveRenderTimer()
+  },
+  onUnload() {
+    this.clearProgressiveRenderTimer()
+  },
+
+  syncOnboardingGuide() {
+    if (dataService.refreshOnboardingGuideContext) dataService.refreshOnboardingGuideContext()
+    const step = onboardingGuide.getStepForRoute('pages/review-list/review-list')
+    this.setData({
+      onboardingGuideVisible: !!step,
+      onboardingGuideStep: step
+    })
+    this.ensureOnboardingReviewDemo(step)
+  },
+
+  async ensureOnboardingReviewDemo(step) {
+    if (!step || ['reviewEntry', 'reviewLedgerEntry', 'reviewVoice', 'reviewParse', 'reviewApply', 'reviewAdvice', 'reviewAdviceSheet', 'reviewReplay', 'reviewDelete'].indexOf(step.key) === -1) return
+    const hand = (this.data.hands || []).find(item => item && item.heroCardsInput === ONBOARDING_REVIEW_DEMO_HAND)
+    if (!hand) return
+    if (step.key === 'reviewEntry') {
+      this.setData({
+        detailVisible: false,
+        voicePanelVisible: false,
+        aiAdviceSheetVisible: false,
+        replayVisible: false
+      })
+      this.updateReviewSwipeState('')
+      return
+    }
+    if (step.key === 'reviewAdvice') {
+      this.setData({
+        detailVisible: false,
+        voicePanelVisible: false,
+        aiAdviceSheetVisible: false,
+        replayVisible: false,
+        touchMoved: false
+      })
+      this.updateReviewSwipeState('')
+      return
+    }
+    if (step.key === 'reviewAdviceSheet') {
+      this.setData({
+        detailVisible: false,
+        voicePanelVisible: false,
+        aiAdviceSheetVisible: true,
+        aiAdviceSheetHand: hand,
+        aiAdviceSheetView: hand.aiReviewView || buildAiReviewView(hand.aiReview, hand),
+        replayVisible: false,
+        touchMoved: false
+      })
+      this.updateReviewSwipeState('')
+      return
+    }
+    if (step.key === 'reviewReplay') {
+      const replayData = hand.replayData || handReplay.buildReplayView(hand)
+      this.setData({
+        detailVisible: false,
+        voicePanelVisible: false,
+        aiAdviceSheetVisible: false,
+        replayVisible: true,
+        replayData,
+        touchMoved: false
+      })
+      this.updateReviewSwipeState('')
+      return
+    }
+    if (step.key === 'reviewDelete') {
+      this.setData({
+        detailVisible: false,
+        voicePanelVisible: false,
+        aiAdviceSheetVisible: false,
+        replayVisible: false,
+        touchMoved: false
+      })
+      this.updateReviewSwipeState(hand._id)
+      return
+    }
+    if (!this.data.detailVisible || !this.data.detailHand || this.data.detailHand._id !== hand._id) {
+      this.setData({
+        detailVisible: true,
+        detailLoading: true,
+        detailHand: null,
+        detailSession: null,
+        detailActions: []
+      })
+      await this.loadHandDetail(hand._id)
+    }
+    if (step.key === 'reviewLedgerEntry') {
+      this.setData({
+        voicePanelVisible: false,
+        aiAdviceSheetVisible: false,
+        replayVisible: false,
+        reviewChoiceVisible: false
+      })
+      return
+    }
+    this.applyOnboardingVoiceDemo(step.key)
+  },
+
+  applyOnboardingVoiceDemo(stepKey) {
+    if (!this.data.detailHand) return
+    const voiceNote = '我在 CO 拿 QdQs，澳门 300/600，8人桌无 Straddle。翻前 open 1500，SB call。翻牌 Qd7d3c，我下注 2500，被 SB raise 到 7800 后 call。转牌 8d，我 check back。河牌 2s，SB bet 42000，我 call，摊牌输给 AdJd 同花。'
+    const parsedVoice = buildOnboardingParsedVoicePreview(this.data.detailHand, this.data.detailSession)
+    this.voiceNoteDraft = voiceNote
+    this.setData({
+      voicePanelVisible: stepKey !== 'reviewVoice',
+      voiceNote,
+      voiceNoteHasText: true,
+      voiceNoteLength: voiceNote.length,
+      parsedVoice: stepKey === 'reviewParse' || stepKey === 'reviewApply' ? parsedVoice : null,
+      parsedVoiceSourceText: voiceNote,
+      voiceNeedsRefresh: false,
+      voiceStatus: stepKey === 'reviewVoice'
+        ? '演示口述已填入：可以用手机 AI 输入法说出这段内容。'
+        : '演示解析字段已生成：检查 QdQs、位置、牌面、底池和 -42000 是否正确。'
+    })
+  },
+
+  onOnboardingNext() {
+    const result = onboardingGuide.advanceGuide()
+    if (result.done) {
+      this.syncOnboardingGuide()
+      return
+    }
+    if (!onboardingGuide.navigateToStep(result.step)) this.syncOnboardingGuide()
+  },
+
+  onOnboardingSkip() {
+    onboardingGuide.dismissGuide()
+    this.syncOnboardingGuide()
+  },
+
   getActiveFilters() {
     return {
-      sessionId: this.data.selectedSessionId,
+      sessionStatus: this.data.selectedSessionStatus,
       dateRange: this.data.dateRange,
       startDate: this.data.startDate,
       endDate: this.data.endDate,
@@ -1524,7 +2608,7 @@ Page({
   },
   getDraftFilters() {
     return {
-      sessionId: this.data.draftSelectedSessionId,
+      sessionStatus: this.data.draftSessionStatus,
       dateRange: this.data.draftDateRange,
       startDate: this.data.draftStartDate,
       endDate: this.data.draftEndDate,
@@ -1549,28 +2633,64 @@ Page({
       draftDateFilterOptions: buildFilterOptions(DATE_FILTERS, next.dateRange),
       draftResultFilterOptions: buildFilterOptions(RESULT_FILTERS, next.resultFilter),
       draftTagFilterOptions: reviewTags.getReviewTagOptions(next.tagFilter),
-      draftSessionOptions: buildSessionOptions(this.data.sessions, next.sessionId)
+      draftSessionStatusOptions: buildSessionStatusOptions(next.sessionStatus)
     }))
   },
+  clearProgressiveRenderTimer() {
+    if (this.reviewRenderTimer) {
+      clearTimeout(this.reviewRenderTimer)
+      this.reviewRenderTimer = null
+    }
+  },
+  scheduleProgressiveHandRender(rawHands, chipUnit, refreshToken, startIndex) {
+    this.clearProgressiveRenderTimer()
+    const list = Array.isArray(rawHands) ? rawHands : []
+    const nextIndex = Number(startIndex) || 0
+    if (nextIndex >= list.length) {
+      if (this.reviewRefreshToken === refreshToken && !this.data.handRenderComplete) {
+        this.setData({ handRenderComplete: true })
+      }
+      return
+    }
+    this.reviewRenderTimer = setTimeout(() => {
+      if (this.reviewRefreshToken !== refreshToken) return
+      const endIndex = Math.min(nextIndex + REVIEW_RENDER_CHUNK_SIZE, list.length)
+      const nextHands = (this.data.hands || []).concat(
+        buildReviewListHandViews(list.slice(nextIndex, endIndex), chipUnit, this.data.swipedHandId)
+      )
+      this.setData({
+        hands: nextHands,
+        handRenderComplete: endIndex >= list.length
+      }, () => {
+        this.scheduleProgressiveHandRender(list, chipUnit, refreshToken, endIndex)
+      })
+    }, 16)
+  },
   async refresh() {
+    const refreshToken = Date.now() + '_' + Math.floor(Math.random() * 1000000)
+    this.reviewRefreshToken = refreshToken
+    this.clearProgressiveRenderTimer()
     this.setData({ loading: true })
     const settings = dataService.getAppSettings()
     const chipUnit = settings.chipUnit
-    const sessionData = await dataService.getSessionListData()
+    const sessionData = await dataService.getSessionListData({ includeSummary: false })
     const sessions = sessionData.sessions || []
     const pendingFilters = readPendingFilters()
     let nextFilters = this.getActiveFilters()
-    const activeSession = sessions.find(item => item.status === 'active')
-    const defaultSessionId = activeSession ? activeSession._id : ''
+    const defaultSessionStatus = getDefaultSessionStatus(sessions)
 
     if (pendingFilters) {
       nextFilters = Object.assign({}, nextFilters, pendingFilters)
-    } else if (!this.data.filterInitialized && !nextFilters.sessionId) {
-      nextFilters.sessionId = defaultSessionId
     }
+    nextFilters.sessionStatus = resolveSessionStatus({
+      requestedStatus: this.data.filterInitialized || pendingFilters ? nextFilters.sessionStatus : '',
+      legacySessionId: nextFilters.sessionId,
+      sessions
+    })
+    delete nextFilters.sessionId
 
     this.applyFilterState({
-      selectedSessionId: nextFilters.sessionId,
+      selectedSessionStatus: nextFilters.sessionStatus,
       dateRange: nextFilters.dateRange,
       startDate: nextFilters.startDate,
       endDate: nextFilters.endDate,
@@ -1579,17 +2699,25 @@ Page({
       sortBy: nextFilters.sortBy,
       filterInitialized: true
     })
-    const data = await dataService.getReviewData(nextFilters)
-    const hands = (data.hands || []).map(item => buildReviewListHandView(item, chipUnit, this.data.swipedHandId))
+    const data = await dataService.getReviewData(nextFilters, { sessions })
+    if (this.reviewRefreshToken !== refreshToken) return
+    const rawHands = data.hands || []
+    const initialHands = buildReviewListHandViews(
+      rawHands.slice(0, REVIEW_INITIAL_RENDER_LIMIT),
+      chipUnit,
+      this.data.swipedHandId
+    )
     this.setData(Object.assign({}, data, {
-      hands,
+      hands: initialHands,
+      handRenderComplete: rawHands.length <= REVIEW_INITIAL_RENDER_LIMIT,
       chipUnit,
       blindPresets: settings.blindPresets || [],
       positions: settings.positions || [],
       opponentTypes: settings.opponentTypes || [],
-      defaultSessionId,
-      sessionOptions: buildSessionOptions(data.sessions || sessions, nextFilters.sessionId),
-      draftSessionOptions: buildSessionOptions(data.sessions || sessions, this.data.draftSelectedSessionId || nextFilters.sessionId),
+      defaultSessionStatus,
+      sessionStatusOptions: buildSessionStatusOptions(nextFilters.sessionStatus),
+      draftSessionStatus: nextFilters.sessionStatus,
+      draftSessionStatusOptions: buildSessionStatusOptions(nextFilters.sessionStatus),
       sortControlOptions: buildSortControlOptions(nextFilters.sortBy),
       tagFilterOptions: reviewTags.getReviewTagOptions(nextFilters.tagFilter),
       filterSummary: buildFilterSummary(nextFilters, data.sessions || sessions),
@@ -1597,11 +2725,14 @@ Page({
         totalProfitDisplay: display.formatAmount(data.summary.totalProfit, chipUnit)
       }),
       loading: false
-    }))
+    }), () => {
+      this.ensureOnboardingReviewDemo(this.data.onboardingGuideStep)
+      this.scheduleProgressiveHandRender(rawHands, chipUnit, refreshToken, REVIEW_INITIAL_RENDER_LIMIT)
+    })
   },
-  selectSession(e) {
-    const sessionId = e.currentTarget.dataset.id || ''
-    this.applyDraftFilterState({ draftSelectedSessionId: sessionId })
+  selectSessionStatus(e) {
+    const sessionStatus = e.currentTarget.dataset.key || 'finished'
+    this.applyDraftFilterState({ draftSessionStatus: sessionStatus })
   },
   selectDateRange(e) {
     const dateRange = e.currentTarget.dataset.key || 'all'
@@ -1623,7 +2754,7 @@ Page({
   },
   resetFilters() {
     this.applyDraftFilterState({
-      draftSelectedSessionId: this.data.defaultSessionId,
+      draftSessionStatus: this.data.defaultSessionStatus,
       draftDateRange: 'all',
       draftStartDate: '',
       draftEndDate: '',
@@ -1633,7 +2764,7 @@ Page({
   },
   openFilterModal() {
     this.applyDraftFilterState({
-      draftSelectedSessionId: this.data.selectedSessionId,
+      draftSessionStatus: this.data.selectedSessionStatus,
       draftDateRange: this.data.dateRange,
       draftStartDate: this.data.startDate,
       draftEndDate: this.data.endDate,
@@ -1647,7 +2778,7 @@ Page({
   },
   applyFilterModal() {
     const patch = {
-      selectedSessionId: this.data.draftSelectedSessionId,
+      selectedSessionStatus: this.data.draftSessionStatus,
       dateRange: this.data.draftDateRange,
       startDate: this.data.draftStartDate,
       endDate: this.data.draftEndDate,
@@ -1686,37 +2817,57 @@ Page({
     })
   },
   async loadHandDetail(handId) {
-    const hand = await dataService.getHandById(handId)
+    const rawHand = await dataService.getHandById(handId)
+    const hand = ledgerDerived.withLedgerDerivedFields(rawHand)
     if (!hand) {
       this.setData({ detailLoading: false, detailVisible: false })
       wx.showToast({ title: '未找到这手牌', icon: 'none' })
       return
     }
+    this.syncAiReviewStatusFromDetailHand(hand)
     const session = await dataService.getSessionById(hand.sessionId)
     const actions = await dataService.getActionsByHandId(handId)
     const reviewed = hasCompletedReview(hand)
+    const voiceNote = hand.voiceNote || ''
+    this.voiceNoteDraft = voiceNote
     this.setData({
       detailLoading: false,
       detailHand: buildDetailHandView(hand, this.data.chipUnit),
       detailSession: session,
       detailActions: actions,
-      voicePanelVisible: !reviewed,
+      detailExportVisible: false,
+      detailExportText: handExport.buildPokerStarsExport(hand, { session, actions }),
+      voicePanelVisible: false,
       voiceBusy: false,
       voiceRecording: false,
       voiceStatus: reviewed ? '\u5df2\u4fdd\u5b58\u8fc7\u590d\u76d8\uff0c\u53ef\u5c55\u5f00\u7ee7\u7eed\u8865\u5145' : '',
-      voiceNote: hand.voiceNote || '',
-      parsedVoiceSourceText: hand.voiceNote || '',
+      voiceNote,
+      voiceNoteHasText: !!String(voiceNote).trim(),
+      voiceNoteLength: String(voiceNote).length,
+      parsedVoiceSourceText: voiceNote,
       voiceNeedsRefresh: false,
       parsedVoice: hand.voiceExtract
         ? buildParsedVoicePreview(hand.voiceExtract, {
             analysis: hand.aiReview,
+            provider: hand.voiceExtract.provider || hand.voiceExtract.providerText || '',
+            naturalLanguageSummary: hand.voiceExtract.naturalLanguageSummary || hand.voiceExtract.feedbackText || hand.voiceExtract.noteSummary || '',
             missingFields: hand.voiceExtract.missingFields || [],
             followUpQuestions: hand.voiceExtract.followUpQuestions || []
           })
         : null
     })
   },
-  async openHandDetail(e) {
+  syncAiReviewStatusFromDetailHand(hand) {
+    if (!hand || !hand._id) return
+    if (!Object.prototype.hasOwnProperty.call(hand, 'aiReviewStatus') && !Object.prototype.hasOwnProperty.call(hand, 'aiReview')) return
+    this.applyAiReviewPatchToVisibleHand(hand._id, {
+      aiReview: hand.aiReview || null,
+      aiReviewStatus: hand.aiReviewStatus || '',
+      aiReviewGeneratedAt: hand.aiReviewGeneratedAt || '',
+      aiReviewError: hand.aiReviewError || ''
+    })
+  },
+  openHandDetail(e) {
     const handId = e.currentTarget.dataset.id
     if (!handId) return
     if (this.data.touchMoved) {
@@ -1727,14 +2878,92 @@ Page({
       this.closeSwipedReviewItem()
       return
     }
+    const previewHand = (this.data.hands || []).find(item => item && item._id === handId)
+    const previewDetailHand = previewHand
+      ? buildDetailHandView(ledgerDerived.withLedgerDerivedFields(previewHand, { includeEv: false }), this.data.chipUnit)
+      : null
+    this.setData({
+      detailVisible: true,
+      detailLoading: true,
+      detailHand: previewDetailHand,
+      detailSession: null,
+      detailActions: [],
+      detailExportVisible: false,
+      detailExportText: previewHand ? handExport.buildPokerStarsExport(previewHand, { actions: [] }) : '',
+      voicePanelVisible: false,
+      voiceBusy: false,
+      voiceRecording: false
+    }, () => {
+      setTimeout(() => {
+        this.loadHandDetail(handId).catch(error => {
+          console.warn('load hand detail failed: ' + (error && (error.message || error.errMsg) || String(error)))
+          this.setData({ detailLoading: false })
+        })
+      }, 0)
+    })
+  },
+  async consumePendingReviewEntry() {
+    let pending = null
+    try {
+      pending = wx.getStorageSync(REVIEW_PENDING_ENTRY_KEY)
+      wx.removeStorageSync(REVIEW_PENDING_ENTRY_KEY)
+    } catch (error) {
+      pending = null
+    }
+    const handId = pending && pending.handId
+    if (!handId) return
+    if (pending.mode === 'ledger') {
+      wx.navigateTo({ url: '/pages/hand-ledger-input/hand-ledger-input?handId=' + handId })
+      return
+    }
     this.setData({
       detailVisible: true,
       detailLoading: true,
       detailHand: null,
       detailSession: null,
-      detailActions: []
+      detailActions: [],
+      touchMoved: false
     })
     await this.loadHandDetail(handId)
+    if (pending.mode === 'voice') this.handleVoiceEntry()
+  },
+  openReviewChoice(e) {
+    const handId = e.currentTarget.dataset.id
+    if (!handId) return
+    if (this.data.touchMoved) {
+      this.setData({ touchMoved: false })
+      return
+    }
+    if (this.data.swipedHandId && this.data.swipedHandId !== handId) {
+      this.closeSwipedReviewItem()
+      return
+    }
+    this.closeSwipedReviewItem()
+    this.setData({
+      reviewChoiceVisible: true,
+      reviewChoiceHandId: handId
+    })
+  },
+  closeReviewChoice() {
+    this.setData({
+      reviewChoiceVisible: false,
+      reviewChoiceHandId: ''
+    })
+  },
+  async chooseReviewMode(e) {
+    const mode = e.currentTarget.dataset.mode
+    const handId = this.data.reviewChoiceHandId
+    this.setData({
+      reviewChoiceVisible: false,
+      reviewChoiceHandId: '',
+      touchMoved: false
+    })
+    if (!handId) return
+    if (mode === 'ledger') {
+      wx.navigateTo({ url: '/pages/hand-ledger-input/hand-ledger-input?handId=' + handId })
+      return
+    }
+    await this.openHandDetail({ currentTarget: { dataset: { id: handId } } })
   },
   updateReviewSwipeState(handId) {
     const hands = (this.data.hands || []).map(item => Object.assign({}, item, {
@@ -1792,6 +3021,147 @@ Page({
     this.closeSwipedReviewItem()
     wx.navigateTo({ url: '/pages/hand-detail/hand-detail?id=' + handId + '&edit=1' })
   },
+  openHandReplay(e) {
+    const handId = e.currentTarget.dataset.id
+    if (!handId) return
+    const hand = (this.data.hands || []).find(item => item && item._id === handId)
+    if (!hand || !hand.replayAvailable || !hand.replayData) {
+      wx.showToast({ title: '完整复盘后可播放', icon: 'none' })
+      return
+    }
+    this.closeSwipedReviewItem()
+    this.setData({
+      replayVisible: true,
+      replayData: hand.replayData,
+      touchMoved: false
+    })
+  },
+  async openAiAdviceSheet(e) {
+    const handId = e.currentTarget.dataset.id
+    if (!handId) return
+    const hand = (this.data.hands || []).find(item => item && item._id === handId)
+    if (!hand) return
+    if (hand.aiReviewGenerating) {
+      wx.showToast({ title: 'AI建议生成中', icon: 'none' })
+      return
+    }
+    if (hand.canRequestAiAdvice) {
+      this.closeSwipedReviewItem()
+      await this.requestHandAiAdvice(handId)
+      return
+    }
+    if (!hand.aiReviewReady || !hand.aiReviewView) {
+      wx.showToast({ title: '暂无AI建议', icon: 'none' })
+      return
+    }
+    this.closeSwipedReviewItem()
+    this.setData({
+      aiAdviceSheetVisible: true,
+      aiAdviceSheetHand: hand,
+      aiAdviceSheetView: hand.aiReviewView || buildAiReviewView(hand.aiReview, hand),
+      touchMoved: false
+    })
+  },
+  async requestHandAiAdvice(handId) {
+    try {
+      await dataService.updateHand(handId, {
+        aiReview: null,
+        aiReviewStatus: 'generating',
+        aiReviewError: ''
+      })
+      await this.refresh()
+      const hand = await dataService.getHandById(handId)
+      if (!hand) return
+      const session = hand.sessionId ? await dataService.getSessionById(hand.sessionId) : null
+      const actions = await dataService.getActionsByHandId(handId)
+      this.generateVoiceAdvice(handId, '', null, session, actions)
+    } catch (error) {
+      wx.showToast({ title: 'AI建议启动失败', icon: 'none' })
+    }
+  },
+  closeAiAdviceSheet() {
+    this.setData({
+      aiAdviceSheetVisible: false,
+      aiAdviceSheetHand: null,
+      aiAdviceSheetView: null
+    }, () => {
+      this.syncOnboardingGuide()
+    })
+  },
+  openHandComment(e) {
+    const handId = e.currentTarget.dataset.id
+    if (!handId) return
+    const hand = (this.data.hands || []).find(item => item && item._id === handId)
+    if (!hand) return
+    if (!hand.canHandComment) {
+      wx.showToast({ title: '\u5b8c\u6210\u590d\u76d8\u540e\u53ef\u8bc4\u8bba', icon: 'none' })
+      return
+    }
+    const comments = normalizeHandComments(hand)
+    this.closeSwipedReviewItem()
+    this.setData({
+      handCommentVisible: true,
+      handCommentHandId: handId,
+      handCommentTitle: [hand.heroCardsInput || '手牌', hand.heroPosition || ''].filter(Boolean).join(' · '),
+      handCommentDraft: '',
+      handCommentItems: buildHandCommentViewItems(comments),
+      handCommentSaving: false,
+      touchMoved: false
+    })
+  },
+  closeHandComment() {
+    if (this.data.handCommentSaving) return
+    this.setData({
+      handCommentVisible: false,
+      handCommentHandId: '',
+      handCommentTitle: '',
+      handCommentDraft: '',
+      handCommentItems: []
+    })
+  },
+  onHandCommentInput(e) {
+    this.setData({ handCommentDraft: e.detail.value || '' })
+  },
+  async saveHandComment() {
+    const handId = this.data.handCommentHandId
+    const text = String(this.data.handCommentDraft || '').trim()
+    if (!handId) return
+    if (!text) {
+      wx.showToast({ title: '请输入评论内容', icon: 'none' })
+      return
+    }
+    const hand = (this.data.hands || []).find(item => item && item._id === handId)
+    if (!hand) return
+    const nextComments = [{
+      id: 'comment_' + Date.now(),
+      text,
+      createdAt: buildHandCommentTimestamp()
+    }].concat(normalizeHandComments(hand))
+    this.setData({ handCommentSaving: true })
+    try {
+      await dataService.updateHand(handId, { handComments: nextComments })
+      wx.showToast({ title: '已保存评论', icon: 'success' })
+      this.setData({
+        handCommentVisible: false,
+        handCommentHandId: '',
+        handCommentTitle: '',
+        handCommentDraft: '',
+        handCommentItems: [],
+        handCommentSaving: false
+      })
+      await this.refresh()
+    } catch (error) {
+      console.warn('save hand comment failed: ' + (error && (error.errMsg || error.message) || String(error)))
+      this.setData({ handCommentSaving: false })
+      wx.showToast({ title: '保存失败，请重试', icon: 'none' })
+    }
+  },
+  closeHandReplay() {
+    this.setData({
+      replayVisible: false,
+      replayData: null
+    })
+  },
   deleteHandFromList(e) {
     const handId = e.currentTarget.dataset.id
     if (!handId) return
@@ -1813,33 +3183,114 @@ Page({
     })
   },
   closeHandDetail() {
+    this.clearVoiceProgressTimer()
+    const requestId = Number(this.data.voiceReviewRequestId || 0) + 1
+    this.voiceNoteDraft = ''
     this.setData({
       detailVisible: false,
       detailLoading: false,
       detailHand: null,
       detailSession: null,
       detailActions: [],
+      detailExportVisible: false,
+      detailExportText: '',
       voicePanelVisible: false,
       voiceBusy: false,
       voiceRecording: false,
       voiceStatus: '',
       voiceNote: '',
+      voiceNoteHasText: false,
+      voiceNoteLength: 0,
       voiceCorrectionNote: '',
       parsedVoice: null,
       parsedVoiceSourceText: '',
-      voiceNeedsRefresh: false
+      voiceNeedsRefresh: false,
+      voiceReviewRequestId: requestId,
+      voiceProgressVisible: false,
+      voiceProgressPercent: 0
     })
   },
   stopModalTap() {},
+  noop() {},
+  getVoiceNoteDraft() {
+    if (typeof this.voiceNoteDraft === 'string') return this.voiceNoteDraft
+    return String(this.data.voiceNote || '')
+  },
+  setVoiceNoteDraft(value, extraPatch, callback) {
+    const nextValue = String(value || '')
+    this.voiceNoteDraft = nextValue
+    this.setData(Object.assign({
+      voiceNote: nextValue,
+      voiceNoteHasText: !!nextValue.trim(),
+      voiceNoteLength: nextValue.length
+    }, extraPatch || {}), callback)
+  },
+  commitVoiceNoteDraft() {
+    const nextValue = this.getVoiceNoteDraft()
+    if (nextValue !== this.data.voiceNote) {
+      this.setData({
+        voiceNote: nextValue,
+        voiceNoteHasText: !!nextValue.trim(),
+        voiceNoteLength: nextValue.length
+      })
+    }
+  },
+  copyDetailHandId() {
+    const handId = this.data.detailHand && this.data.detailHand._id
+    if (!handId) {
+      wx.showToast({ title: '\u6ca1\u6709\u53ef\u590d\u5236\u7684ID', icon: 'none' })
+      return
+    }
+    wx.setClipboardData({
+      data: String(handId),
+      success() {
+        wx.showToast({ title: '\u5df2\u590d\u5236ID', icon: 'success' })
+      }
+    })
+  },
+  openDetailExport() {
+    const hand = this.data.detailHand
+    if (!hand) {
+      wx.showToast({ title: '没有可导出的手牌', icon: 'none' })
+      return
+    }
+    const exportText = this.data.detailExportText || handExport.buildPokerStarsExport(hand, {
+      session: this.data.detailSession,
+      actions: this.data.detailActions
+    })
+    this.setData({
+      detailExportVisible: true,
+      detailExportText: exportText
+    })
+  },
+  closeDetailExport() {
+    this.setData({ detailExportVisible: false })
+  },
+  copyDetailExportText() {
+    const text = String(this.data.detailExportText || '')
+    if (!text.trim()) {
+      wx.showToast({ title: '没有可复制的导出文本', icon: 'none' })
+      return
+    }
+    wx.setClipboardData({
+      data: text,
+      success() {
+        wx.showToast({ title: '导出文本已复制', icon: 'success' })
+      }
+    })
+  },
   onVoiceNoteInput(e) {
-    const nextValue = e.detail.value
+    const nextValue = String(e.detail.value || '')
+    this.voiceNoteDraft = nextValue
     const sourceText = String(this.data.parsedVoiceSourceText || '').trim()
     const changedAfterParse =
       !!this.data.parsedVoice && String(nextValue || '').trim() !== sourceText
 
     this.setData({
-      voiceNote: nextValue,
+      voiceNoteHasText: !!nextValue.trim(),
+      voiceNoteLength: nextValue.length,
       parsedVoice: changedAfterParse ? null : this.data.parsedVoice,
+      parsedVoiceSourceText: changedAfterParse ? '' : this.data.parsedVoiceSourceText,
       voiceNeedsRefresh: changedAfterParse,
       voiceStatus: changedAfterParse
         ? '\u6587\u672c\u5df2\u4fee\u6539\uff0c\u8bf7\u91cd\u65b0\u53d1\u9001\u89e3\u6790\u540e\u518d\u786e\u8ba4\u56de\u586b'
@@ -1852,6 +3303,16 @@ Page({
       voiceRecording: false,
       voiceStatus: '\u76f4\u63a5\u70b9\u8f93\u5165\u6846\uff0c\u7528\u7cfb\u7edf\u8bed\u97f3\u8f93\u5165\u6cd5\u8bf4\u8bdd\uff0c\u770b\u5230\u6587\u5b57\u540e\u6539\u4e00\u6539\u518d\u70b9\u53d1\u9001\u89e3\u6790\u3002'
     })
+  },
+  openDetailLedgerReview() {
+    const handId = this.data.detailHand && this.data.detailHand._id
+    if (!handId) return
+    this.setData({
+      detailVisible: false,
+      voicePanelVisible: false,
+      touchMoved: false
+    })
+    wx.navigateTo({ url: '/pages/hand-ledger-input/hand-ledger-input?handId=' + handId })
   },
   collapseVoicePanel() {
     this.setData({
@@ -1868,19 +3329,18 @@ Page({
   useVoiceShortcut(e) {
     const text = String(e.currentTarget.dataset.text || '').trim()
     if (!text) return
-    const current = String(this.data.voiceNote || '').trim()
+    const current = String(this.getVoiceNoteDraft() || '').trim()
     const nextValue = current ? `${current}\n${text}` : text
-    this.setData({
+    this.setVoiceNoteDraft(nextValue, {
       voicePanelVisible: true,
-      voiceNote: nextValue,
       parsedVoice: null,
-      voiceNeedsRefresh: !!this.data.parsedVoiceSourceText,
+      parsedVoiceSourceText: '',
+      voiceNeedsRefresh: false,
       voiceStatus: '\u793a\u4f8b\u5df2\u586b\u5165\uff0c\u4f60\u53ef\u4ee5\u7ee7\u7eed\u6539\u5b8c\u518d\u53d1\u9001\u89e3\u6790\u3002'
     })
   },
   clearVoiceNote() {
-    this.setData({
-      voiceNote: '',
+    this.setVoiceNoteDraft('', {
       voiceCorrectionNote: '',
       parsedVoice: null,
       parsedVoiceSourceText: '',
@@ -1892,6 +3352,46 @@ Page({
     const field = e.currentTarget.dataset.field
     const value = e.detail.value
     if (!field || !this.data.parsedVoice) return
+    this.pendingParsedVoiceFields = this.pendingParsedVoiceFields || {}
+    this.pendingParsedVoiceFields[field] = value
+  },
+  clearParsedVoiceFocus() {
+    if (this.voiceFocusClearTimer) {
+      clearTimeout(this.voiceFocusClearTimer)
+      this.voiceFocusClearTimer = null
+    }
+    if (!this.data.parsedVoice) return
+    this.setData({
+      voiceFocusField: '',
+      parsedVoice: applyParsedVoiceFocusState(this.data.parsedVoice, '')
+    })
+  },
+  scheduleClearParsedVoiceFocus(field) {
+    if (this.voiceFocusClearTimer) {
+      clearTimeout(this.voiceFocusClearTimer)
+    }
+    const target = String(field || '')
+    this.voiceFocusClearTimer = setTimeout(() => {
+      this.voiceFocusClearTimer = null
+      if (target && this.data.voiceFocusField && this.data.voiceFocusField !== target) return
+      if (!this.data.parsedVoice) return
+      this.setData({
+        voiceFocusField: '',
+        parsedVoice: applyParsedVoiceFocusState(this.data.parsedVoice, '')
+      })
+    }, 120)
+  },
+  commitParsedVoiceFieldValue(e) {
+    const field = e.currentTarget.dataset.field
+    const value = e.detail.value
+    if (!field || !this.data.parsedVoice) return
+    this.commitParsedVoiceField(field, value)
+  },
+  commitParsedVoiceField(field, value) {
+    if (!field || !this.data.parsedVoice) return this.data.parsedVoice
+    if (this.pendingParsedVoiceFields) {
+      delete this.pendingParsedVoiceFields[field]
+    }
     const nextParsed = setParsedVoiceDraftField(this.data.parsedVoice, field, value)
     const parsedVoice = buildParsedVoicePreview(nextParsed, {
       provider: nextParsed.provider || nextParsed.providerText || '',
@@ -1904,6 +3404,30 @@ Page({
       voiceNeedsRefresh: false,
       voiceStatus: '\u5df2\u6309\u4f60\u7684\u7f16\u8f91\u66f4\u65b0\u5f85\u56de\u586b\u5b57\u6bb5\u3002'
     })
+    return parsedVoice
+  },
+  commitPendingParsedVoiceFields() {
+    const pending = this.pendingParsedVoiceFields || {}
+    const fields = Object.keys(pending)
+    if (!fields.length || !this.data.parsedVoice) return this.data.parsedVoice
+    let nextParsed = this.data.parsedVoice
+    fields.forEach(field => {
+      nextParsed = setParsedVoiceDraftField(nextParsed, field, pending[field])
+    })
+    this.pendingParsedVoiceFields = {}
+    const parsedVoice = applyParsedVoiceFocusState(buildParsedVoicePreview(nextParsed, {
+      provider: nextParsed.provider || nextParsed.providerText || '',
+      naturalLanguageSummary: nextParsed.feedbackText || nextParsed.naturalLanguageSummary || '',
+      missingFields: nextParsed.missingFields || [],
+      followUpQuestions: nextParsed.followUpQuestions || []
+    }), '')
+    this.clearParsedVoiceFocus()
+    this.setData({
+      parsedVoice,
+      voiceNeedsRefresh: false,
+      voiceStatus: '\u5df2\u6309\u4f60\u7684\u7f16\u8f91\u66f4\u65b0\u5f85\u56de\u586b\u5b57\u6bb5\u3002'
+    })
+    return parsedVoice
   },
   onParsedVoiceToggleChange(e) {
     const field = e.currentTarget.dataset.field
@@ -1912,6 +3436,23 @@ Page({
       ? e.detail.value.indexOf('1') > -1
       : !!(e.detail && e.detail.value)
     const nextParsed = setParsedVoiceDraftField(this.data.parsedVoice, field, rawValue)
+    const parsedVoice = applyParsedVoiceFocusState(buildParsedVoicePreview(nextParsed, {
+      provider: nextParsed.provider || nextParsed.providerText || '',
+      naturalLanguageSummary: nextParsed.feedbackText || nextParsed.naturalLanguageSummary || '',
+      missingFields: nextParsed.missingFields || [],
+      followUpQuestions: nextParsed.followUpQuestions || []
+    }), '')
+    this.clearParsedVoiceFocus()
+    this.setData({
+      parsedVoice,
+      voiceNeedsRefresh: false,
+      voiceStatus: '\u5df2\u6309\u4f60\u7684\u7f16\u8f91\u66f4\u65b0\u5f85\u56de\u586b\u5b57\u6bb5\u3002'
+    })
+  },
+  selectVoiceStraddleOption(e) {
+    if (!this.data.parsedVoice) return
+    const rawValue = String(e.currentTarget.dataset.value || '') === '1'
+    const nextParsed = setParsedVoiceDraftField(this.data.parsedVoice, 'hasStraddle', rawValue)
     const parsedVoice = buildParsedVoicePreview(nextParsed, {
       provider: nextParsed.provider || nextParsed.providerText || '',
       naturalLanguageSummary: nextParsed.feedbackText || nextParsed.naturalLanguageSummary || '',
@@ -1921,64 +3462,117 @@ Page({
     this.setData({
       parsedVoice,
       voiceNeedsRefresh: false,
-      voiceStatus: '\u5df2\u6309\u4f60\u7684\u7f16\u8f91\u66f4\u65b0\u5f85\u56de\u586b\u5b57\u6bb5\u3002'
+      voiceStatus: '\u5df2\u9009\u62e9\u662f\u5426 Straddle\u3002'
     })
   },
   onVoiceCorrectionInput(e) {
     this.setData({ voiceCorrectionNote: e.detail.value })
   },
-  focusMissingField(e) {
-    const field = String(e.currentTarget.dataset.field || '').trim()
+  focusVoiceField(field) {
+    field = String(field || '').trim()
     if (!field || field === 'voiceNote') return
+    const focusPatch = {
+      voiceFocusField: field,
+      voiceStraddleMissingClass: field === 'hasStraddle' ? 'voice-field-missing' : '',
+      parsedVoice: applyParsedVoiceFocusState(this.data.parsedVoice, field)
+    }
     if (field === 'stakeLevel' || field === 'heroPosition' || field === 'villainPosition' || field === 'opponentType') {
+      this.setData(focusPatch)
+      this.scheduleClearParsedVoiceFocus(field)
       this.openVoicePresetSelector({ currentTarget: { dataset: { field } } })
       return
     }
     if (field === 'heroCardsInput') {
+      this.setData(focusPatch)
+      this.scheduleClearParsedVoiceFocus(field)
       this.openVoiceHeroPicker()
       return
     }
     if (field === 'board.flop') {
+      this.setData(focusPatch)
+      this.scheduleClearParsedVoiceFocus(field)
       this.openVoiceBoardPicker({ currentTarget: { dataset: { key: 'flop' } } })
       return
     }
     if (field === 'board.turn') {
+      this.setData(focusPatch)
+      this.scheduleClearParsedVoiceFocus(field)
       this.openVoiceBoardPicker({ currentTarget: { dataset: { key: 'turn' } } })
       return
     }
     if (field === 'board.river') {
+      this.setData(focusPatch)
+      this.scheduleClearParsedVoiceFocus(field)
       this.openVoiceBoardPicker({ currentTarget: { dataset: { key: 'river' } } })
       return
     }
     this.setData({
       voiceFocusField: '',
+      voiceStraddleMissingClass: field === 'hasStraddle' ? 'voice-field-missing' : '',
+      parsedVoice: applyParsedVoiceFocusState(this.data.parsedVoice, ''),
       voiceStatus: '\u8bf7\u76f4\u63a5\u8865\u5145\u201c' + field + '\u201d\u5bf9\u5e94\u5b57\u6bb5\u3002'
     }, () => {
-      this.setData({ voiceFocusField: field })
+      this.setData({
+        voiceFocusField: field,
+        voiceStraddleMissingClass: field === 'hasStraddle' ? 'voice-field-missing' : '',
+        parsedVoice: applyParsedVoiceFocusState(this.data.parsedVoice, field)
+      })
+      this.scheduleClearParsedVoiceFocus(field)
     })
   },
+  focusMissingField(e) {
+    this.focusVoiceField(e.currentTarget.dataset.field)
+  },
+  validateVoiceRequiredFields() {
+    this.commitPendingParsedVoiceFields()
+    const missingItems = buildVoiceRequiredMissingItems(this.data.parsedVoice)
+    if (!missingItems.length) return true
+    const first = missingItems[0]
+    const parsedVoice = Object.assign({}, this.data.parsedVoice, {
+      confirmItems: missingItems,
+      missingFields: missingItems.map(item => item.label),
+      missingFieldsText: missingItems.map(item => item.label).join(' \u00b7 ')
+    })
+    this.setData({
+      parsedVoice,
+      voiceStatus: '\u8bf7\u5148\u8865\u5145\u5fc5\u586b\u5b57\u6bb5\uff1a' + first.label
+    }, () => {
+      this.focusVoiceField(first.field)
+    })
+    wx.showToast({ title: '\u8bf7\u8865\u5145\uff1a' + first.label, icon: 'none' })
+    return false
+  },
   reparseVoiceWithCorrection() {
+    const confirmedParsed = this.commitPendingParsedVoiceFields()
     const correction = String(this.data.voiceCorrectionNote || '').trim()
-    if (!correction) {
-      wx.showToast({ title: '\u8bf7\u5148\u8f93\u5165\u786e\u8ba4\u6216\u4fee\u6b63\u5185\u5bb9', icon: 'none' })
+    if (!correction && !confirmedParsed) {
+      wx.showToast({ title: '\u8bf7\u5148\u8865\u5145\u5b57\u6bb5\u6216\u8f93\u5165\u4fee\u6b63\u5185\u5bb9', icon: 'none' })
       return
     }
-    const correctionText = buildVoiceCorrectionText(
-      correction,
-      this.data.parsedVoice && this.data.parsedVoice.confirmItems
-    )
-    const base = String(this.data.voiceNote || '').trim()
-    const nextVoiceNote = base
-      ? base + '\n' + correctionText
-      : correctionText
+    const base = String(this.getVoiceNoteDraft() || '').trim()
+    const correctionPayload = {
+      source: 'miniapp_voice_review_text_correction',
+      transcript: base,
+      correctionText: buildVoiceCorrectionText(
+        correction,
+        confirmedParsed && confirmedParsed.confirmItems
+      ),
+      originalHand: this.data.detailHand || null,
+      confirmedHand: confirmedParsed || null,
+      confirmedAt: Date.now()
+    }
     this.setData({
-      voiceNote: nextVoiceNote,
       voiceCorrectionNote: '',
       parsedVoice: null,
       voiceNeedsRefresh: false,
       voiceStatus: '已加入修正信息，正在重新解析...'
     }, () => {
-      this.runVoiceReview({ voiceNote: nextVoiceNote, silentSuccess: true })
+      this.runVoiceReview({
+        voiceNote: base || correction,
+        displayVoiceNote: base,
+        corrections: correctionPayload,
+        silentSuccess: true
+      })
     })
   },
   refreshParsedVoiceDraft(nextParsed, extraPatch) {
@@ -2115,7 +3709,10 @@ Page({
     this.setData({
       voiceShowdownPickerVisible: true,
       voiceShowdownPickerHint: '\u5df2\u9009 ' + cardUi.parseHeroCardsInput(parsed.showdown).length + ' / 2 \u5f20',
-      voiceShowdownPickerPreview: cardUi.parseHeroCardsInput(parsed.showdown),
+      voiceShowdownPickerPreview: cardUi.parseOpponentCardsInput(parsed.showdown, {
+        board: parsed.board,
+        heroCardsInput: parsed.heroCardsInput
+      }),
       voiceShowdownPickerDeck: buildVoiceShowdownPickerDeck(parsed)
     })
   },
@@ -2129,10 +3726,15 @@ Page({
         return item[0].toUpperCase() + item[1].toLowerCase()
       })
       .join('')
-    const nextParsed = setParsedVoiceDraftField(this.data.parsedVoice, 'showdown', normalized)
+    let nextParsed = setParsedVoiceDraftField(this.data.parsedVoice, 'showdown', normalized)
+    nextParsed = setParsedVoiceDraftField(nextParsed, 'opponentCards', normalized)
+    nextParsed = setParsedVoiceDraftField(nextParsed, 'opponentCardsSource', normalized ? 'manual' : '')
     this.refreshParsedVoiceDraft(nextParsed, {
       voiceShowdownPickerHint: '\u5df2\u9009 ' + cardUi.parseHeroCardsInput(normalized).length + ' / 2 \u5f20',
-      voiceShowdownPickerPreview: cardUi.parseHeroCardsInput(normalized),
+      voiceShowdownPickerPreview: cardUi.parseOpponentCardsInput(normalized, {
+        board: nextParsed.board,
+        heroCardsInput: nextParsed.heroCardsInput
+      }),
       voiceShowdownPickerDeck: buildVoiceShowdownPickerDeck(nextParsed),
       voiceHeroPickerDeck: buildVoiceHeroPickerDeck(nextParsed)
     })
@@ -2251,23 +3853,107 @@ Page({
     this.syncVoiceBoardField(key, next.join(''))
   },
   parseVoiceNote() {
-    this.runVoiceReview()
+    const confirmedParsed = this.commitPendingParsedVoiceFields()
+    if (confirmedParsed) {
+      return this.runVoiceReview({
+        voiceNote: this.getVoiceNoteDraft(),
+        displayVoiceNote: this.getVoiceNoteDraft(),
+        corrections: buildAgentCorrectionPayload(
+          this.data.detailHand,
+          confirmedParsed,
+          this.getVoiceNoteDraft()
+        ),
+        silentSuccess: true
+      })
+    }
+    return this.runVoiceReview()
+  },
+  clearVoiceProgressTimer() {
+    if (this.voiceProgressTimer) {
+      clearTimeout(this.voiceProgressTimer)
+      this.voiceProgressTimer = null
+    }
+  },
+  startVoiceProgress(requestId) {
+    this.clearVoiceProgressTimer()
+    const startedAt = Date.now()
+    const percent = getVoiceProgressPercent(startedAt, startedAt)
+    this.setData({
+      voiceProgressVisible: true,
+      voiceProgressStartedAt: startedAt,
+      voiceProgressPercent: percent,
+      voiceProgressStep: VOICE_PROGRESS_STEPS[0],
+      voiceProgressSteps: buildVoiceProgressSteps(percent)
+    })
+    this.queueVoiceProgressTick(requestId)
+  },
+  queueVoiceProgressTick(requestId) {
+    this.clearVoiceProgressTimer()
+    this.voiceProgressTimer = setTimeout(() => {
+      if (this.data.voiceReviewRequestId !== requestId || !this.data.voiceProgressVisible) return
+      const next = getVoiceProgressPercent(this.data.voiceProgressStartedAt, Date.now())
+      const stepIndex = Math.min(
+        VOICE_PROGRESS_STEPS.length - 1,
+        Math.floor(next / 25)
+      )
+      this.setData({
+        voiceProgressPercent: next,
+        voiceProgressStep: VOICE_PROGRESS_STEPS[stepIndex],
+        voiceProgressSteps: buildVoiceProgressSteps(next)
+      })
+      this.queueVoiceProgressTick(requestId)
+    }, 520)
+  },
+  finishVoiceProgress(requestId, failed) {
+    this.clearVoiceProgressTimer()
+    if (this.data.voiceReviewRequestId !== requestId) return Promise.resolve(false)
+    const nextPercent = failed ? Math.max(Number(this.data.voiceProgressPercent || 0), 92) : 100
+    this.setData({
+      voiceProgressVisible: true,
+      voiceProgressPercent: nextPercent,
+      voiceProgressSteps: buildVoiceProgressSteps(nextPercent),
+      voiceProgressStep: failed
+        ? '\u89e3\u6790\u5931\u8d25\uff0c\u5df2\u505c\u6b62'
+        : '\u5b8c\u6210\u8bc6\u522b\uff0c\u6b63\u5728\u5c55\u5f00\u7ed3\u679c'
+    })
+    return new Promise(resolve => {
+      this.voiceProgressTimer = setTimeout(() => {
+        if (this.data.voiceReviewRequestId !== requestId) {
+          resolve(false)
+          return
+        }
+        this.voiceProgressTimer = null
+        this.setData({ voiceProgressVisible: false }, () => resolve(true))
+      }, failed ? 260 : 360)
+    })
   },
   async runVoiceReview(options) {
     const config = options || {}
     const voiceNote = String(
-      config.voiceNote != null ? config.voiceNote : this.data.voiceNote || ''
+      config.voiceNote != null ? config.voiceNote : this.getVoiceNoteDraft() || ''
+    ).trim()
+    const displayVoiceNote = String(
+      config.displayVoiceNote != null ? config.displayVoiceNote : voiceNote
     ).trim()
     if (!voiceNote) {
       wx.showToast({ title: '\u8bf7\u5148\u5f55\u97f3\u6216\u8f93\u5165\u6587\u672c', icon: 'none' })
       return
     }
-
+    this.voiceNoteDraft = displayVoiceNote
+    const requestId = Number(this.data.voiceReviewRequestId || 0) + 1
     this.setData({
+      voiceReviewRequestId: requestId,
       voicePanelVisible: true,
+      voiceNote: displayVoiceNote,
+      voiceNoteHasText: !!displayVoiceNote,
+      voiceNoteLength: displayVoiceNote.length,
       voiceBusy: true,
-      voiceStatus: '正在调用 AI 生成语音复盘字段建议...'
+      parsedVoice: null,
+      parsedVoiceSourceText: '',
+      voiceNeedsRefresh: false,
+      voiceStatus: '\u6b63\u5728\u8c03\u7528 AI \u751f\u6210\u8bed\u97f3\u590d\u76d8\u5b57\u6bb5\u5efa\u8bae...'
     })
+    this.startVoiceProgress(requestId)
 
     try {
       const result = await aiService.reviewHandVoice(
@@ -2276,13 +3962,17 @@ Page({
           this.data.detailSession,
           this.data.detailActions,
           voiceNote,
-          { mode: 'extract' }
+          {
+            mode: 'extract',
+            corrections: config.corrections || null
+          }
         )
       )
-      const parseSourceText = voiceNote
+      if (this.data.voiceReviewRequestId !== requestId) return
+      const parseSourceText = displayVoiceNote
       const partial = result.code && result.code !== 0
       if (partial) {
-        const error = new Error(result.message || '云端解析失败')
+        const error = new Error(result.message || '\u4e91\u7aef\u89e3\u6790\u5931\u8d25')
         error.code = result.code
         error.raw = result
         throw error
@@ -2294,23 +3984,25 @@ Page({
         throw error
       }
       const parsedVoice = buildParsedVoicePreview(
-        normalizeParsedVoice(result.extractedHand, result, parseSourceText, this.data.detailHand),
+        normalizeParsedVoice(result.extractedHand, result, parseSourceText, this.data.detailHand, this.data.detailSession),
         result
       )
-      const learnedTerms = learnTermsFromVoiceNote(voiceNote)
       const cleanedText = String(result.cleanedTranscript || '').trim()
-      const keptOriginalText = !!cleanedText && cleanedText !== voiceNote
+      const keptOriginalText = !!cleanedText && cleanedText !== displayVoiceNote
+      const shouldApplyResult = await this.finishVoiceProgress(requestId, false)
+      if (!shouldApplyResult) return
+      this.voiceNoteDraft = displayVoiceNote
       this.setData({
         voiceBusy: false,
-        voiceNote,
+        voiceNote: displayVoiceNote,
+        voiceNoteHasText: !!displayVoiceNote.trim(),
+        voiceNoteLength: displayVoiceNote.length,
         parsedVoice,
-        parsedVoiceSourceText: voiceNote,
+        parsedVoiceSourceText: displayVoiceNote,
         voiceNeedsRefresh: false,
         voiceStatus: keptOriginalText
-          ? 'AI 已生成字段建议，原始口述已保留未改写'
-          : learnedTerms.length
-          ? '已学习你的说法，下次会自动识别；字段建议也已生成'
-          : 'AI 已生成字段建议，请确认后回填'
+          ? 'AI \u5df2\u751f\u6210\u5b57\u6bb5\u5efa\u8bae\uff0c\u539f\u59cb\u53e3\u8ff0\u5df2\u4fdd\u7559\u672a\u6539\u5199'
+          : 'AI \u5df2\u751f\u6210\u5b57\u6bb5\u5efa\u8bae\uff0c\u8bf7\u786e\u8ba4\u540e\u56de\u586b'
       })
       if (!config.silentSuccess) {
         wx.showToast({
@@ -2319,12 +4011,14 @@ Page({
         })
       }
     } catch (error) {
+      if (this.data.voiceReviewRequestId !== requestId) return
       console.warn('voice review failed: ' + (error && (error.errMsg || error.message) || String(error)))
+      await this.finishVoiceProgress(requestId, true)
       this.setData({
         voiceBusy: false,
         voiceStatus: '\u4e91\u7aef\u89e3\u6790\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002\u539f\u59cb\u53e3\u8ff0\u5df2\u4fdd\u7559\uff0c\u4e0d\u4f1a\u81ea\u52a8\u5207\u6362\u6210\u672c\u5730\u89e3\u6790\u3002'
       })
-      wx.showToast({ title: '云端解析失败，请重试', icon: 'none' })
+      wx.showToast({ title: '\u4e91\u7aef\u89e3\u6790\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5', icon: 'none' })
     }
   },
   async applyVoicePatch() {
@@ -2332,34 +4026,89 @@ Page({
       wx.showToast({ title: '\u6682\u65e0\u53ef\u56de\u586b\u5185\u5bb9', icon: 'none' })
       return
     }
+    this.commitPendingParsedVoiceFields()
     if (String(this.data.voiceCorrectionNote || '').trim()) {
       this.reparseVoiceWithCorrection()
       return
     }
+    if (!this.validateVoiceRequiredFields()) return
     const handId = this.data.detailHand._id
-    const voiceNote = this.data.voiceNote
+    const voiceNote = this.getVoiceNoteDraft()
+    this.commitVoiceNoteDraft()
     const correction = buildAgentCorrectionPayload(this.data.detailHand, this.data.parsedVoice, voiceNote)
-    this.setData({ voiceBusy: true, voiceStatus: '\u6b63\u5728\u56de\u586b\u8fd9\u624b\u724c...' })
-    await dataService.updateHand(
-      handId,
-      buildVoicePatch(this.data.detailHand, this.data.parsedVoice, voiceNote)
-    )
-    await this.refresh()
-    await this.loadHandDetail(handId)
+    this.setData({ voiceBusy: true, voiceStatus: '\u6b63\u5728\u56de\u586b\u5e76\u540c\u6b65\u8fd9\u624b\u724c...' })
+    let voicePatch = buildVoicePatch(this.data.detailHand, this.data.parsedVoice, voiceNote)
+    voicePatch = await maybeAttachVoiceAllInEv(voicePatch, this.data.detailSession)
+    let cloudSynced = false
+    let cloudSyncError = ''
+    try {
+      const saveResult = await dataService.updateHandWithCloudSync(
+        handId,
+        voicePatch,
+        'sync voice backfill hand failed'
+      )
+      cloudSynced = !!(saveResult && saveResult.cloudSynced)
+      cloudSyncError = String(saveResult && saveResult.cloudSyncError || '').trim()
+    } catch (error) {
+      const saveErrorText = String(error && (error.errMsg || error.message) || error || '').trim()
+      console.warn('voice backfill save failed: ' + saveErrorText)
+      this.setData({
+        voiceBusy: false,
+        voiceStatus: '\u56de\u586b\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002' + (saveErrorText ? '\n' + saveErrorText.slice(0, 80) : '')
+      })
+      wx.showToast({
+        title: saveErrorText ? ('\u4fdd\u5b58\u5931\u8d25\uff1a' + saveErrorText).slice(0, 18) : '\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5',
+        icon: 'none'
+      })
+      return
+    }
     this.setData({
       voicePanelVisible: false,
       voiceBusy: false,
-      voiceStatus: '语音复盘已保存，EV脑 正在生成建议...'
+      voiceStatus: cloudSynced
+        ? '\u8bed\u97f3\u590d\u76d8\u5df2\u4fdd\u5b58\u5e76\u540c\u6b65\uff0cEV\u8111\u6b63\u5728\u751f\u6210\u5efa\u8bae...'
+        : '\u8bed\u97f3\u590d\u76d8\u5df2\u4fdd\u5b58\uff0c\u4f46\u4e91\u540c\u6b65\u672a\u786e\u8ba4\uff1a' + (cloudSyncError || '\u672a\u8fd4\u56de\u5177\u4f53\u539f\u56e0') + '\uff1bEV\u8111\u4ecd\u4f1a\u751f\u6210\u5efa\u8bae...'
     })
-    wx.showToast({ title: '\u590d\u76d8\u5df2\u4fdd\u5b58', icon: 'success' })
+    wx.showToast({
+      title: cloudSynced ? '\u4fdd\u5b58\u5e76\u540c\u6b65\u6210\u529f' : ('\u4e91\u540c\u6b65\u672a\u786e\u8ba4\uff1a' + (cloudSyncError || '\u672a\u8fd4\u56de\u539f\u56e0')).slice(0, 18),
+      icon: 'none'
+    })
 
+    this.refresh()
+      .then(() => this.loadHandDetail(handId))
+      .catch(error => {
+        console.warn('voice backfill refresh failed: ' + (error && (error.errMsg || error.message) || String(error)))
+      })
+    this.generateVoiceAdvice(handId, voiceNote, correction, this.data.detailSession, this.data.detailActions)
+  },
+  applyAiReviewPatchToVisibleHand(handId, patch) {
+    if (!handId || !patch) return
+    const chipUnit = this.data.chipUnit
+    const swipedHandId = this.data.swipedHandId
+    const buildPatchedHand = hand => Object.assign({}, hand || {}, patch || {})
+    const hands = (this.data.hands || []).map(item => {
+      if (!item || item._id !== handId) return item
+      return buildReviewListHandView(buildPatchedHand(item), chipUnit, swipedHandId)
+    })
+    const nextData = { hands }
+    if (this.data.detailHand && this.data.detailHand._id === handId) {
+      nextData.detailHand = buildDetailHandView(buildPatchedHand(this.data.detailHand), chipUnit)
+    }
+    if (this.data.aiAdviceSheetHand && this.data.aiAdviceSheetHand._id === handId) {
+      const sheetHand = buildReviewListHandView(buildPatchedHand(this.data.aiAdviceSheetHand), chipUnit, swipedHandId)
+      nextData.aiAdviceSheetHand = sheetHand
+      nextData.aiAdviceSheetView = sheetHand.aiReviewView || buildAiReviewView(sheetHand.aiReview, sheetHand)
+    }
+    this.setData(nextData)
+  },
+  async generateVoiceAdvice(handId, voiceNote, correction, detailSession, detailActions) {
     try {
-      const savedHand = await dataService.getHandById(handId)
+      const savedHand = ledgerDerived.withLedgerDerivedFields(await dataService.getHandById(handId))
       const result = await aiService.reviewHandVoice(
         buildReviewRequest(
           savedHand,
-          this.data.detailSession,
-          this.data.detailActions,
+          detailSession,
+          detailActions,
           voiceNote,
           {
             mode: 'advice',
@@ -2370,28 +4119,76 @@ Page({
       if (result.code && result.code !== 0) {
         const error = new Error(result.message || 'EV脑 advice failed')
         error.code = result.code
+        error.raw = result
+        error.requestId = result.requestId || ''
         throw error
       }
-      await dataService.updateHand(handId, {
-        aiReview: result.analysis || null,
-        aiReviewStatus: result.analysis ? 'ready' : 'failed',
+      const aiReview = attachAiReviewMeta(result.analysis || null, savedHand)
+      const aiReviewError = result && (
+        result.aiReviewError ||
+        result.debugError ||
+        result.message ||
+        result.answer ||
+        result.data && result.data.message ||
+        result.data && result.data.error
+      ) || 'EV脑出问题啦，请稍后再重新生成AI建议。'
+      const aiReviewPatch = {
+        aiReview,
+        aiReviewStatus: aiReview ? 'ready' : 'failed',
         aiReviewGeneratedAt: Date.now(),
-        aiReviewError: result.analysis ? '' : 'Agent returned no advice'
-      })
-      await this.refresh()
-      await this.loadHandDetail(handId)
+        aiReviewError: aiReview ? '' : aiReviewError
+      }
+      this.applyAiReviewPatchToVisibleHand(handId, aiReviewPatch)
+      try {
+        await dataService.updateHand(handId, aiReviewPatch)
+        await this.refreshAfterAiAdvice(handId)
+      } catch (saveError) {
+        const saveErrorText = buildAiAdviceErrorText(saveError)
+        console.warn('poker agent advice save failed: ' + saveErrorText)
+        const visiblePatch = Object.assign({}, aiReviewPatch, {
+          aiReviewError: aiReview
+            ? ('AI建议已生成，但保存失败：' + saveErrorText)
+            : (aiReviewError + '\n保存失败：' + saveErrorText)
+        })
+        this.applyAiReviewPatchToVisibleHand(handId, visiblePatch)
+        wx.showToast({ title: aiReview ? 'AI建议已生成，保存失败' : 'AI建议保存失败', icon: 'none' })
+      }
     } catch (error) {
-      console.warn('poker agent advice failed: ' + (error && (error.errMsg || error.message) || String(error)))
-      await dataService.updateHand(handId, {
+      const errorText = buildAiAdviceErrorText(error)
+      console.warn('poker agent advice failed: ' + errorText)
+      const failurePatch = {
+        aiReview: null,
         aiReviewStatus: 'failed',
-        aiReviewError: error && (error.message || error.errMsg) || 'EV脑 advice failed'
-      })
-      await this.refresh()
+        aiReviewError: errorText
+      }
+      this.applyAiReviewPatchToVisibleHand(handId, failurePatch)
+      try {
+        await dataService.updateHand(handId, failurePatch)
+        await this.refreshAfterAiAdvice(handId)
+      } catch (saveError) {
+        console.warn('poker agent advice failure status save failed: ' + (saveError && (saveError.errMsg || saveError.message) || String(saveError)))
+        this.applyAiReviewPatchToVisibleHand(handId, Object.assign({}, failurePatch, {
+          aiReviewError: errorText + '\n失败状态保存失败：' + buildAiAdviceErrorText(saveError)
+        }))
+      }
+    }
+  },
+  async refreshAfterAiAdvice(handId) {
+    await this.refresh()
+    const activeHand = this.data.detailHand
+    const isStillViewingSameHand = !!(
+      this.data.detailVisible &&
+      activeHand &&
+      activeHand._id === handId
+    )
+    const hasActiveVoiceWork = !!(this.data.voiceBusy || this.data.voiceRecording)
+    if (isStillViewingSameHand && !hasActiveVoiceWork) {
       await this.loadHandDetail(handId)
     }
   },
   goHandDetailPage() {
-    const handId = this.data.detailHand && this.data.detailHand._id
+    const sheetHand = this.data.aiAdviceSheetHand
+    const handId = (this.data.detailHand && this.data.detailHand._id) || (sheetHand && sheetHand._id)
     if (!handId) return
     wx.navigateTo({ url: '/pages/hand-detail/hand-detail?id=' + handId })
   }

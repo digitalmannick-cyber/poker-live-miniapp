@@ -1,0 +1,5 @@
+{
+  "usingComponents": {
+    "hand-replay-player": "/components/hand-replay-player/hand-replay-player"
+  }
+}

@@ -1,21 +1,147 @@
+<view wx:if="{{showLaunchAnimation}}" class="session-launch-splash" catchtouchmove="noop" aria-label="智牌屋启动动画">
+  <image class="session-launch-hero" src="/assets/branding/launch-phantom-five-cards-v1.jpg" mode="aspectFill"></image>
+  <view class="session-launch-glow"></view>
+  <view class="session-launch-vignette"></view>
+  <view class="session-launch-brand">
+    <view class="session-launch-name">智牌屋</view>
+    <view class="session-launch-tagline">AI-POWERED POKER INSIGHT</view>
+  </view>
+  <view class="session-launch-cut"></view>
+</view>
 <view class="app-bg"></view>
-<view class="container">
-  <view class="card">
-    <view class="row">
-      <view>
-        <view class="card-title">全部 Session</view>
-        <view class="muted small">先从一场一场的闭环做起</view>
+<view class="container session-shell {{activeSessionView && showActiveSessionHome ? 'has-active' : ''}}">
+  <view wx:if="{{activeSessionView && showActiveSessionHome}}" class="session-live {{historySessionEditMode ? 'history-edit' : ''}}">
+    <view class="session-live-top">
+      <view class="session-live-back" bindtap="showSessionListFromActive">‹</view>
+      <view class="session-live-title">{{historySessionEditMode ? '新建 Session' : (activeSessionView.levelDisplay + ' @ ' + activeSessionView.venueDisplay)}}</view>
+      <view wx:if="{{historySessionEditMode}}" class="session-live-more edit" bindtap="saveHistorySession">{{historySessionSaving ? '保存中' : '保存'}}</view>
+      <view wx:else class="session-live-more edit" bindtap="editActiveSession">编辑</view>
+    </view>
+
+    <view class="session-live-hero">
+      <view class="session-live-kicker">SESSION TIME</view>
+      <view class="session-live-duration">{{durationDisplay}}</view>
+      <view class="session-live-meter"></view>
+      <view wx:if="{{historySessionEditMode}}" class="session-history-editor">
+        <view class="session-history-grid">
+          <view>
+            <view class="session-history-label">级别</view>
+            <picker mode="selector" range="{{blindPresetOptions}}" range-key="label" value="{{blindPickerIndex}}" bindchange="pickCreateBlind">
+              <view class="session-history-select">{{createForm.blindPreset || '选择级别'}}</view>
+            </picker>
+          </view>
+          <view>
+            <view class="session-history-label">游戏</view>
+            <view class="session-history-select">NLHE</view>
+          </view>
+        </view>
+        <view class="session-history-grid">
+          <view>
+            <view class="session-history-label">桌型</view>
+            <picker mode="selector" range="{{tableSizeOptions}}" range-key="label" value="{{tableSizePickerIndex}}" bindchange="pickCreateTableSize">
+              <view class="session-history-select">{{createForm.tableSize ? createForm.tableSize + 'max' : '选择桌型'}}</view>
+            </picker>
+          </view>
+          <view>
+            <view class="session-history-label">Straddle</view>
+            <view class="session-history-segment">
+              <view class="session-history-segment-item {{createForm.hasStraddle ? 'active' : ''}}" data-value="true" bindtap="selectCreateStraddle">是</view>
+              <view class="session-history-segment-item {{createForm.hasStraddle ? '' : 'active'}}" data-value="false" bindtap="selectCreateStraddle">否</view>
+            </view>
+          </view>
+        </view>
+        <view>
+          <view class="session-history-label">场地</view>
+          <picker mode="selector" range="{{venueOptions}}" range-key="label" value="{{venuePickerIndex}}" bindchange="pickCreateVenue">
+            <view class="session-history-select">{{createForm.venue || '选择场地'}}</view>
+          </picker>
+        </view>
       </view>
-      <button class="primary-btn small-btn new-session-btn {{activeSession ? 'disabled' : ''}}" bindtap="goNewSession">新建</button>
+      <view class="session-live-meta">
+        <view class="session-live-status {{historySessionEditMode ? 'paused' : (activeSessionView.paused ? 'paused' : 'running')}}">
+          <text wx:if="{{!historySessionEditMode && !activeSessionView.paused}}" class="session-live-dot"></text>
+          <text>{{historySessionEditMode ? '历史 Session · 编辑中' : (activeSessionView.paused ? '计时已暂停' : '进行中')}}</text>
+        </view>
+        <view class="session-live-bankroll">
+          <text>买入 {{activeSessionView.buyInDisplay}}</text>
+          <text class="session-live-bankroll-divider">·</text>
+          <text>总筹码 {{activeSessionView.currentStackDisplay}}</text>
+        </view>
+      </view>
+      <view class="session-live-profit {{activeSessionView.profitTone}}">{{activeSessionView.totalProfitDisplay}} <text class="session-live-chip">{{activeSessionView.handCountLabel}}</text></view>
+    </view>
+
+    <view wx:if="{{!historySessionEditMode}}" class="session-live-actions">
+      <view class="session-live-action" bindtap="toggleActiveSessionTimer">
+        <text>{{activeSessionView.paused ? '▶' : 'Ⅱ'}}</text>
+        <text>{{activeSessionView.paused ? '继续' : '暂停'}}</text>
+      </view>
+      <view class="session-live-action cashout" bindtap="openCashOutSheet">
+        <text>□</text>
+        <text>结算</text>
+      </view>
+    </view>
+
+    <view class="session-live-tools">
+      <view class="session-tool buyin" data-type="buyin" bindtap="openActiveAction"><view class="session-tool-icon"><image class="session-tool-img" src="/assets/session-icons/p5-buyin-v251.png" mode="aspectFit"></image></view><view class="session-tool-label">买入</view></view>
+      <view class="session-tool comment" data-type="comment" bindtap="openActiveAction"><view class="session-tool-icon"><image class="session-tool-img" src="/assets/session-icons/p5-comment-v251.png" mode="aspectFit"></image></view><view class="session-tool-label">备注</view></view>
+      <view class="session-tool quick onboarding-target-record-session" data-type="quick" bindtap="openActiveAction"><view class="session-tool-icon"><image class="session-tool-img" src="/assets/session-icons/p5-quick-v251.png" mode="aspectFit"></image></view><view class="session-tool-label">速记</view></view>
+      <view class="session-tool full onboarding-target-session-full" data-type="full" bindtap="openActiveAction"><view class="session-tool-icon"><image class="session-tool-img" src="/assets/session-icons/p5-full-v251.png" mode="aspectFit"></image></view><view class="session-tool-label">完整</view></view>
+      <view class="session-tool ai-reminder" bindtap="openActiveAiReminderSettings"><view class="session-tool-icon"><image class="session-tool-img" src="/assets/session-icons/p5-ai-reminder-v252.png" mode="aspectFit"></image></view><view class="session-tool-label">AI提醒</view></view>
+    </view>
+
+    <view wx:for="{{activeTimelineGroups}}" wx:for-item="group" wx:key="key" class="session-timeline-group">
+      <view class="session-live-date">{{group.label}}</view>
+      <view wx:for="{{group.events}}" wx:for-item="item" wx:key="id" class="session-live-event {{item.last ? 'last' : ''}} {{historySessionEditMode ? 'editable' : ''}}" data-id="{{item.id}}" bindtap="openTimelineEventEditor">
+        <view class="session-event-node">
+          <view class="session-live-event-icon {{item.hot ? 'hot' : ''}} {{item.tone}}"><image wx:if="{{item.iconAsset}}" class="session-event-icon-img" src="{{item.iconAsset}}" mode="aspectFit"></image><text wx:else>{{item.icon}}</text></view>
+        </view>
+        <view class="session-live-event-time">{{item.timeDisplay}}</view>
+        <view class="session-live-event-main">
+          <view wx:if="{{item.reminderCard}}" class="session-reminder-card {{item.reminderCard.tone}}">
+            <view class="session-reminder-card-headline">{{item.reminderCard.headline}}</view>
+            <view wx:if="{{item.reminderCard.advice}}" class="session-reminder-card-advice">{{item.reminderCard.advice}}</view>
+            <view wx:if="{{item.reminderCard.metrics && item.reminderCard.metrics.length}}" class="session-reminder-metrics">
+              <view wx:for="{{item.reminderCard.metrics}}" wx:for-item="metric" wx:key="index" class="session-reminder-metric">
+                <text>{{metric.label}}</text>
+                <text>{{metric.value}}</text>
+              </view>
+            </view>
+            <view wx:if="{{!item.reminderCard.acknowledged}}" class="session-reminder-ack" data-id="{{item.reminderId}}" catchtap="acknowledgeSessionReminder">{{item.reminderCard.actionLabel}}</view>
+          </view>
+          <view wx:elif="{{item.heroCardsVisual && item.heroCardsVisual.length}}" class="session-event-hand-row">
+            <view class="session-event-cards">
+              <view wx:for="{{item.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                <text class="mini-card-rank">{{card.rank}}</text>
+                <text class="mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
+            </view>
+            <view wx:if="{{item.title}}" class="session-live-event-title hand-position">{{item.title}}</view>
+          </view>
+          <view wx:else class="session-event-title-row">
+            <view class="session-live-event-title">{{item.title}}</view>
+          </view>
+        </view>
+        <view wx:if="{{item.amountDisplay}}" class="session-live-event-amount {{item.amountTone}}">{{item.amountDisplay}}</view>
+      </view>
     </view>
   </view>
 
-  <view class="card">
-    <view wx:if="{{sessions.length}}">
+  <view wx:elif="{{sessions.length}}" class="card">
+    <view class="row">
+      <view>
+        <view class="card-title">全部 Session</view>
+      </view>
+      <button class="primary-btn small-btn new-session-btn onboarding-target-session" bindtap="goNewSession">新建</button>
+    </view>
+  </view>
+
+  <view wx:if="{{(!activeSessionView || !showActiveSessionHome) && sessions.length}}" class="card">
+    <view>
       <view wx:for="{{sessions}}" wx:key="_id" class="session-swipe-row {{item.swiped ? 'open' : ''}}">
-        <view class="session-swipe-actions">
+        <view class="session-swipe-actions {{item.onboardingSessionSwipeTargetClass}}">
           <view class="session-swipe-action edit" catchtap="editSessionFromList" data-id="{{item._id}}">编辑</view>
-          <view class="session-swipe-action delete" catchtap="deleteSessionFromList" data-id="{{item._id}}">删除</view>
+          <view class="session-swipe-action delete {{item.onboardingSessionDeleteTargetClass}}" catchtap="deleteSessionFromList" data-id="{{item._id}}">删除</view>
         </view>
         <view
           class="list-item session-swipe-content"
@@ -33,7 +159,7 @@
             <view class="session-list-actions">
               <view
                 wx:if="{{item.summaryEligible}}"
-                class="session-summary-trigger"
+                class="session-summary-trigger onboarding-target-session-summary"
                 catchtap="openSessionSummary"
                 data-id="{{item._id}}"
                 aria-label="查看 AI Session 总结"
@@ -52,28 +178,371 @@
         </view>
       </view>
     </view>
-    <view wx:else class="empty">还没有任何牌局，先创建一场。</view>
   </view>
-  <view class="tab-bar-spacer"></view>
+
+  <view wx:if="{{(!activeSessionView || !showActiveSessionHome) && !sessions.length}}" class="card session-empty-card">
+    <view class="session-empty-title">还没有任何牌局</view>
+    <view class="session-empty-text">先创建一场，再开始记录手牌和复盘。</view>
+    <button class="primary-btn session-empty-action onboarding-target-session" bindtap="goNewSession">新建</button>
+  </view>
+  <view wx:if="{{!activeSessionView || !showActiveSessionHome}}" class="tab-bar-spacer"></view>
 </view>
+
+<view wx:if="{{sessionCreateChoiceVisible}}" class="session-create-layer">
+  <view class="session-create-mask" bindtap="closeCreateChoice"></view>
+  <view class="session-create-sheet session-create-choice-sheet">
+    <view class="session-create-handle"></view>
+    <view class="session-create-title">{{historySessionEditMode ? '编辑基础信息' : '新建 Session'}}</view>
+    <view class="session-create-choice-grid">
+      <view class="session-create-choice primary" bindtap="openLiveSessionCreate">
+        <view class="session-create-choice-title">开始 Live Session</view>
+        <view class="session-create-choice-sub">现在入座，开始计时和记录。</view>
+      </view>
+      <view class="session-create-choice" bindtap="startHistorySessionDraft">
+        <view class="session-create-choice-title">添加已结束 Session</view>
+        <view class="session-create-choice-sub">补录买入、结算和历史手牌。</view>
+      </view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{sessionCreateVisible}}" class="session-create-layer">
+  <view class="session-create-mask" bindtap="closeCreateSession"></view>
+  <view class="session-create-sheet">
+    <view class="session-create-handle"></view>
+    <view class="session-create-title">新建 Session</view>
+    <view class="session-create-form">
+      <view>
+        <view class="session-create-label">买入</view>
+        <view class="session-create-input-wrap onboarding-target-session-buyin">
+          <text class="session-create-prefix">{{settings.chipUnit || '筹码'}}</text>
+          <input class="session-create-input" type="number" value="{{createForm.buyIn}}" data-key="buyIn" bindinput="onCreateInput" />
+        </view>
+      </view>
+
+      <view class="session-create-grid">
+        <view>
+          <view class="session-create-label">级别</view>
+          <picker mode="selector" range="{{blindPresetOptions}}" range-key="label" value="{{blindPickerIndex}}" bindchange="pickCreateBlind">
+            <view class="session-create-select onboarding-target-session-blind">{{createForm.blindPreset || '选择级别'}}</view>
+          </picker>
+        </view>
+        <view>
+          <view class="session-create-label">游戏</view>
+          <view class="session-create-select">NLHE</view>
+        </view>
+      </view>
+
+      <view class="session-create-grid">
+        <view>
+          <view class="session-create-label">桌型</view>
+          <picker mode="selector" range="{{tableSizeOptions}}" range-key="label" value="{{tableSizePickerIndex}}" bindchange="pickCreateTableSize">
+            <view class="session-create-select">{{createForm.tableSize ? createForm.tableSize + 'max' : '选择桌型'}}</view>
+          </picker>
+        </view>
+        <view>
+          <view class="session-create-label">Straddle</view>
+          <view class="session-create-segment">
+            <view class="session-create-segment-item {{createForm.hasStraddle ? 'active' : ''}}" data-value="true" bindtap="selectCreateStraddle">是</view>
+            <view class="session-create-segment-item {{createForm.hasStraddle ? '' : 'active'}}" data-value="false" bindtap="selectCreateStraddle">否</view>
+          </view>
+        </view>
+      </view>
+
+      <view>
+        <view class="session-create-label">场地</view>
+        <picker mode="selector" range="{{venueOptions}}" range-key="label" value="{{venuePickerIndex}}" bindchange="pickCreateVenue">
+          <view class="session-create-select onboarding-target-session-venue">{{createForm.venue || '选择场地'}}</view>
+        </picker>
+      </view>
+
+      <view class="session-create-actions">
+        <view class="session-create-action" bindtap="closeCreateSession">取消</view>
+        <view class="session-create-action primary onboarding-target-session-start" bindtap="startSessionFromSheet">{{historySessionEditMode ? '保存' : '开始'}}</view>
+      </view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{sessionActionSheetVisible}}" class="session-create-layer">
+  <view class="session-create-mask" bindtap="closeActiveAction"></view>
+  <view class="session-action-sheet">
+    <view class="session-create-handle"></view>
+    <view class="session-create-title">{{sessionActionTitle}}</view>
+    <block wx:if="{{sessionActionType == 'stack'}}">
+      <view class="session-create-label">当前筹码</view>
+      <view class="session-create-input-wrap">
+        <text class="session-create-prefix">{{settings.chipUnit || '筹码'}}</text>
+        <input class="session-create-input" type="number" value="{{stackInput}}" data-key="stackInput" bindinput="onSessionActionInput" bindconfirm="saveActiveStack" confirm-type="go" />
+      </view>
+      <view class="session-create-actions single">
+        <view class="session-create-action primary" bindtap="saveActiveStack">保存</view>
+      </view>
+    </block>
+    <block wx:elif="{{sessionActionType == 'buyin' || sessionActionType == 'history_buyin'}}">
+      <view class="session-create-label">{{sessionActionType == 'history_buyin' ? '买入' : '追加买入'}}</view>
+      <view wx:if="{{sessionActionType == 'buyin'}}" class="session-buyin-options">
+        <view wx:for="{{buyInQuickOptions}}" wx:key="bb" class="session-buyin-option {{item.active ? 'active' : ''}}" data-amount="{{item.amount}}" bindtap="selectBuyInQuick">
+          <view>{{item.label}}</view>
+          <view>{{item.amountDisplay}}</view>
+        </view>
+      </view>
+      <view class="session-create-input-wrap">
+        <text class="session-create-prefix">{{settings.chipUnit || '筹码'}}</text>
+        <input class="session-create-input" type="number" value="{{buyInInput}}" data-key="buyInInput" bindinput="onSessionActionInput" bindconfirm="saveActiveBuyIn" confirm-type="go" />
+      </view>
+      <view wx:if="{{historySessionEditMode}}" class="session-time-grid">
+        <view>
+          <view class="session-create-label">日期</view>
+          <input class="session-create-input standalone" type="text" value="{{sessionActionDate}}" data-key="sessionActionDate" bindinput="onSessionActionInput" />
+        </view>
+        <view>
+          <view class="session-create-label">时间</view>
+          <input class="session-create-input standalone" type="text" value="{{sessionActionTime}}" data-key="sessionActionTime" bindinput="onSessionActionInput" />
+        </view>
+      </view>
+      <view class="session-create-actions single">
+        <view class="session-create-action primary" bindtap="saveActiveBuyIn">保存</view>
+      </view>
+    </block>
+    <block wx:else>
+      <view class="session-action-grid">
+        <view class="session-action-option {{commentMode == 'mood' ? 'primary' : ''}}" data-mode="mood" bindtap="selectCommentMode">情绪备注</view>
+        <view class="session-action-option {{commentMode == 'status' ? 'primary' : ''}}" data-mode="status" bindtap="selectCommentMode">状态备注</view>
+        <view class="session-action-option {{commentMode == 'table_change' ? 'primary' : ''}}" data-mode="table_change" bindtap="selectCommentMode">换桌</view>
+        <view class="session-action-option" data-mode="break" bindtap="selectCommentMode">休息</view>
+        <view class="session-action-option {{commentMode == 'custom' ? 'primary' : ''}}" data-mode="custom" bindtap="selectCommentMode">自定义</view>
+      </view>
+      <view wx:if="{{commentMode == 'mood'}}" class="session-comment-options">
+        <view wx:for="{{commentOptions.mood}}" wx:key="index" class="session-comment-option" data-text="{{item}}" bindtap="selectCommentQuick">{{item}}</view>
+      </view>
+      <view wx:if="{{commentMode == 'status'}}" class="session-comment-options">
+        <view wx:for="{{commentOptions.status}}" wx:key="index" class="session-comment-option" data-text="{{item}}" bindtap="selectCommentQuick">{{item}}</view>
+      </view>
+      <view wx:if="{{commentMode == 'table_change'}}" class="session-table-change-form">
+        <view>
+          <view class="session-create-label">新级别</view>
+          <picker mode="selector" range="{{tableChangeBlindOptions}}" range-key="label" value="{{tableChangeBlindPickerIndex}}" bindchange="pickTableChangeBlind">
+            <view class="session-create-select">{{tableChangeBlindPreset || '选择级别'}}</view>
+          </picker>
+        </view>
+        <view>
+          <view class="session-create-label">Straddle</view>
+          <view class="session-create-segment">
+            <view class="session-create-segment-item {{tableChangeHasStraddle ? 'active' : ''}}" data-value="true" bindtap="selectTableChangeStraddle">是</view>
+            <view class="session-create-segment-item {{tableChangeHasStraddle ? '' : 'active'}}" data-value="false" bindtap="selectTableChangeStraddle">否</view>
+          </view>
+        </view>
+        <view class="session-table-change-summary">{{tableChangeSummary}}</view>
+        <view class="session-create-actions single">
+          <view class="session-create-action primary" bindtap="saveTableChange">确认换桌</view>
+        </view>
+      </view>
+      <view wx:if="{{commentMode != 'custom' && commentMode != 'table_change'}}" class="session-comment-hint">点选后直接保存到时间轴</view>
+      <view wx:if="{{commentMode == 'custom'}}" class="session-comment-input-wrap">
+        <textarea class="session-comment-input" value="{{commentText}}" data-key="commentText" bindinput="onSessionActionInput" placeholder="输入备注" auto-height maxlength="200"></textarea>
+      </view>
+      <view wx:if="{{historySessionEditMode && commentMode == 'custom'}}" class="session-time-grid">
+        <view>
+          <view class="session-create-label">日期</view>
+          <input class="session-create-input standalone" type="text" value="{{sessionActionDate}}" data-key="sessionActionDate" bindinput="onSessionActionInput" />
+        </view>
+        <view>
+          <view class="session-create-label">时间</view>
+          <input class="session-create-input standalone" type="text" value="{{sessionActionTime}}" data-key="sessionActionTime" bindinput="onSessionActionInput" />
+        </view>
+      </view>
+      <view wx:if="{{commentMode == 'custom'}}" class="session-create-actions single">
+        <view class="session-create-action primary" bindtap="saveActiveComment">保存</view>
+      </view>
+    </block>
+  </view>
+</view>
+
+<view wx:if="{{quickEntryVisible}}" class="session-quick-layer">
+  <view class="session-quick-mask" bindtap="closeQuickEntry"></view>
+  <view class="session-quick-page">
+    <view class="session-quick-top">
+      <view class="session-quick-back" bindtap="closeQuickEntry">‹</view>
+      <view class="session-quick-title">速记手牌</view>
+      <view class="session-quick-more" bindtap="closeQuickEntry">×</view>
+    </view>
+    <view class="session-quick-card">
+      <view class="session-quick-hand-trigger onboarding-target-record-hand {{quickHeroCardsVisual.length ? '' : 'empty'}}" bindtap="openQuickHeroPicker">
+        <view wx:if="{{quickHeroCardsVisual.length}}" class="session-event-cards large">
+          <view wx:for="{{quickHeroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+            <text class="mini-card-rank">{{card.rank}}</text>
+            <text class="mini-card-suit">{{card.suitSymbol}}</text>
+          </view>
+        </view>
+        <view wx:else class="session-quick-empty">点击弹出手牌选择器</view>
+      </view>
+    </view>
+
+    <view class="session-quick-card">
+      <view class="session-create-label">本手输赢</view>
+      <view class="session-quick-input profit-trigger onboarding-target-record-profit {{quickForm.currentProfit ? 'filled' : ''}}" bindtap="openQuickProfitEditor">{{quickForm.currentProfit || '+/-金额'}}</view>
+    </view>
+
+    <view class="session-quick-card">
+      <view class="session-create-label">位置</view>
+      <view class="session-quick-position-grid">
+        <view wx:for="{{positionOptions}}" wx:key="index" class="session-quick-position {{quickForm.heroPosition == item ? 'active' : ''}}" data-position="{{item}}" bindtap="selectQuickPosition">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="session-quick-card">
+      <view class="session-create-label">备注</view>
+      <textarea class="session-quick-note" value="{{quickForm.notes}}" data-key="notes" bindinput="onQuickInput" placeholder="例如：SB 3bet，翻后待补。" maxlength="160"></textarea>
+    </view>
+
+    <view wx:if="{{historySessionEditMode}}" class="session-quick-card">
+      <view class="session-create-label">时间</view>
+      <view class="session-time-grid">
+        <input class="session-create-input standalone" type="text" value="{{quickForm.date}}" data-key="date" bindinput="onQuickInput" />
+        <input class="session-create-input standalone" type="text" value="{{quickForm.time}}" data-key="time" bindinput="onQuickInput" />
+      </view>
+    </view>
+
+    <view class="session-quick-actions">
+      <view class="session-create-action" bindtap="closeQuickEntry">稍后补全</view>
+      <view class="session-create-action primary onboarding-target-record-save" bindtap="saveQuickEntry">保存速记</view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{profitEditorVisible}}" class="quick-profit-modal">
+  <view class="quick-profit-mask" bindtap="closeProfitEditor"></view>
+  <view class="quick-profit-panel" catchtap="noop">
+    <view class="quick-profit-head">
+      <view>
+        <view class="quick-profit-title">输赢录入</view>
+        <view class="quick-profit-sub">先选加号或减号，再点数字带入输入框。</view>
+      </view>
+      <view class="quick-profit-close" bindtap="closeProfitEditor">×</view>
+    </view>
+
+    <view class="profit-editor-preview">
+      <view class="profit-editor-sign-row">
+        <view class="profit-sign-chip {{profitEditorSign === '+' ? 'active' : ''}}" data-sign="+" bindtap="pickProfitSign">+</view>
+        <view class="profit-sign-chip {{profitEditorSign === '-' ? 'active' : ''}}" data-sign="-" bindtap="pickProfitSign">-</view>
+      </view>
+      <view class="profit-editor-value {{profitEditorSign === '-' ? 'negative' : 'positive'}}">
+        {{profitEditorDigits ? (profitEditorSign + profitEditorDigits) : (profitEditorSign + '0')}}
+      </view>
+    </view>
+
+    <view class="profit-keypad">
+      <view class="profit-keypad-row">
+        <view class="profit-key" data-digit="1" bindtap="appendProfitDigit">1</view>
+        <view class="profit-key" data-digit="2" bindtap="appendProfitDigit">2</view>
+        <view class="profit-key" data-digit="3" bindtap="appendProfitDigit">3</view>
+      </view>
+      <view class="profit-keypad-row">
+        <view class="profit-key" data-digit="4" bindtap="appendProfitDigit">4</view>
+        <view class="profit-key" data-digit="5" bindtap="appendProfitDigit">5</view>
+        <view class="profit-key" data-digit="6" bindtap="appendProfitDigit">6</view>
+      </view>
+      <view class="profit-keypad-row">
+        <view class="profit-key" data-digit="7" bindtap="appendProfitDigit">7</view>
+        <view class="profit-key" data-digit="8" bindtap="appendProfitDigit">8</view>
+        <view class="profit-key" data-digit="9" bindtap="appendProfitDigit">9</view>
+      </view>
+      <view class="profit-keypad-row">
+        <view class="profit-key profit-key-tool" data-action="clear" bindtap="handleProfitEditorTool">清空</view>
+        <view class="profit-key" data-digit="0" bindtap="appendProfitDigit">0</view>
+        <view class="profit-key profit-key-tool" data-action="backspace" bindtap="handleProfitEditorTool">退格</view>
+      </view>
+    </view>
+
+    <view class="quick-profit-actions">
+      <view class="quick-profit-action primary" bindtap="quickSaveFromProfit">快速录入</view>
+      <view class="quick-profit-action" bindtap="applyProfitEditor">确认</view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{quickHeroPickerVisible}}" class="session-card-picker-layer">
+  <view class="session-card-picker-mask" bindtap="closeQuickHeroPicker"></view>
+  <view class="session-card-picker">
+    <view class="session-card-picker-head">
+      <view>
+        <view class="session-card-picker-title">Hero 手牌选择</view>
+        <view class="session-card-picker-sub">这里选择 2 张 Hero 手牌，点满 2 张会自动收起。</view>
+      </view>
+      <view class="session-card-picker-close" bindtap="closeQuickHeroPicker">关闭</view>
+    </view>
+    <view class="session-card-picked-preview">
+      <view class="badge-outline">{{quickHeroCardsVisual.length >= 2 ? '已选 2 张' : '待选择'}}</view>
+      <view class="session-event-cards picker-preview">
+        <view wx:for="{{quickHeroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+          <text class="mini-card-rank">{{card.rank}}</text>
+          <text class="mini-card-suit">{{card.suitSymbol}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="session-card-picker-deck">
+      <view wx:for="{{quickHeroPickerDeck}}" wx:for-item="suitRow" wx:key="key" class="session-card-picker-row">
+        <view wx:for="{{suitRow.cards}}" wx:for-item="card" wx:key="token" class="session-picker-card session-picker-card-{{card.suitClass}} {{card.selected ? 'selected' : ''}}" data-token="{{card.token}}" bindtap="pickQuickHeroCard">
+          <text class="session-picker-rank">{{card.rank}}</text>
+          <text class="session-picker-suit">{{card.suitSymbol}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="session-create-actions">
+      <view class="session-create-action" data-action="backspace" bindtap="handleQuickHeroPickerTool">退一张</view>
+      <view class="session-create-action" data-action="clear" bindtap="handleQuickHeroPickerTool">清空</view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{cashOutVisible}}" class="session-create-layer">
+  <view class="session-create-mask" bindtap="closeCashOutSheet"></view>
+  <view class="session-action-sheet">
+    <view class="session-create-handle"></view>
+    <view class="session-create-title">结算</view>
+    <view class="session-create-label">带出筹码</view>
+    <view class="session-create-input-wrap">
+      <text class="session-create-prefix">{{settings.chipUnit || '筹码'}}</text>
+      <input class="session-create-input" type="number" value="{{cashOutInput}}" bindinput="onCashOutInput" bindconfirm="finishActiveSession" confirm-type="go" />
+    </view>
+    <view wx:if="{{historySessionEditMode}}" class="session-time-grid">
+      <view>
+        <view class="session-create-label">日期</view>
+        <input class="session-create-input standalone" type="text" value="{{cashOutDate}}" data-key="cashOutDate" bindinput="onSessionActionInput" />
+      </view>
+      <view>
+        <view class="session-create-label">时间</view>
+        <input class="session-create-input standalone" type="text" value="{{cashOutTime}}" data-key="cashOutTime" bindinput="onSessionActionInput" />
+      </view>
+    </view>
+    <view class="session-create-actions">
+      <view class="session-create-action" bindtap="closeCashOutSheet">取消</view>
+      <view class="session-create-action primary" bindtap="finishActiveSession">结束</view>
+    </view>
+  </view>
+</view>
+<onboarding-guide visible="{{onboardingGuideVisible}}" step="{{onboardingGuideStep}}" bindnext="onOnboardingNext" bindskip="onOnboardingSkip" />
 
 <view wx:if="{{sessionSummaryVisible}}" class="session-summary-layer">
   <view class="session-summary-mask" bindtap="closeSessionSummary"></view>
-  <view class="session-summary-modal">
+  <view class="session-summary-modal onboarding-target-session-summary-sheet">
+    <view class="session-summary-p5-mark"></view>
     <view class="session-summary-head">
       <view>
+        <view class="session-summary-kicker">EV脑 · SESSION REVIEW</view>
         <view class="session-summary-title">{{sessionSummaryView.title}}</view>
-        <view class="session-summary-subtitle">EV脑 Session 总结</view>
+        <view class="session-summary-subtitle">整场建议只按已复盘手牌证据归纳，不用单个关键词贴标签</view>
       </view>
       <view class="session-summary-close" bindtap="closeSessionSummary">关闭</view>
     </view>
 
     <scroll-view class="session-summary-body" scroll-y>
-      <view wx:if="{{sessionSummaryLoading}}" class="session-summary-loading">正在汇总本场所有 AI 建议...</view>
+      <view wx:if="{{sessionSummaryLoading}}" class="session-summary-loading">正在汇总本场所有 AI 总结...</view>
       <view wx:if="{{sessionSummaryError}}" class="session-summary-error">{{sessionSummaryError}}</view>
 
       <view wx:if="{{sessionSummaryView}}">
-        <view class="session-summary-section">
+        <view class="session-summary-section focus">
           <view class="session-summary-section-title">总览</view>
           <view class="session-summary-text">{{sessionSummaryView.overview}}</view>
         </view>
@@ -93,46 +562,54 @@
           </view>
         </view>
 
-        <view wx:if="{{sessionSummaryView.goodHands.length}}" class="session-summary-section">
-          <view class="session-summary-section-title">打得好的地方</view>
-          <view wx:for="{{sessionSummaryView.goodHands}}" wx:key="index" class="session-summary-item">{{item}}</view>
-        </view>
-
-        <view wx:if="{{sessionSummaryView.mistakeHands.length}}" class="session-summary-section">
-          <view class="session-summary-section-title">有问题的地方</view>
-          <view wx:for="{{sessionSummaryView.mistakeHands}}" wx:key="index" class="session-summary-item danger">{{item}}</view>
-        </view>
-
-        <view wx:if="{{sessionSummaryView.optimizationHands.length}}" class="session-summary-section">
-          <view class="session-summary-section-title">可以优化</view>
-          <view wx:for="{{sessionSummaryView.optimizationHands}}" wx:key="index" class="session-summary-item warn">{{item}}</view>
-        </view>
-
-        <view wx:if="{{sessionSummaryView.handSummaries.length}}" class="session-summary-section">
-          <view class="session-summary-section-title">逐手摘要</view>
-          <view wx:for="{{sessionSummaryView.handSummaries}}" wx:key="index" class="session-summary-item">{{item}}</view>
-        </view>
-
-        <view wx:if="{{sessionSummaryView.tendency}}" class="session-summary-section">
+        <view wx:if="{{sessionSummaryView.tendency}}" class="session-summary-section tendency">
           <view class="session-summary-section-title">Session 倾向</view>
           <view class="session-summary-text">{{sessionSummaryView.tendency}}</view>
         </view>
 
-        <view wx:if="{{sessionSummaryView.recommendations.length}}" class="session-summary-section">
+        <view wx:if="{{sessionSummaryView.mistakeHands.length}}" class="session-summary-section danger">
+          <view class="session-summary-section-title">错误</view>
+          <view wx:for="{{sessionSummaryView.mistakeHands}}" wx:key="index" class="session-summary-item danger">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.optimizationHands.length}}" class="session-summary-section warn">
+          <view class="session-summary-section-title">优化</view>
+          <view wx:for="{{sessionSummaryView.optimizationHands}}" wx:key="index" class="session-summary-item warn">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.goodHands.length}}" class="session-summary-section good">
+          <view class="session-summary-section-title">精彩</view>
+          <view wx:for="{{sessionSummaryView.goodHands}}" wx:key="index" class="session-summary-item">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.handSummaries.length}}" class="session-summary-section evidence">
+          <view class="session-summary-section-title">逐手摘要</view>
+          <view wx:for="{{sessionSummaryView.handSummaries}}" wx:key="index" class="session-summary-item">{{item}}</view>
+        </view>
+
+        <view wx:if="{{sessionSummaryView.recommendations.length}}" class="session-summary-section action">
           <view class="session-summary-section-title">合理建议</view>
           <view wx:for="{{sessionSummaryView.recommendations}}" wx:key="index" class="session-summary-item">{{item}}</view>
         </view>
 
-        <view wx:if="{{sessionSummaryView.trainingPlan.length}}" class="session-summary-section">
+        <view wx:if="{{sessionSummaryView.trainingPlan.length}}" class="session-summary-section training">
           <view class="session-summary-section-title">训练计划</view>
           <view wx:for="{{sessionSummaryView.trainingPlan}}" wx:key="index" class="session-summary-item">{{item}}</view>
         </view>
 
         <view wx:if="{{sessionSummaryView.oneLiner}}" class="session-summary-one-liner">{{sessionSummaryView.oneLiner}}</view>
-        <view wx:if="{{sessionSummaryView.answer}}" class="session-summary-text">{{sessionSummaryView.answer}}</view>
+        <view wx:if="{{sessionSummaryView.showAnswer}}" class="session-summary-text">{{sessionSummaryView.answer}}</view>
       </view>
     </scroll-view>
   </view>
 </view>
 
-<agent-chat wx:if="{{agentChatReady}}" />
+<include src="../../components/ai-reminder-editor/ai-reminder-editor.wxml" />
+
+<release-notes-poster
+  visible="{{releaseNotesVisible}}"
+  notes="{{releaseNotes}}"
+  bindacknowledge="acknowledgeReleaseNotes"
+></release-notes-poster>
+
+<agent-chat wx:if="{{agentChatReady}}"></agent-chat>

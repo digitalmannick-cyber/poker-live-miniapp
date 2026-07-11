@@ -4,8 +4,12 @@ const cardUi = require('../../utils/card-ui')
 const handDetailFields = require('../../utils/hand-detail-fields')
 const reviewTags = require('../../utils/review-tags')
 const tabBar = require('../../utils/tab-bar')
+const onboardingGuide = require('../../utils/onboarding-guide')
 
+const PENDING_RECORD_SESSION_ID_KEY = 'pokerLivePendingRecordSessionId'
+const OPEN_CREATE_SESSION_KEY = 'pokerLiveOpenCreateSession'
 const REVIEW_PENDING_FILTER_KEY = 'pokerReviewPendingFilters'
+const PENDING_RECORD_SESSION_MAX_AGE_MS = 2 * 60 * 1000
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = [
   { key: 's', symbol: '♠', className: 'spade' },
@@ -209,13 +213,39 @@ function getSessionUpdatedAt(session) {
   return Number(session && (session.updatedAt || session.createdAt || 0)) || 0
 }
 
-function pickRecordSession(sessions, sessionId) {
+function normalizePendingRecordSessionHint(value) {
+  if (!value) return null
+  if (typeof value === 'string') {
+    return {
+      sessionId: value,
+      allowFinished: false,
+      legacy: true
+    }
+  }
+  if (typeof value === 'object') {
+    const createdAt = Number(value.createdAt) || 0
+    const age = createdAt ? Date.now() - createdAt : Infinity
+    return {
+      sessionId: String(value.sessionId || ''),
+      allowFinished: !!value.allowFinished && age >= 0 && age <= PENDING_RECORD_SESSION_MAX_AGE_MS,
+      legacy: false
+    }
+  }
+  return null
+}
+
+function pickRecordSession(sessions, sessionId, hint) {
   const list = sessions || []
+  const active = list.find(function (item) { return item.status === 'active' })
   if (sessionId) {
     const matched = list.find(function (item) { return item._id === sessionId })
-    if (matched) return matched
+    if (matched) {
+      if (matched.status === 'active') return matched
+      if (hint && hint.allowFinished) return matched
+      if (!active && !(hint && hint.legacy)) return matched
+      if (active) return active
+    }
   }
-  const active = list.find(function (item) { return item.status === 'active' })
   if (active) return active
   const finished = list
     .filter(function (item) { return item.status === 'finished' })
@@ -236,13 +266,44 @@ function buildSessionSelectorOptions(sessions, currentId) {
   })
 }
 
+function shouldShowOnboardingRecordDemo() {
+  const step = onboardingGuide.getActiveStep && onboardingGuide.getActiveStep()
+  return !!(
+    onboardingGuide.shouldAutoShowGuide &&
+    onboardingGuide.shouldAutoShowGuide() &&
+    step &&
+    step.route === 'pages/hand-record/hand-record'
+  )
+}
+
+function buildOnboardingRecordFormPatch(session) {
+  return {
+    heroCardsInput: 'QdQs',
+    currentProfit: '-42000',
+    heroPosition: 'CO',
+    villainPosition: 'SB',
+    opponentType: '紧凶',
+    playerCount: '8',
+    effectiveStack: '300000',
+    potSize: '96000',
+    tagsInput: 'River 决策,可优化',
+    preflopActionLine: 'Hero CO open 1500，SB call，BB fold',
+    flopActionLine: 'Qd7d3c，SB check，Hero bet 2500，SB raise 7800，Hero call',
+    turnActionLine: '8d，SB check，Hero check back',
+    riverActionLine: '2s，SB bet 42000，Hero call',
+    notes: '新手引导演示：QdQs，亏损 -42000。先完成手牌和输赢即可快速保存。',
+    stakeLevel: getSessionLevel(session) || '300/600',
+    hasStraddle: !!(session && session.hasStraddle)
+  }
+}
+
 function buildSessionPatch(session, settings) {
   return {
     sessionId: session ? session._id : '',
     session: session || null,
     'form.playedDate': getSessionDate(session),
     'form.stakeLevel': getSessionLevel(session),
-    'form.hasStraddle': false,
+    'form.hasStraddle': !!(session && session.hasStraddle),
     'form.heroPosition': '',
     'form.opponentType': '',
     'form.villainPosition': '',
@@ -280,12 +341,46 @@ function buildTagOptions(tagsInput) {
   })
 }
 
+function buildStreetInputs(form) {
+  const isPreflopAllIn = !!form.preflopAllIn
+  return {
+    preflop: {
+      board: '',
+      actionLine: form.preflopActionLine,
+      pot: form.preflopPot
+    },
+    flop: {
+      board: form.flop,
+      actionLine: isPreflopAllIn ? '' : form.flopActionLine,
+      pot: isPreflopAllIn ? '' : form.flopPot
+    },
+    turn: {
+      board: form.turn,
+      actionLine: isPreflopAllIn ? '' : form.turnActionLine,
+      pot: isPreflopAllIn ? '' : form.turnPot
+    },
+    river: {
+      board: form.river,
+      actionLine: isPreflopAllIn ? '' : form.riverActionLine,
+      pot: isPreflopAllIn ? '' : form.riverPot
+    }
+  }
+}
+
+function filterActionsForAllIn(actions, form) {
+  if (!form.preflopAllIn) return actions
+  return (actions || []).filter(function (item) {
+    const street = String(item && item.street || '').toLowerCase()
+    return street === 'preflop' || street === 'pre' || street === ''
+  })
+}
+
 function getEmptyHandFormPatch(session, settings) {
   return {
     'form.playedDate': getSessionDate(session),
     'form.stakeLevel': getSessionLevel(session),
     'form.playerCount': '',
-    'form.hasStraddle': false,
+    'form.hasStraddle': !!(session && session.hasStraddle),
     'form.heroSeat': '4',
     'form.heroPosition': '',
     'form.opponentType': '',
@@ -298,6 +393,9 @@ function getEmptyHandFormPatch(session, settings) {
     'form.effectiveStack': '',
     'form.potSize': '',
     'form.currentProfit': '',
+    'form.isAllIn': false,
+    'form.allInEv': '',
+    'form.preflopAllIn': false,
     'form.streetSummary': '',
     'form.preflopActionLine': '',
     'form.preflopPot': '',
@@ -314,6 +412,7 @@ function getEmptyHandFormPatch(session, settings) {
     'form.showdown': '',
     actions: [],
     heroCardsVisual: [],
+    showdownText: '',
     showdownCardsVisual: [],
     boardEditorVisual: buildBoardEditorVisual({
       heroCardsInput: '',
@@ -329,6 +428,7 @@ function getEmptyHandFormPatch(session, settings) {
 
 Page({
   data: {
+    agentChatReady: false,
     sessionId: '',
     session: null,
     allSessions: [],
@@ -349,6 +449,9 @@ Page({
       effectiveStack: '',
       potSize: '',
       currentProfit: '',
+      isAllIn: false,
+      allInEv: '',
+      preflopAllIn: false,
       streetSummary: '',
       preflopActionLine: '',
       preflopPot: '',
@@ -386,6 +489,7 @@ Page({
     heroCardsVisual: [],
     showdownPickerVisible: false,
     showdownPickerDeck: [],
+    showdownText: '',
     showdownCardsVisual: [],
     boardEditorVisual: [],
     tagOptions: buildTagOptions(''),
@@ -404,21 +508,49 @@ Page({
     selectorOptions: [],
     sessionBlindDisplay: '',
     sessionMetaText: '',
-    resultBbDisplay: '-'
+    resultBbDisplay: '-',
+    savingHand: false,
+    sessionLoading: false,
+    onboardingGuideVisible: false,
+    onboardingGuideStep: null
   },
   onLoad(options) {
+    this.pendingInputForm = {}
     this.pendingSessionId = options.sessionId || ''
   },
   async onShow() {
     tabBar.syncCustomTabBar('/pages/hand-record/hand-record')
-    await this.initializePage(this.pendingSessionId || '')
+    let storedSessionHint = null
+    try {
+      storedSessionHint = normalizePendingRecordSessionHint(wx.getStorageSync(PENDING_RECORD_SESSION_ID_KEY))
+      if (storedSessionHint && storedSessionHint.sessionId) wx.removeStorageSync(PENDING_RECORD_SESSION_ID_KEY)
+    } catch (error) {
+      storedSessionHint = null
+    }
+    const targetSessionId = this.pendingSessionId || (storedSessionHint && storedSessionHint.sessionId) || ''
+    await this.initializePage(targetSessionId || '', storedSessionHint)
     this.pendingSessionId = ''
+    this.syncOnboardingGuide()
   },
-  async initializePage(sessionId) {
+  onReady() {
+    setTimeout(() => {
+      if (!this.data.agentChatReady) {
+        this.setData({ agentChatReady: true })
+      }
+    }, 240)
+  },
+  async initializePage(sessionId, sessionHint) {
+    this.pendingInputForm = {}
+    const loadToken = Date.now() + '_' + Math.random()
+    this.sessionLoadToken = loadToken
     const settings = dataService.getAppSettings()
-    const positionOptions = handDetailFields.getPositionOptions(settings.positions, false)
     this.setData({
       pageReady: true,
+      sessionLoading: true,
+      sessionId: '',
+      session: null,
+      sessionBlindDisplay: '',
+      sessionMetaText: '',
       positions: settings.positions,
       opponentTypes: settings.opponentTypes,
       blindPresets: settings.blindPresets
@@ -426,31 +558,77 @@ Page({
 
     const loadSession = async () => {
       const sessionData = await dataService.getSessionListData()
+      if (this.sessionLoadToken !== loadToken) return
       const sessions = sessionData.sessions || []
-      const session = pickRecordSession(sessions, sessionId)
+      const session = pickRecordSession(sessions, sessionId, sessionHint)
       const targetSessionId = session ? session._id : ''
+      const onboardingPatch = shouldShowOnboardingRecordDemo() ? buildOnboardingRecordFormPatch(session) : {}
+      const nextForm = Object.assign({}, this.data.form, onboardingPatch)
 
       this.setData({
         allSessions: sessions,
         sessionId: targetSessionId,
         session,
         'form.playedDate': getSessionDate(session),
-        'form.stakeLevel': getSessionLevel(session),
-        'form.hasStraddle': false,
-        'form.heroPosition': '',
-        'form.opponentType': '',
-        'form.villainPosition': '',
+        'form.stakeLevel': nextForm.stakeLevel || getSessionLevel(session),
+        'form.hasStraddle': !!(session && session.hasStraddle),
+        'form.heroPosition': nextForm.heroPosition || '',
+        'form.opponentType': nextForm.opponentType || '',
+        'form.villainPosition': nextForm.villainPosition || '',
+        'form.heroCardsInput': nextForm.heroCardsInput || '',
+        'form.currentProfit': nextForm.currentProfit || '',
+        'form.playerCount': nextForm.playerCount || '',
+        'form.effectiveStack': nextForm.effectiveStack || '',
+        'form.potSize': nextForm.potSize || '',
+        'form.tagsInput': nextForm.tagsInput || '',
+        'form.preflopActionLine': nextForm.preflopActionLine || '',
+        'form.flopActionLine': nextForm.flopActionLine || '',
+        'form.turnActionLine': nextForm.turnActionLine || '',
+        'form.riverActionLine': nextForm.riverActionLine || '',
+        'form.notes': nextForm.notes || '',
+        tagOptions: buildTagOptions(nextForm.tagsInput || ''),
         sessionBlindDisplay: session ? [session.smallBlind, session.bigBlind].filter(Boolean).join('/') : '',
         sessionMetaText: session ? [session.date, session.venue].filter(Boolean).join(' · ') : '',
-        resultBbDisplay: formatResultBb(this.data.form.currentProfit, getSessionLevel(session), session),
-        boardEditorVisual: buildBoardEditorVisual(this.data.form)
+        resultBbDisplay: formatResultBb(nextForm.currentProfit, nextForm.stakeLevel || getSessionLevel(session), session),
+        boardEditorVisual: buildBoardEditorVisual(nextForm),
+        sessionLoading: false
       })
-      this.syncHeroCardsState(this.data.form.heroCardsInput)
+      this.syncHeroCardsState(nextForm.heroCardsInput)
       this.syncShowdownCardsState(this.data.form.showdown)
     }
 
-    loadSession().catch(() => {})
+    try {
+      await loadSession()
+    } catch (error) {
+      if (this.sessionLoadToken === loadToken) {
+        this.setData({ sessionLoading: false })
+      }
+    }
   },
+
+  syncOnboardingGuide() {
+    if (dataService.refreshOnboardingGuideContext) dataService.refreshOnboardingGuideContext()
+    const step = onboardingGuide.getStepForRoute('pages/hand-record/hand-record')
+    this.setData({
+      onboardingGuideVisible: !!step,
+      onboardingGuideStep: step
+    })
+  },
+
+  onOnboardingNext() {
+    const result = onboardingGuide.advanceGuide()
+    if (result.done) {
+      this.syncOnboardingGuide()
+      return
+    }
+    if (!onboardingGuide.navigateToStep(result.step)) this.syncOnboardingGuide()
+  },
+
+  onOnboardingSkip() {
+    onboardingGuide.dismissGuide()
+    this.syncOnboardingGuide()
+  },
+
   onInput(e) {
     const key = e.currentTarget.dataset.key
     const value = e.detail.value
@@ -458,6 +636,21 @@ Page({
       this.syncHeroCardsState(value)
       return
     }
+    if (e.type === 'input') {
+      this.pendingInputForm = Object.assign({}, this.pendingInputForm || {}, { [key]: value })
+      return
+    }
+    this.commitFormInput(key, value)
+  },
+  commitInputValue(e) {
+    const key = e.currentTarget.dataset.key
+    if (!key) return
+    this.commitFormInput(key, e.detail.value)
+  },
+  commitFormInput(key, value) {
+    const pending = Object.assign({}, this.pendingInputForm || {})
+    delete pending[key]
+    this.pendingInputForm = pending
     const nextForm = Object.assign({}, this.data.form, { [key]: value })
     const patch = { ['form.' + key]: value }
     if (key === 'tagsInput') {
@@ -467,6 +660,60 @@ Page({
       patch.resultBbDisplay = formatResultBb(nextForm.currentProfit, nextForm.stakeLevel, this.data.session)
     }
     this.setData(patch)
+  },
+  togglePreflopAllIn(e) {
+    const checked = !!(e && e.detail && e.detail.value)
+    const patch = {
+      'form.preflopAllIn': checked
+    }
+    if (checked) {
+      patch['form.isAllIn'] = true
+      patch['form.flopActionLine'] = ''
+      patch['form.flopPot'] = ''
+      patch['form.turnActionLine'] = ''
+      patch['form.turnPot'] = ''
+      patch['form.riverActionLine'] = ''
+      patch['form.riverPot'] = ''
+    }
+    this.setData(patch)
+  },
+  toggleAllIn(e) {
+    const checked = !!(e && e.detail && e.detail.value)
+    const patch = {
+      'form.isAllIn': checked,
+      'form.allInEv': checked ? this.data.form.allInEv : ''
+    }
+    if (!checked) patch['form.preflopAllIn'] = false
+    this.setData(patch)
+  },
+  commitPendingInputs(override) {
+    const pending = Object.assign({}, this.pendingInputForm || {})
+    const forced = override || {}
+    const form = Object.assign({}, this.data.form, pending, forced)
+    const keys = Object.keys(pending)
+    if (keys.length || Object.keys(forced).length) {
+      const patch = {}
+      keys.forEach(key => {
+        patch['form.' + key] = pending[key]
+      })
+      Object.keys(forced).forEach(key => {
+        patch['form.' + key] = forced[key]
+      })
+      if (keys.indexOf('tagsInput') > -1 || Object.prototype.hasOwnProperty.call(forced, 'tagsInput')) {
+        patch.tagOptions = buildTagOptions(form.tagsInput)
+      }
+      if (
+        keys.indexOf('currentProfit') > -1 ||
+        keys.indexOf('stakeLevel') > -1 ||
+        Object.prototype.hasOwnProperty.call(forced, 'currentProfit') ||
+        Object.prototype.hasOwnProperty.call(forced, 'stakeLevel')
+      ) {
+        patch.resultBbDisplay = formatResultBb(form.currentProfit, form.stakeLevel, this.data.session)
+      }
+      this.setData(patch)
+    }
+    this.pendingInputForm = {}
+    return form
   },
   onDraftInput(e) {
     const key = e.currentTarget.dataset.key
@@ -681,7 +928,11 @@ Page({
     const nextForm = Object.assign({}, this.data.form, { showdown: normalized })
     const patch = {
       'form.showdown': normalized,
-      showdownCardsVisual: cardUi.parseHeroCardsInput(normalized),
+      showdownText: normalized,
+      showdownCardsVisual: cardUi.parseOpponentCardsInput(normalized, {
+        board: nextForm,
+        heroCardsInput: nextForm.heroCardsInput
+      }),
       showdownPickerDeck: buildShowdownPickerDeck(nextForm),
       heroPickerDeck: buildHeroPickerDeck(nextForm)
     }
@@ -883,94 +1134,95 @@ Page({
     this.setData({ actions })
   },
   async saveHand(options) {
+    if (this.data.savingHand) return
+    if (this.data.sessionLoading) {
+      wx.showToast({ title: 'Session 加载中', icon: 'none' })
+      return
+    }
     const override = options || {}
-    const form = Object.assign({}, this.data.form, override.currentProfit != null ? {
+    const form = this.commitPendingInputs(override.currentProfit != null ? {
       currentProfit: override.currentProfit
     } : {})
     if (!this.data.sessionId) {
-      wx.showToast({ title: '缺少 Session', icon: 'none' })
+      wx.showToast({ title: '\u7f3a\u5c11 Session', icon: 'none' })
       return
     }
     if (!form.heroCardsInput || form.currentProfit === '') {
-      wx.showToast({ title: '请先填写手牌与输赢', icon: 'none' })
+      wx.showToast({ title: '\u8bf7\u5148\u586b\u5199\u624b\u724c\u4e0e\u8f93\u8d62', icon: 'none' })
       return
     }
     if (hasDuplicateHeroCards(form.heroCardsInput)) {
-      wx.showToast({ title: '同点数手牌不能重复花色', icon: 'none' })
+      wx.showToast({ title: '\u540c\u70b9\u6570\u624b\u724c\u4e0d\u80fd\u91cd\u590d\u82b1\u8272', icon: 'none' })
       return
     }
     const tags = form.tagsInput ? form.tagsInput.split(',').map(item => item.trim()).filter(Boolean) : []
-    await dataService.createHand({
-      sessionId: this.data.sessionId,
-      playedDate: form.playedDate,
-      stakeLevel: form.stakeLevel,
-      playerCount: form.playerCount,
-      hasStraddle: form.hasStraddle,
-      heroSeat: form.heroSeat,
-      heroPosition: form.heroPosition,
-      villainPosition: form.villainPosition,
-      villainType: form.opponentType,
-      opponentType: form.opponentType,
-      buttonSeat: form.buttonSeat,
-      heroCardsInput: form.heroCardsInput,
-      flop: form.flop,
-      turn: form.turn,
-      river: form.river,
-      effectiveStack: form.effectiveStack,
-      potSize: form.potSize,
-      currentProfit: form.currentProfit,
-      resultBB: formatResultBb(form.currentProfit, form.stakeLevel, this.data.session),
-      streetSummary: form.streetSummary,
-      streetInputs: {
-        preflop: {
-          board: '',
-          actionLine: form.preflopActionLine,
-          pot: form.preflopPot
-        },
-        flop: {
-          board: form.flop,
-          actionLine: form.flopActionLine,
-          pot: form.flopPot
-        },
-        turn: {
-          board: form.turn,
-          actionLine: form.turnActionLine,
-          pot: form.turnPot
-        },
-        river: {
-          board: form.river,
-          actionLine: form.riverActionLine,
-          pot: form.riverPot
-        }
-      },
-      showdown: form.showdown,
-      opponentName: form.opponentName,
-      heroQuestion: form.heroQuestion,
-      tags,
-      notes: form.notes,
-      mindJourney: form.notes,
-      actions: this.data.actions
-    })
-    wx.showToast({ title: '手牌已保存', icon: 'success' })
-    wx.setStorageSync(REVIEW_PENDING_FILTER_KEY, {
-      sessionStatus: 'active',
-      dateRange: 'all',
-      resultFilter: 'all',
-      sortBy: 'dateDesc'
-    })
-    const settings = dataService.getAppSettings()
-    this.setData(getEmptyHandFormPatch(this.data.session, settings))
-    this.syncHeroCardsState('')
-    setTimeout(function () {
-      wx.switchTab({ url: '/pages/review-list/review-list' })
-    }, 450)
+    const isPreflopAllIn = !!form.preflopAllIn
+    const isAllIn = !!(form.isAllIn || isPreflopAllIn)
+    const allInPot = isPreflopAllIn ? (form.preflopPot || form.potSize || '') : ''
+    this.setData({ savingHand: true })
+    try {
+      await dataService.createHand({
+        sessionId: this.data.sessionId,
+        playedDate: form.playedDate,
+        stakeLevel: form.stakeLevel,
+        playerCount: form.playerCount,
+        hasStraddle: !!(form.hasStraddle || (this.data.session && this.data.session.hasStraddle)),
+        heroSeat: form.heroSeat,
+        heroPosition: form.heroPosition,
+        villainPosition: form.villainPosition,
+        villainType: form.opponentType,
+        opponentType: form.opponentType,
+        buttonSeat: form.buttonSeat,
+        heroCardsInput: form.heroCardsInput,
+        flop: form.flop,
+        turn: form.turn,
+        river: form.river,
+        effectiveStack: form.effectiveStack,
+        potSize: form.potSize,
+        currentProfit: form.currentProfit,
+        isAllIn,
+        allInEv: isAllIn ? form.allInEv : '',
+        allInStreet: isPreflopAllIn ? 'preflop' : '',
+        allInPot,
+        resultBB: formatResultBb(form.currentProfit, form.stakeLevel, this.data.session),
+        streetSummary: form.streetSummary,
+        streetInputs: buildStreetInputs(form),
+        opponentCards: form.showdown,
+        opponentCardsSource: form.showdown ? 'manual' : '',
+        showdown: form.showdown,
+        opponentName: form.opponentName,
+        heroQuestion: form.heroQuestion,
+        tags,
+        notes: form.notes,
+        mindJourney: form.notes,
+        actions: filterActionsForAllIn(this.data.actions, form)
+      })
+      wx.showToast({ title: '\u624b\u724c\u5df2\u4fdd\u5b58', icon: 'success' })
+      wx.setStorageSync(REVIEW_PENDING_FILTER_KEY, {
+        sessionStatus: this.data.session && this.data.session.status === 'finished' ? 'finished' : 'active',
+        dateRange: 'all',
+        resultFilter: 'all',
+        sortBy: 'dateDesc'
+      })
+      const settings = dataService.getAppSettings()
+      this.setData(getEmptyHandFormPatch(this.data.session, settings))
+      this.syncHeroCardsState('')
+      setTimeout(function () {
+        wx.switchTab({ url: '/pages/review-list/review-list' })
+      }, 450)
+    } catch (error) {
+      wx.showToast({ title: '\u4fdd\u5b58\u5931\u8d25', icon: 'none' })
+    } finally {
+      this.setData({ savingHand: false })
+    }
   },
   goCreateSession() {
     if (this.data.session && this.data.session.status === 'active') {
       wx.showToast({ title: sessionRules.ACTIVE_SESSION_MESSAGE, icon: 'none' })
       return
     }
-    wx.navigateTo({ url: '/pages/session-detail/session-detail?mode=create' })
+    wx.setStorageSync(OPEN_CREATE_SESSION_KEY, true)
+    wx.switchTab({ url: '/pages/session-list/session-list' })
   },
   goSessionList() {
     wx.switchTab({ url: '/pages/session-list/session-list' })

@@ -1,4 +1,4 @@
-﻿<view class="agent-chat-root">
+<view class="agent-chat-root">
   <view wx:if="{{!displayVisible}}" class="agent-chat-fab" bindtap="openChat">
     <image
       class="agent-chat-fab-icon"
@@ -35,22 +35,50 @@
         wx:for="{{messages}}"
         wx:key="id"
         id="{{item.id}}"
-        class="agent-chat-message {{item.role === 'user' ? 'user' : 'assistant'}}"
+        class="agent-chat-message {{item.role === 'user' ? 'user' : 'assistant'}} {{item.reminder ? 'reminder' : ''}}"
       >
-        <view class="agent-chat-message-role">{{item.role === 'user' ? '你' : 'EV脑'}}</view>
+        <view wx:if="{{!item.reminderCard}}" class="agent-chat-message-role">{{item.role === 'user' ? '你' : 'EV脑'}}</view>
+        <view wx:if="{{item.reminder && !item.reminderCard}}" class="agent-chat-reminder-badge">EV脑提醒</view>
         <view
+          wx:if="{{item.reminderCard}}"
+          class="agent-chat-reminder-card {{item.reminderCard.variant === 'warning' ? 'warning' : 'strong'}} {{item.reminderCard.acknowledged ? 'acknowledged' : ''}}"
+          data-text="{{item.text}}"
+          bindlongpress="copyMessageText"
+        >
+          <view class="agent-chat-reminder-card-label">{{item.reminderCard.label}} · {{item.reminderCard.title}}</view>
+          <view class="agent-chat-reminder-card-headline">{{item.reminderCard.headline}}</view>
+          <view wx:if="{{item.reminderCard.metrics.length}}" class="agent-chat-reminder-metrics">
+            <view wx:for="{{item.reminderCard.metrics}}" wx:for-item="metric" wx:key="label" class="agent-chat-reminder-metric">
+              <view class="agent-chat-reminder-metric-label">{{metric.label}}</view>
+              <view class="agent-chat-reminder-metric-value">{{metric.value}}</view>
+            </view>
+          </view>
+          <view wx:if="{{item.reminderCard.advice}}" class="agent-chat-reminder-advice">{{item.reminderCard.advice}}</view>
+          <view class="agent-chat-reminder-actions">
+            <view
+              class="agent-chat-reminder-ack {{item.reminderCard.acknowledged ? 'done' : ''}}"
+              data-id="{{item.id}}"
+              catchtap="acknowledgeReminderCard"
+            >{{item.reminderCard.acknowledged ? '已知晓' : item.reminderCard.actionLabel}}</view>
+          </view>
+        </view>
+        <view
+          wx:if="{{!item.reminderCard}}"
           class="agent-chat-message-text"
           data-text="{{item.text}}"
           bindlongpress="copyMessageText"
         >{{item.text}}</view>
         <image
-          wx:if="{{item.imageUrl}}"
+          wx:if="{{item.imageUrl && !item.imageError}}"
           class="agent-chat-message-image"
           src="{{item.imageUrl}}"
           mode="widthFix"
           bindtap="previewMessageImage"
+          binderror="onMessageImageError"
+          data-id="{{item.id}}"
           data-url="{{item.imageUrl}}"
         />
+        <view wx:if="{{item.imageError}}" class="agent-chat-message-image-error">范围图加载失败，请稍后重新查询。</view>
       </view>
 
       <view wx:if="{{busy}}" class="agent-chat-message assistant">

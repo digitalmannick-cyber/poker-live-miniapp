@@ -1,0 +1,134 @@
+.onboarding-guide {
+  position: fixed;
+  inset: 0;
+  z-index: 65000;
+  pointer-events: auto;
+}
+
+.onboarding-guide-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.26);
+}
+
+.onboarding-guide-highlight {
+  position: absolute;
+  border: 3rpx solid rgba(255, 210, 63, 0.96);
+  border-radius: 24rpx;
+  box-shadow:
+    0 0 0 9999rpx rgba(0, 0, 0, 0.16),
+    0 0 0 10rpx rgba(255, 210, 63, 0.20),
+    0 18rpx 42rpx rgba(0, 0, 0, 0.36);
+  pointer-events: none;
+}
+
+.onboarding-guide-card {
+  position: absolute;
+  padding: 28rpx;
+  box-sizing: border-box;
+  border: 1rpx solid rgba(255, 255, 255, 0.16);
+  border-radius: 28rpx;
+  background: linear-gradient(180deg, rgba(25, 29, 40, 0.98), rgba(11, 13, 19, 0.98));
+  box-shadow: 0 28rpx 72rpx rgba(0, 0, 0, 0.52);
+}
+
+.onboarding-guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.onboarding-guide-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 8rpx 14rpx;
+  border: 1rpx solid rgba(37, 199, 232, 0.32);
+  border-radius: 999rpx;
+  background: rgba(37, 199, 232, 0.14);
+  color: #25c7e8;
+  font-size: 32rpx;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.1;
+}
+
+.onboarding-guide-title {
+  margin-top: 14rpx;
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 900;
+  line-height: 1.16;
+}
+
+.onboarding-guide-step {
+  flex: 0 0 auto;
+  padding: 8rpx 14rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.14);
+  border-radius: 999rpx;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.onboarding-guide-copy {
+  margin-top: 14rpx;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 26rpx;
+  line-height: 1.55;
+}
+
+.onboarding-guide-example {
+  margin-top: 18rpx;
+  padding: 16rpx 18rpx;
+  border: 1rpx solid rgba(37, 199, 232, 0.20);
+  border-radius: 18rpx;
+  background: rgba(37, 199, 232, 0.10);
+}
+
+.onboarding-guide-example-label {
+  color: #25c7e8;
+  font-size: 20rpx;
+  font-weight: 900;
+}
+
+.onboarding-guide-example-value {
+  margin-top: 6rpx;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.onboarding-guide-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.onboarding-guide-btn {
+  min-width: 136rpx;
+  height: 70rpx;
+  margin: 0;
+  padding: 0 24rpx;
+  border-radius: 18rpx;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 70rpx;
+}
+
+.onboarding-guide-btn::after {
+  border: 0;
+}
+
+.onboarding-guide-btn.ghost {
+  border: 1rpx solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.onboarding-guide-btn.primary {
+  border: 0;
+  background: linear-gradient(135deg, #e60012, #ff3542);
+  color: #ffffff;
+}

@@ -207,6 +207,130 @@
   border: 1rpx solid rgba(255,255,255,0.10);
 }
 
+.agent-chat-message.reminder .agent-chat-message-text {
+  background: linear-gradient(135deg, rgba(230, 0, 18, 0.24), rgba(0, 209, 255, 0.12));
+  border: 1rpx solid rgba(255, 52, 78, 0.58);
+  box-shadow: 0 0 22rpx rgba(230, 0, 18, 0.18), inset 0 0 0 1rpx rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.96);
+}
+
+.agent-chat-reminder-badge {
+  margin: 4rpx 0 8rpx;
+  padding: 5rpx 12rpx;
+  border-radius: 999rpx;
+  color: #ffffff;
+  font-size: 18rpx;
+  font-weight: 900;
+  letter-spacing: 1rpx;
+  background: rgba(230, 0, 18, 0.72);
+  border: 1rpx solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 18rpx rgba(230, 0, 18, 0.26);
+}
+
+.agent-chat-reminder-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 24rpx 24rpx 22rpx;
+  border-radius: 24rpx;
+  color: rgba(255,255,255,0.96);
+  background: linear-gradient(135deg, rgba(86, 6, 22, 0.92), rgba(28, 8, 18, 0.96));
+  border: 2rpx solid rgba(255, 42, 76, 0.62);
+  box-shadow: 0 18rpx 42rpx rgba(0,0,0,0.34), 0 0 26rpx rgba(230, 0, 18, 0.18), inset 0 0 0 1rpx rgba(255,255,255,0.05);
+}
+
+.agent-chat-reminder-card.warning {
+  background: linear-gradient(135deg, rgba(86, 52, 4, 0.92), rgba(28, 22, 12, 0.96));
+  border-color: rgba(255, 184, 40, 0.66);
+  box-shadow: 0 18rpx 42rpx rgba(0,0,0,0.34), 0 0 26rpx rgba(255, 184, 40, 0.14), inset 0 0 0 1rpx rgba(255,255,255,0.05);
+}
+
+.agent-chat-reminder-card.acknowledged {
+  opacity: 0.72;
+}
+
+.agent-chat-reminder-card-label {
+  font-size: 22rpx;
+  line-height: 1.35;
+  font-weight: 900;
+  letter-spacing: 1.5rpx;
+  color: rgba(255,255,255,0.94);
+}
+
+.agent-chat-reminder-card.warning .agent-chat-reminder-card-label {
+  color: #ffe3a0;
+}
+
+.agent-chat-reminder-card-headline {
+  margin-top: 12rpx;
+  font-size: 34rpx;
+  line-height: 1.22;
+  font-weight: 950;
+  color: #ffffff;
+}
+
+.agent-chat-reminder-metrics {
+  margin-top: 20rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.agent-chat-reminder-metric {
+  width: calc(50% - 6rpx);
+  min-height: 96rpx;
+  padding: 16rpx;
+  border-radius: 18rpx;
+  background: rgba(0,0,0,0.20);
+  border: 1rpx solid rgba(255,255,255,0.10);
+  box-sizing: border-box;
+}
+
+.agent-chat-reminder-metric-label {
+  font-size: 21rpx;
+  color: rgba(255,255,255,0.58);
+}
+
+.agent-chat-reminder-metric-value {
+  margin-top: 8rpx;
+  font-size: 28rpx;
+  font-weight: 950;
+  color: #ffffff;
+}
+
+.agent-chat-reminder-advice {
+  margin-top: 20rpx;
+  font-size: 25rpx;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.88);
+}
+
+.agent-chat-reminder-actions {
+  margin-top: 22rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.agent-chat-reminder-ack {
+  min-width: 180rpx;
+  padding: 14rpx 22rpx;
+  border-radius: 999rpx;
+  text-align: center;
+  font-size: 24rpx;
+  font-weight: 900;
+  color: #ffffff;
+  background: rgba(0, 181, 220, 0.22);
+  border: 2rpx solid rgba(0, 213, 255, 0.68);
+  box-shadow: 0 0 20rpx rgba(0, 213, 255, 0.18);
+}
+
+.agent-chat-reminder-ack.done {
+  color: rgba(255,255,255,0.64);
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.18);
+  box-shadow: none;
+}
+
 .agent-chat-message.user .agent-chat-message-text {
   background: rgba(230, 0, 18, 0.22);
   border: 1rpx solid rgba(230, 0, 18, 0.30);
@@ -223,9 +347,21 @@
   max-height: 520rpx;
   border-radius: 18rpx;
   border: 1rpx solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.94);
+  background: rgba(255,255,255,0.06);
   box-sizing: border-box;
   display: block;
+}
+
+.agent-chat-message-image-error {
+  width: 86%;
+  padding: 18rpx;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(230, 0, 18, 0.28);
+  background: rgba(230, 0, 18, 0.10);
+  color: rgba(255,255,255,0.72);
+  font-size: 23rpx;
+  line-height: 1.4;
+  box-sizing: border-box;
 }
 
 .agent-chat-message.user .agent-chat-message-image {

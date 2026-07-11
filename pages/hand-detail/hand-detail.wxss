@@ -37,6 +37,223 @@
   flex-direction: column;
 }
 
+.hand-id-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-left: 18rpx;
+}
+
+.copy-hand-id-btn {
+  flex: 0 0 auto;
+  min-width: 112rpx;
+  height: 56rpx;
+  line-height: 54rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(0, 209, 255, 0.42);
+  background: rgba(0, 209, 255, 0.1);
+  color: #27dcff;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.copy-hand-id-btn::after {
+  border: none;
+}
+
+.copy-hand-id-btn.export {
+  border-color: rgba(255, 210, 36, 0.42);
+  background: rgba(255, 210, 36, 0.1);
+  color: #ffd52a;
+}
+
+.hand-export-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 46000;
+  display: flex;
+  align-items: flex-end;
+}
+
+.hand-export-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.66);
+  backdrop-filter: blur(10rpx);
+}
+
+.hand-export-sheet {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-height: 82vh;
+  padding: 28rpx 32rpx 34rpx;
+  border-radius: 32rpx 32rpx 0 0;
+  border: 1rpx solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(22, 23, 29, 0.98), rgba(7, 8, 11, 0.99));
+  box-shadow: 0 -26rpx 70rpx rgba(0, 0, 0, 0.6);
+  box-sizing: border-box;
+}
+
+.hand-export-handle {
+  width: 180rpx;
+  height: 10rpx;
+  margin: 0 auto 34rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.hand-export-title {
+  color: #ffffff;
+  font-size: 44rpx;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.hand-export-desc {
+  margin-top: 24rpx;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 27rpx;
+  line-height: 1.6;
+}
+
+.hand-export-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-top: 32rpx;
+}
+
+.hand-export-label {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.hand-export-copy-btn {
+  flex: 0 0 auto;
+  width: 178rpx;
+  height: 70rpx;
+  margin: 0;
+  border-radius: 18rpx;
+  background: #f2f4f7;
+  color: #111217;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 70rpx;
+}
+
+.hand-export-copy-btn::after {
+  border: none;
+}
+
+.hand-export-text {
+  height: 590rpx;
+  max-height: 46vh;
+  margin-top: 18rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 25rpx;
+  line-height: 1.5;
+  font-family: Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+}
+
+.hand-export-close-btn {
+  height: 76rpx;
+  margin: 28rpx 0 0;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.055);
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 76rpx;
+}
+
+.hand-export-close-btn::after {
+  border: none;
+}
+
+.hand-review-entry-card {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+}
+
+.hand-review-entry-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+
+.hand-review-entry-option {
+  min-height: 112rpx;
+  padding: 18rpx;
+  border-radius: 22rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  box-sizing: border-box;
+}
+
+.hand-review-entry-option.ledger {
+  border-color: rgba(168, 88, 255, 0.38);
+  background: linear-gradient(135deg, rgba(168, 88, 255, 0.16), rgba(255, 208, 42, 0.05));
+}
+
+.hand-review-entry-icon {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffd52a;
+  font-size: 34rpx;
+  font-weight: 900;
+  flex: 0 0 auto;
+}
+
+.hand-review-entry-option.voice .hand-review-entry-icon {
+  color: #22d8ff;
+  background: rgba(0, 209, 255, 0.1);
+}
+
+.hand-review-entry-option.ledger .hand-review-entry-icon {
+  color: #b46cff;
+  background: rgba(168, 88, 255, 0.12);
+}
+
+.hand-review-entry-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.hand-review-entry-title {
+  font-size: 29rpx;
+  font-weight: 900;
+  color: #fff;
+}
+
+.hand-review-entry-desc {
+  margin-top: 4rpx;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 23rpx;
+  font-weight: 700;
+}
+
 .hero-editor-trigger {
   min-height: 88rpx;
   display: flex;
@@ -344,6 +561,17 @@
   border-bottom: 2rpx solid rgba(0, 209, 255, 0.30);
   justify-content: flex-start;
   overflow: hidden;
+}
+
+.rank-only-card-text {
+  min-width: 0;
+  color: #f7fbff;
+  font-size: 30rpx;
+  font-weight: 800;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .analysis-textarea {

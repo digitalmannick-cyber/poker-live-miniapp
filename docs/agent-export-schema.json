@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poker-live-miniapp.local/schemas/agent-export.schema.json",
+  "title": "Poker Agent Export Response",
+  "type": "object",
+  "required": ["version", "generatedAt", "profile", "range", "summary", "extremes", "sessions", "hands", "bankrollLogs", "fieldNotes"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "profile": {
+      "type": "object",
+      "required": ["playerId", "name"],
+      "properties": {
+        "playerId": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "range": {
+      "type": "object",
+      "required": ["key", "from", "to", "timezone"],
+      "properties": {
+        "key": { "type": "string", "enum": ["last7", "last30", "all", "custom"] },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "timezone": { "type": "string", "const": "Asia/Shanghai" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["currency", "sessionCount", "finishedSessionCount", "handCount", "totalProfit", "handProfit", "totalHours", "hourlyRate", "winningHandCount", "losingHandCount", "averageHandProfit"],
+      "properties": {
+        "currency": { "type": "string" },
+        "sessionCount": { "type": "number" },
+        "finishedSessionCount": { "type": "number" },
+        "handCount": { "type": "number" },
+        "totalProfit": { "type": "number" },
+        "handProfit": { "type": "number" },
+        "totalHours": { "type": "number" },
+        "hourlyRate": { "type": "number" },
+        "winningHandCount": { "type": "number" },
+        "losingHandCount": { "type": "number" },
+        "averageHandProfit": { "type": "number" }
+      }
+    },
+    "extremes": {
+      "type": "object",
+      "required": ["biggestWinningHand", "biggestLosingHand"],
+      "properties": {
+        "biggestWinningHand": { "anyOf": [{ "$ref": "#/$defs/hand" }, { "type": "null" }] },
+        "biggestLosingHand": { "anyOf": [{ "$ref": "#/$defs/hand" }, { "type": "null" }] }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/session" }
+    },
+    "hands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hand" }
+    },
+    "bankrollLogs": { "type": "array" },
+    "fieldNotes": { "type": "object" }
+  },
+  "$defs": {
+    "session": {
+      "type": "object",
+      "required": ["id", "title", "date", "venue", "profit", "durationMinutes", "handCount", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "venue": { "type": "string" },
+        "stake": { "type": "string" },
+        "smallBlind": { "type": "number" },
+        "bigBlind": { "type": "number" },
+        "buyIn": { "type": "number" },
+        "cashOut": { "type": "number" },
+        "profit": { "type": "number" },
+        "durationMinutes": { "type": "number" },
+        "handCount": { "type": "number" },
+        "status": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["id", "street", "actorLabel", "actionType", "amount", "potAfter", "sequence"],
+      "properties": {
+        "id": { "type": "string" },
+        "street": { "type": "string" },
+        "actorSeat": { "type": "number" },
+        "actorLabel": { "type": "string" },
+        "actionType": { "type": "string" },
+        "amount": { "type": "number" },
+        "potAfter": { "type": "number" },
+        "sequence": { "type": "number" }
+      }
+    },
+    "hand": {
+      "type": "object",
+      "required": ["id", "sessionId", "playedDate", "heroCards", "heroPosition", "villainPosition", "potSize", "profit", "tags", "actions"],
+      "properties": {
+        "id": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "sessionTitle": { "type": "string" },
+        "playedDate": { "type": "string" },
+        "stakeLevel": { "type": "string" },
+        "heroCards": { "type": "string" },
+        "heroPosition": { "type": "string" },
+        "villainPosition": { "type": "string" },
+        "opponentType": { "type": "string" },
+        "opponentName": { "type": "string" },
+        "opponentCards": { "type": "string" },
+        "board": { "type": "object" },
+        "potSize": { "type": "number" },
+        "profit": { "type": "number" },
+        "resultBB": { "type": "string" },
+        "allIn": { "type": "object" },
+        "showdown": { "type": "object" },
+        "tags": { "type": "array" },
+        "notes": { "type": "string" },
+        "mindJourney": { "type": "string" },
+        "streetSummary": { "type": "string" },
+        "heroQuestion": { "type": "string" },
+        "detailBackfilled": { "type": "boolean" },
+        "reviewStatus": { "type": "string" },
+        "aiReview": {},
+        "voiceExtract": {},
+        "actions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/action" }
+        },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      }
+    }
+  }
+}

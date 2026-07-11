@@ -1,0 +1,53 @@
+<view class="app-bg"></view>
+<view class="container player-notes-shell">
+  <view class="player-notes-head onboarding-target-player-notes">
+    <view>
+      <view class="player-notes-kicker">PLAYER NOTES</view>
+      <view class="player-notes-title">玩家库</view>
+    </view>
+    <view class="player-notes-add" bindtap="openCreate">
+      <text class="player-notes-add-plus">+</text>
+    </view>
+  </view>
+
+  <view class="player-search">
+    <input class="player-search-input" placeholder="搜索名字、leak、note" value="{{query}}" bindinput="onSearchInput" />
+    <view wx:if="{{query || selectedType}}" class="player-search-clear" bindtap="clearSearch">清空</view>
+  </view>
+
+  <scroll-view scroll-x="true" class="player-type-scroll">
+    <view class="player-type-row">
+      <view wx:for="{{typeFilters}}" wx:key="value" class="player-type-chip {{item.active ? 'active' : ''}}" data-type="{{item.value}}" bindtap="selectType">
+        {{item.label}}
+      </view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{players.length}}" class="player-list">
+    <view wx:for="{{players}}" wx:key="_id" class="player-card" style="{{item.rowStyle}}" data-id="{{item._id}}" bindtap="openDetail">
+      <view class="player-card-color" style="{{item.colorStyle}}"></view>
+      <view class="player-avatar">
+        <image wx:if="{{item.avatarDisplayUrl || item.avatarUrl}}" class="player-avatar-img" src="{{item.avatarDisplayUrl || item.avatarUrl}}" mode="aspectFill"></image>
+        <text wx:else>{{item.avatarText}}</text>
+      </view>
+      <view class="player-main">
+        <view class="player-row">
+          <view class="player-name">{{item.name}}</view>
+          <view class="player-type" style="{{item.typeStyle}}">{{item.type}}</view>
+        </view>
+        <view class="player-meta">{{item.updatedDate || item.createdDate}} · {{item.battleCountLabel}}</view>
+        <view wx:if="{{item.tagItems.length}}" class="player-tags">
+          <view wx:for="{{item.tagItems}}" wx:for-item="tag" wx:key="label" class="player-tag">{{tag.label}}</view>
+        </view>
+        <view class="player-note-preview">{{item.notePreview}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{hasLoaded}}" class="player-empty">
+    <view class="player-empty-title">{{emptyStateTitle}}</view>
+    <view class="player-empty-text">{{emptyStateText}}</view>
+    <button wx:if="{{!isSearching}}" class="player-empty-action" bindtap="openCreate">新增玩家</button>
+  </view>
+</view>
+<onboarding-guide visible="{{onboardingGuideVisible}}" step="{{onboardingGuideStep}}" bindnext="onOnboardingNext" bindskip="onOnboardingSkip" />

@@ -13,6 +13,8 @@ const CANONICAL_FIELD_KEYS = [
   'effectiveStack',
   'potSize',
   'currentProfit',
+  'isAllIn',
+  'allInEv',
   'opponentName',
   'showdown',
   'heroCardsInput',
@@ -35,12 +37,14 @@ const FIELD_META = {
   effectiveStack: { label: '有效筹码', type: 'number' },
   potSize: { label: '当前底池', type: 'number' },
   currentProfit: { label: '本手输赢', type: 'number' },
+  isAllIn: { label: 'River 前 All-in', type: 'checkbox' },
+  allInEv: { label: 'All-in EV', type: 'number' },
   opponentName: { label: '对手昵称', type: 'text' },
-  showdown: { label: '对手手牌 / Showdown', type: 'text' },
+  showdown: { label: '对手手牌', type: 'text' },
   heroCardsInput: { label: 'Hero 手牌', type: 'cards' },
   streetSummary: { label: '行动线总结', type: 'textarea' },
   mindJourney: { label: '心路历程', type: 'textarea' },
-  heroQuestion: { label: 'Hero 疑问点', type: 'textarea', rows: 2 },
+  heroQuestion: { label: 'Hero 疑问点、待确认、需研究', type: 'textarea', rows: 2 },
   streetDetails: { label: '逐街详情', type: 'streetGroup' },
   tags: { label: '标签', type: 'tags' },
   aiReview: { label: 'AI 建议', type: 'aiReview' }
@@ -85,10 +89,47 @@ function normalizeBoolean(value) {
   return value === true || value === 1 || value === '1' || value === 'true'
 }
 
+function normalizeAllInStreet(value) {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text) return ''
+  if (/^(pre|preflop|pre-flop|pf|翻前|翻牌前)$/.test(text)) return 'preflop'
+  if (/^(flop|翻牌)$/.test(text)) return 'flop'
+  if (/^(turn|转牌)$/.test(text)) return 'turn'
+  if (/^(river|河牌)$/.test(text)) return 'river'
+  return text
+}
+
+function isPreRiverAllIn(source) {
+  const hand = source || {}
+  const street = normalizeAllInStreet(hand.allInStreet || hand.allInRound || hand.allInStage || hand.allInEvStreet)
+  if (street === 'river') return false
+  return normalizeBoolean(hand.isAllIn) || normalizeBoolean(hand.allInEvEligible) || !!street
+}
+
+function cardsToInput(cards) {
+  return (cards || []).map(function (card) {
+    return card.rank + card.suit
+  }).join('')
+}
+
+function normalizeOpponentCardsValue(source) {
+  const hand = source || {}
+  const candidates = [hand.opponentCards, hand.villainCards, hand.opponentHand, hand.showdown]
+  for (let index = 0; index < candidates.length; index += 1) {
+    const cards = cardUi.parseOpponentCardsInput(candidates[index], {
+      board: hand.board,
+      heroCardsInput: hand.heroCardsInput
+    })
+    if (cards.length === 2) return cardsToInput(cards)
+  }
+  return ''
+}
+
 function normalizeHandDetailForm(hand) {
   const source = hand || {}
   const board = source.board || {}
   const streetInputs = source.streetInputs || {}
+  const opponentCards = normalizeOpponentCardsValue(source)
 
   return {
     playedDate: source.playedDate || '',
@@ -101,8 +142,12 @@ function normalizeHandDetailForm(hand) {
     effectiveStack: source.effectiveStack || '',
     potSize: source.potSize || '',
     currentProfit: source.currentProfit === 0 ? 0 : source.currentProfit || '',
+    isAllIn: isPreRiverAllIn(source),
+    allInEv: source.allInEv === 0 ? 0 : source.allInEv || source.allInEvProfit || source.allInEvAdjustedProfit || '',
     opponentName: source.opponentName || '',
-    showdown: source.showdown || source.villainCards || '',
+    opponentCards,
+    opponentCardsSource: source.opponentCardsSource || '',
+    showdown: opponentCards,
     heroCardsInput: source.heroCardsInput || '',
     streetSummary: source.streetSummary || '',
     mindJourney: source.mindJourney || source.notes || '',
@@ -134,6 +179,8 @@ function hasOnlyQuickEntryDetails(hand) {
     'villainType',
     'effectiveStack',
     'potSize',
+    'isAllIn',
+    'allInEv',
     'opponentName',
     'showdown',
     'streetSummary',
@@ -155,9 +202,10 @@ function buildRows(form, options) {
   const excludedKeys = new Set(['streetDetails', 'aiReview'].concat(config.excludeRowKeys || []))
   return CANONICAL_FIELD_KEYS
     .filter(key => !excludedKeys.has(key))
+    .filter(key => key !== 'allInEv' || form.isAllIn)
     .map(key => {
       const meta = FIELD_META[key]
-      const rawValue = key === 'hasStraddle' ? (form.hasStraddle ? '是' : '否') : form[key]
+      const rawValue = key === 'hasStraddle' || key === 'isAllIn' ? (form[key] ? '是' : '否') : form[key]
       return {
         key,
         label: meta.label,

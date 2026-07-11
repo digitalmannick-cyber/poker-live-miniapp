@@ -9,6 +9,7 @@
       color-scheme: dark;
       --launch-duration: 2950ms;
       --exit-duration: 240ms;
+      --cut-duration: 520ms;
       --hero-x: 2.5%;
       --red: #f0002f;
       --cyan: #00d1ff;
@@ -153,10 +154,6 @@
       letter-spacing: .36em;
     }
 
-    .loading-dots { display: flex; gap: 7px; margin-top: 4px; }
-    .loading-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, .25); }
-    .loading-dots i:first-child { background: var(--red); }
-
     .cut {
       position: absolute;
       z-index: 8;
@@ -173,7 +170,7 @@
     .launch.is-playing .hero { animation: heroFloat var(--launch-duration) ease-in-out both; }
     .launch.is-playing .edge-glow { animation: glowPulse 900ms ease-in-out 240ms 3 alternate; }
     .launch.is-playing .brand { animation: brandEnter 560ms cubic-bezier(.18, .88, .24, 1) 320ms both; }
-    .launch.is-playing .cut { animation: cutAcross 320ms cubic-bezier(.66, 0, .28, 1) calc(var(--launch-duration) - 320ms) both; }
+    .launch.is-playing .cut { animation: cutAcross var(--cut-duration) cubic-bezier(.66, 0, .28, 1) calc(var(--launch-duration) - var(--cut-duration)) both; }
 
     @keyframes heroFloat {
       0% { opacity: 0; transform: translate3d(var(--hero-x), 12px, 0) scale(1.035); filter: brightness(.62); }
@@ -257,8 +254,7 @@
         <div class="vignette"></div>
         <div class="brand">
           <div class="brand-name">智牌屋</div>
-          <div class="brand-line">READ THE TABLE</div>
-          <div class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="brand-line">AI-POWERED POKER INSIGHT</div>
         </div>
         <div class="cut"></div>
       </div>

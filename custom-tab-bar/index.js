@@ -70,6 +70,7 @@ Component({
     switchTab(event) {
       const dataset = event && event.currentTarget && event.currentTarget.dataset || {}
       const pagePath = this.normalizePagePath(dataset.path)
+      const fallbackUrl = tabState.getSwitchTabUrl(pagePath)
       if (!pagePath || pagePath === this.data.selected) return
       console.info('[PLR_TAB] switchTab ' + pagePath)
       this.setSelectedTab(pagePath)
@@ -80,6 +81,18 @@ Component({
         },
         fail: (error) => {
           console.warn('[PLR_TAB] switchTab failed: ' + (error && (error.errMsg || error.message) || error))
+          if (fallbackUrl && fallbackUrl !== pagePath) {
+            wx.switchTab({
+              url: fallbackUrl,
+              success: () => {
+                this.scheduleRouteSync()
+              },
+              fail: () => {
+                this.scheduleRouteSync()
+              }
+            })
+            return
+          }
           this.scheduleRouteSync()
         }
       })

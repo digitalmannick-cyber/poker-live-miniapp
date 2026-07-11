@@ -1,6 +1,15 @@
-<view class="app-bg"></view>
+﻿<view class="app-bg"></view>
 <view class="container">
-  <view class="profile-hero">
+  <view wx:if="{{accountLoggedOut}}" class="profile-login-hero" bindtap="loginWithWechatAccount">
+    <view class="profile-login-avatar">登录</view>
+    <view class="profile-login-copy">
+      <view class="profile-login-title">使用微信账号登录</view>
+      <view class="profile-login-desc">登录后自动恢复当前微信绑定的牌局数据</view>
+    </view>
+    <view class="profile-login-action">登录</view>
+  </view>
+
+  <view wx:else class="profile-hero">
     <view class="profile-hero-glow"></view>
     <view class="profile-hero-main">
       <view class="profile-identity">
@@ -15,7 +24,19 @@
           <view class="profile-name-row">
             <view class="profile-name-display">{{profile.name || '玩家'}}</view>
           </view>
-          <view class="profile-tag-trigger">{{profile.title}}</view>
+          <view wx:if="{{titleStatsUnavailable}}" class="profile-tag-trigger">称号数据暂不可用</view>
+          <view wx:else class="profile-tag-trigger" catchtap="openTitleRoute">{{titleProgress.current.title}}</view>
+          <block wx:if="{{!titleStatsUnavailable}}">
+            <view class="profile-title-hours">累计记录 {{titleProgress.hoursDisplay}} 小时</view>
+            <view class="profile-title-progress-track">
+              <view class="profile-title-progress-fill" style="width: {{titleProgress.progressPercent}}%;"></view>
+            </view>
+            <view class="profile-title-progress-copy">
+              <view>{{titleProgress.rangeLabel}}</view>
+              <view wx:if="{{titleProgress.next}}" class="profile-title-next">距下一称号 {{titleProgress.remainingHours}}h</view>
+              <view wx:else class="profile-title-next">最高称号</view>
+            </view>
+          </block>
         </view>
       </view>
       <view class="profile-hero-meta">
@@ -70,15 +91,6 @@
             bindinput="onProfileEditorNameInput"
             confirm-type="done"
           />
-          <view class="profile-editor-label profile-editor-label-gap">称号</view>
-          <input
-            class="profile-editor-input"
-            value="{{profileEditorTitle}}"
-            placeholder="例如 怪盗团新兵"
-            placeholder-class="profile-editor-placeholder"
-            bindinput="onProfileEditorTitleInput"
-            confirm-type="done"
-          />
         </view>
       </view>
       <view class="profile-editor-actions">
@@ -88,13 +100,42 @@
     </view>
   </view>
 
-  <view class="section-label">牌局管理</view>
-  <view class="card profile-card-compact">
-    <view class="setting-row" bindtap="importBackup">
+  <view wx:if="{{titleRouteVisible}}" class="title-route-mask" bindtap="closeTitleRoute" catchtouchmove="noop">
+    <scroll-view class="title-route-panel" scroll-y enhanced show-scrollbar catchtap="noop">
+      <view class="title-route-head">
+        <view class="title-route-heading">称号路线</view>
+        <view class="title-route-english">THE JOURNEY</view>
+        <view class="title-route-close" bindtap="closeTitleRoute" aria-label="关闭称号路线">
+          <view class="title-route-close-icon"></view>
+        </view>
+      </view>
+      <view class="title-route-list">
+        <view wx:for="{{titleProgress.levels}}" wx:key="hours" class="title-level {{item.state}}">
+          <view class="title-level-node"></view>
+          <view class="title-level-hours">{{item.hoursLabel}}<text>HOURS</text></view>
+          <view class="title-level-name">{{item.title}}</view>
+          <view class="title-level-state">{{item.stateLabel}}</view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view wx:if="{{!accountLoggedOut}}" class="section-label">数据管理</view>
+  <view wx:if="{{!accountLoggedOut}}" class="card profile-card-compact">
+    <view class="setting-row" bindtap="importPbtPlayerData">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">导入玩家数据</view>
+          <view class="small muted">支持PBT玩家数据导入，请选择csv文件</view>
+        </view>
+      </view>
+      <view class="setting-arrow">{{importingPbtPlayerData ? '...' : '>'}}</view>
+    </view>
+    <view class="setting-row" bindtap="importPbtBankrollData">
       <view class="setting-main">
         <view>
           <view class="setting-title">导入牌局数据</view>
-          <view class="small muted">从剪贴板导入备份 JSON</view>
+          <view class="small muted">支持PBT牌局数据导入，请选择csv文件</view>
         </view>
       </view>
       <view class="setting-arrow">></view>
@@ -110,8 +151,8 @@
     </view>
   </view>
 
-  <view class="section-label">偏好设置</view>
-  <view class="card profile-card-compact">
+  <view wx:if="{{!accountLoggedOut}}" class="section-label">偏好设置</view>
+  <view wx:if="{{!accountLoggedOut}}" class="card profile-card-compact">
     <view class="setting-block">
       <view class="setting-head">
         <view>
@@ -149,16 +190,6 @@
 
     <view class="setting-block">
       <view class="setting-head">
-        <view class="setting-title">位置预设</view>
-        <view class="profile-action compact" bindtap="editPositions">编辑</view>
-      </view>
-      <view class="chip-list">
-        <view wx:for="{{settings.positions}}" wx:key="*this" class="pref-chip">{{item}}</view>
-      </view>
-    </view>
-
-    <view class="setting-block">
-      <view class="setting-head">
         <view class="setting-title">对手类型</view>
         <view class="profile-action compact" bindtap="editOpponentTypes">编辑</view>
       </view>
@@ -168,11 +199,68 @@
     </view>
   </view>
 
+  <view wx:if="{{!accountLoggedOut}}" class="section-label">AI 自动提醒</view>
+  <view wx:if="{{!accountLoggedOut}}" class="card profile-card-compact">
+    <view class="setting-row ai-reminder-entry" catchtap="openAiReminderEditor">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">AI 自动提醒</view>
+          <view class="small muted">{{settings.aiReminders.enabled === false ? '关闭所有提醒' : '已开启，点击进入详细设置'}}</view>
+        </view>
+      </view>
+      <view class="ai-reminder-entry-switch {{settings.aiReminders.enabled === false ? '' : 'on'}}" catchtap="toggleAiReminderMasterSwitch">
+        <view class="ai-reminder-switch-dot"></view>
+      </view>
+    </view>
+  </view>
+
   <view class="section-label">账号与数据</view>
   <view class="card profile-card-compact">
+    <view wx:if="{{accountLoggedOut}}" class="setting-row" bindtap="loginWithWechatAccount">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">使用微信账号登录</view>
+          <view class="small muted">用当前微信恢复历史牌局数据</view>
+        </view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
+    <view wx:else class="setting-row" bindtap="copyPlayerId">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">复制账号ID</view>
+          <view class="small muted">用于定位和排查当前账号数据</view>
+        </view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
     <view class="setting-row danger" bindtap="clearData">
       <view class="setting-main">
         <view class="setting-title">清除所有数据</view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
+    <view class="setting-row" bindtap="restartOnboardingGuide">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">新手引导</view>
+          <view class="small muted">重新查看开局、记牌、复盘和统计流程</view>
+        </view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
+    <view wx:if="{{!accountLoggedOut}}" class="setting-row" bindtap="openReleaseNotes">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">版本更新</view>
+          <view class="small muted">查看 {{version}} 更新内容</view>
+        </view>
+      </view>
+      <view class="setting-arrow">></view>
+    </view>
+    <view wx:if="{{!accountLoggedOut}}" class="setting-row danger" bindtap="logoutAccount">
+      <view class="setting-main">
+        <view class="setting-title">退出登录</view>
       </view>
       <view class="setting-arrow">></view>
     </view>
@@ -193,26 +281,223 @@
 
   <view wx:if="{{wechatProfileDialogVisible}}" class="wechat-profile-mask">
     <view class="wechat-profile-dialog">
-      <view class="wechat-profile-title">同步微信昵称和头像</view>
-      <view class="wechat-profile-desc">首次登录时可使用微信小程序框架同步一次资料。之后头像和昵称都在“编辑资料”里手动修改。</view>
+      <view class="wechat-profile-title">同步微信资料</view>
+      <view class="wechat-profile-desc">微信限制不能静默读取头像昵称，请在下方授权卡片里确认后保存。</view>
       <view class="wechat-sync-panel">
-        <view class="wechat-sync-preview">
-          <view class="wechat-sync-avatar-box">
-            <image wx:if="{{profile.avatarUrl}}" class="wechat-sync-avatar-img" src="{{profile.avatarUrl}}" mode="aspectFill"></image>
+        <view class="wechat-sync-form">
+          <button class="wechat-sync-avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseWechatAvatar">
+            <image wx:if="{{wechatDraftAvatarUrl || profile.avatarUrl}}" class="wechat-sync-avatar-img" src="{{wechatDraftAvatarUrl || profile.avatarUrl}}" mode="aspectFill"></image>
             <view wx:else class="wechat-sync-avatar-fallback">{{profile.avatarText}}</view>
+            <view class="wechat-sync-avatar-text">{{wechatDraftAvatarUrl || profile.avatarUrl ? '已选择' : '选择头像'}}</view>
+          </button>
+          <view class="wechat-sync-field">
+            <view class="wechat-sync-label">微信昵称</view>
+            <input
+              class="wechat-sync-nickname-input"
+              type="nickname"
+              value="{{wechatDraftNickname}}"
+              placeholder="填写微信昵称"
+              placeholder-class="profile-editor-placeholder"
+              bindinput="onWechatNicknameInput"
+            />
           </view>
-          <view class="wechat-sync-preview-copy">
-            <view class="wechat-sync-preview-label">当前资料</view>
-            <view class="wechat-sync-preview-name">{{profile.name || '玩家'}}</view>
-          </view>
-        </view>
-        <view class="wechat-sync-note">
-          微信授权窗口会由小程序框架弹出，本页面不再嵌入头像和昵称原生控件，避免真机样式错乱。
         </view>
       </view>
       <view class="wechat-profile-actions">
         <view class="wechat-profile-action wechat-profile-action-secondary" bindtap="closeWechatProfilePrompt">暂不</view>
-        <view class="wechat-profile-action wechat-profile-action-primary" bindtap="syncWechatProfileByFramework">同步微信资料</view>
+        <view class="wechat-profile-action wechat-profile-action-primary" bindtap="saveWechatProfileFromOfficialControls">保存资料</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{aiReminderEditorVisible}}" class="settings-editor-mask ai-reminder-mask" bindtap="closeAiReminderEditor">
+    <view class="ai-reminder-advice-sheet ai-reminder-sheet" catchtap="noop">
+      <view class="ai-reminder-sheet-slash"></view>
+      <view class="ai-reminder-handle"></view>
+      <view class="ai-reminder-sheet-head">
+        <view>
+          <view class="ai-reminder-sheet-kicker">EV BRAIN · LIVE GUARD</view>
+          <view class="ai-reminder-sheet-title">AI 自动提醒</view>
+        </view>
+        <view class="settings-editor-close ai-reminder-sheet-close" bindtap="closeAiReminderEditor">
+          <view class="icon-close">
+            <view class="icon-close-line"></view>
+            <view class="icon-close-line icon-close-line-rotated"></view>
+          </view>
+        </view>
+      </view>
+
+      <scroll-view class="ai-reminder-sheet-scroll" scroll-y>
+        <view class="ai-reminder-fact-main">
+          <view class="ai-reminder-fact-label">REMINDER RULES</view>
+          <view class="ai-reminder-fact-value">监控止盈止损、时长，也可以根据自己需求配置各种状态检查</view>
+        </view>
+
+        <view class="ai-reminder-verdict">
+          <view class="ai-reminder-section-tag"><text>当前策略</text></view>
+          <view class="ai-reminder-verdict-text">默认在 Session 进行中时间轴提醒；EV脑和微信消息可按每条规则单独开启</view>
+          <view class="ai-reminder-verdict-watermark">GUARD</view>
+        </view>
+
+        <view class="ai-reminder-mini-title"><view class="ai-reminder-mini-diamond"></view><text>止盈止损</text></view>
+        <view class="ai-reminder-rule-panel">
+          <view class="ai-reminder-rule-line"></view>
+          <view class="ai-reminder-rule ai-reminder-rule-danger">
+            <view class="ai-reminder-rule-node"></view>
+            <view class="ai-reminder-rule-body">
+              <view class="ai-reminder-rule-head">
+                <view class="ai-reminder-rule-title">止盈提醒</view>
+                <view class="ai-reminder-rule-status {{aiReminderDraft.rules.profitTarget.amount > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.profitTarget.amount > 0 ? '已开启' : '未开启'}}</view>
+              </view>
+              <view class="ai-reminder-setting-line">
+                <view class="ai-reminder-rule-sub">达到设定盈利时提醒</view>
+                <view class="ai-reminder-input-wrap">
+                  <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.profitTarget.amount}}" data-key="profitTarget" bindinput="onAiReminderNumberInput" />
+                  <text>HK$</text>
+                </view>
+              </view>
+              <view class="ai-reminder-channel-row">
+                <view class="ai-reminder-channel-label">提醒方式</view>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.profitTarget.evBrain ? 'on' : ''}}" data-key="profitTarget" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.profitTarget.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="profitTarget" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+              </view>
+            </view>
+          </view>
+
+          <view class="ai-reminder-rule">
+            <view class="ai-reminder-rule-node"></view>
+            <view class="ai-reminder-rule-body">
+              <view class="ai-reminder-rule-head">
+                <view class="ai-reminder-rule-title">止损提醒</view>
+                <view class="ai-reminder-rule-status {{aiReminderDraft.rules.lossLimit.amount > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.lossLimit.amount > 0 ? '已开启' : '未开启'}}</view>
+              </view>
+              <view class="ai-reminder-setting-line">
+                <view class="ai-reminder-rule-sub">达到设定亏损时提醒，0 不开启</view>
+                <view class="ai-reminder-input-wrap">
+                  <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.lossLimit.amount}}" data-key="lossLimit" bindinput="onAiReminderNumberInput" />
+                  <text>HK$</text>
+                </view>
+              </view>
+              <view class="ai-reminder-channel-row">
+                <view class="ai-reminder-channel-label">提醒方式</view>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.lossLimit.evBrain ? 'on' : ''}}" data-key="lossLimit" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.lossLimit.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="lossLimit" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+              </view>
+            </view>
+          </view>
+
+          <view class="ai-reminder-rule ai-reminder-rule-warn">
+            <view class="ai-reminder-rule-node"></view>
+            <view class="ai-reminder-rule-body">
+              <view class="ai-reminder-rule-head">
+                <view class="ai-reminder-rule-title">移动止盈</view>
+                <view class="ai-reminder-rule-status {{aiReminderDraft.rules.trailingProfit.percent > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.trailingProfit.percent > 0 ? '已开启' : '未开启'}}</view>
+              </view>
+              <view class="ai-reminder-setting-line">
+                <view class="ai-reminder-rule-sub">从盈利峰值回撤到设定比例后提醒</view>
+                <view class="ai-reminder-input-wrap">
+                  <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.trailingProfit.percent}}" data-key="trailingProfit" bindinput="onAiReminderNumberInput" />
+                  <text>%</text>
+                </view>
+              </view>
+              <view class="ai-reminder-channel-row">
+                <view class="ai-reminder-channel-label">提醒方式</view>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.trailingProfit.evBrain ? 'on' : ''}}" data-key="trailingProfit" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.trailingProfit.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="trailingProfit" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+              </view>
+            </view>
+          </view>
+
+          <view class="ai-reminder-rule">
+            <view class="ai-reminder-rule-node"></view>
+            <view class="ai-reminder-rule-body">
+              <view class="ai-reminder-rule-head">
+                <view class="ai-reminder-rule-title">止损后追加风险</view>
+                <view class="ai-reminder-rule-status {{aiReminderDraft.rules.postLossExtraRisk.percent > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.postLossExtraRisk.percent > 0 ? '已开启' : '未开启'}}</view>
+              </view>
+              <view class="ai-reminder-setting-line">
+                <view class="ai-reminder-rule-sub">到达止损后继续亏损该比例时提醒</view>
+                <view class="ai-reminder-input-wrap">
+                  <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.postLossExtraRisk.percent}}" data-key="postLossExtraRisk" bindinput="onAiReminderNumberInput" />
+                  <text>%</text>
+                </view>
+              </view>
+              <view class="ai-reminder-channel-row">
+                <view class="ai-reminder-channel-label">提醒方式</view>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.postLossExtraRisk.evBrain ? 'on' : ''}}" data-key="postLossExtraRisk" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.postLossExtraRisk.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="postLossExtraRisk" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="ai-reminder-mini-title"><view class="ai-reminder-mini-diamond"></view><text>Session 时长</text></view>
+        <view class="ai-reminder-rule-panel">
+          <view class="ai-reminder-rule-line"></view>
+          <view class="ai-reminder-rule">
+            <view class="ai-reminder-rule-node"></view>
+            <view class="ai-reminder-rule-body">
+              <view class="ai-reminder-rule-head">
+                <view class="ai-reminder-rule-title">时长预提醒</view>
+                <view class="ai-reminder-rule-status {{aiReminderDraft.rules.sessionPreReminder.hoursBefore > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.sessionPreReminder.hoursBefore > 0 ? '已开启' : '未开启'}}</view>
+              </view>
+              <view class="ai-reminder-setting-line">
+                <view class="ai-reminder-rule-sub">提前多少小时提醒，0 不开启</view>
+                <view class="ai-reminder-input-wrap">
+                  <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.sessionPreReminder.hoursBefore}}" data-key="sessionPreReminder" bindinput="onAiReminderNumberInput" />
+                  <text>小时</text>
+                </view>
+              </view>
+              <view class="ai-reminder-channel-row">
+                <view class="ai-reminder-channel-label">提醒方式</view>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.sessionPreReminder.evBrain ? 'on' : ''}}" data-key="sessionPreReminder" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.sessionPreReminder.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="sessionPreReminder" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+              </view>
+            </view>
+          </view>
+
+          <view class="ai-reminder-rule ai-reminder-rule-warn">
+            <view class="ai-reminder-rule-node"></view>
+            <view class="ai-reminder-rule-body">
+              <view class="ai-reminder-rule-head">
+                <view class="ai-reminder-rule-title">时长上限提醒</view>
+                <view class="ai-reminder-rule-status {{aiReminderDraft.rules.sessionMaxHours.hours > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.sessionMaxHours.hours > 0 ? '已开启' : '未开启'}}</view>
+              </view>
+              <view class="ai-reminder-setting-line">
+                <view class="ai-reminder-rule-sub">达到设定时长时提醒</view>
+                <view class="ai-reminder-input-wrap">
+                  <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.sessionMaxHours.hours}}" data-key="sessionMaxHours" bindinput="onAiReminderNumberInput" />
+                  <text>小时</text>
+                </view>
+              </view>
+              <view class="ai-reminder-channel-row">
+                <view class="ai-reminder-channel-label">提醒方式</view>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.sessionMaxHours.evBrain ? 'on' : ''}}" data-key="sessionMaxHours" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+                <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.sessionMaxHours.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="sessionMaxHours" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="ai-reminder-mini-title"><view class="ai-reminder-mini-diamond"></view><text>纯文本提醒</text></view>
+        <view wx:for="{{aiReminderDraft.textReminders}}" wx:key="id" wx:for-item="textRule" wx:for-index="index" class="ai-reminder-text-rule">
+          <view class="ai-reminder-text-row">
+            <input class="ai-reminder-text-input" value="{{textRule.title}}" data-index="{{index}}" data-field="title" placeholder="提醒文本，例如 不要 overcall" placeholder-class="settings-editor-placeholder" bindinput="onAiReminderTextInput" />
+            <view class="ai-reminder-text-delete" data-index="{{index}}" bindtap="removeAiReminderTextRule">删除</view>
+          </view>
+          <textarea class="ai-reminder-textarea" value="{{textRule.content}}" data-index="{{index}}" data-field="content" placeholder="具体内容：每记录一手牌后 EV脑都会提醒这段话" placeholder-class="settings-editor-placeholder" bindinput="onAiReminderTextInput" auto-height />
+          <view class="ai-reminder-channel-row">
+            <view class="ai-reminder-channel-label">提醒方式</view>
+            <button class="ai-reminder-subscribe-chip {{textRule.evBrain ? 'on' : ''}}" data-index="{{index}}" bindtap="toggleAiReminderTextEvBrain" hover-class="none">EV脑</button>
+            <button class="ai-reminder-subscribe-chip {{textRule.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-index="{{index}}" bindtap="toggleAiReminderTextSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+          </view>
+        </view>
+        <view class="ai-reminder-add-text" bindtap="addAiReminderTextRule">+ 添加纯文本提醒</view>
+      </scroll-view>
+
+      <view class="settings-editor-actions ai-reminder-sheet-actions">
+        <view class="settings-editor-action settings-editor-action-secondary" bindtap="closeAiReminderEditor">取消</view>
+        <view class="settings-editor-action settings-editor-action-primary" bindtap="saveAiReminderSettings">保存</view>
       </view>
     </view>
   </view>
@@ -280,4 +565,9 @@
 
   <view class="tab-bar-spacer"></view>
 </view>
-<agent-chat />
+<release-notes-poster
+  visible="{{releaseNotesVisible}}"
+  notes="{{releaseNotes}}"
+  bindacknowledge="acknowledgeReleaseNotes"
+></release-notes-poster>
+<agent-chat wx:if="{{agentChatReady}}" />

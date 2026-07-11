@@ -4,7 +4,7 @@
     <view class="row">
       <view>
         <view class="card-title">复盘列表</view>
-        <view class="muted small">语音复盘从这里进入某手详情后使用</view>
+        <view class="muted small">语音复盘和完整录入的手牌会在这里展示</view>
       </view>
     </view>
   </view>
@@ -43,10 +43,10 @@
 
   <view class="card">
     <view wx:if="{{hands.length}}">
-      <view wx:for="{{hands}}" wx:key="_id" class="review-swipe-row {{item.swiped ? 'open' : ''}}">
-        <view class="review-swipe-actions">
+      <view wx:for="{{hands}}" wx:key="_id" class="review-swipe-row {{item.onboardingReviewEntryTargetClass}} {{item.swiped ? 'open' : ''}}">
+        <view class="review-swipe-actions {{item.onboardingReviewSwipeTargetClass}}">
           <view class="review-swipe-action edit" catchtap="editHandFromList" data-id="{{item._id}}">编辑</view>
-          <view class="review-swipe-action delete" catchtap="deleteHandFromList" data-id="{{item._id}}">删除</view>
+          <view class="review-swipe-action delete {{item.onboardingReviewDeleteTargetClass}}" catchtap="deleteHandFromList" data-id="{{item._id}}">删除</view>
         </view>
         <view
           class="list-item review-swipe-content"
@@ -75,20 +75,117 @@
                 </block>
               </view>
             </view>
-            <view class="review-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
+            <view class="review-result-actions">
+              <view class="review-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
+            </view>
           </view>
           <view wx:if="{{item.showActionLine}}" class="review-action-line">{{item.actionLine}}</view>
-          <view wx:if="{{item.hasMetaText || item.aiReviewReady || item.aiReviewGenerating}}" class="review-meta-row">
+          <view wx:if="{{item.hasMetaText || item.replayAvailable || item.aiReviewReady || item.aiReviewGenerating || item.canRequestAiAdvice || item.canHandComment}}" class="review-meta-row">
             <view wx:if="{{item.hasMetaText}}" class="small muted">{{item.metaText}}</view>
-            <view wx:if="{{item.aiReviewReady || item.aiReviewGenerating}}" class="review-ai-badge {{item.aiReviewGenerating ? 'loading' : 'ready'}}">
-              <view wx:if="{{item.aiReviewGenerating}}" class="review-ai-badge-dot"></view>
-              <text>{{item.aiReviewGenerating ? 'AI生成中' : 'AI建议'}}</text>
-            </view>
+            <view wx:if="{{item.replayAvailable || item.aiReviewReady || item.aiReviewGenerating || item.canRequestAiAdvice || item.canHandComment}}" class="review-meta-actions">
+              <view
+                wx:if="{{item.canHandComment}}"
+                class="review-comment-trigger {{item.hasHandComments ? 'has-comments' : ''}}"
+                catchtap="openHandComment"
+                data-id="{{item._id}}"
+                aria-label="comment hand"
+              >
+                <image class="review-comment-icon-img" src="/assets/review-icons/comment-bubble-v263.png" mode="aspectFit"></image>
+                <text wx:if="{{item.hasHandComments}}" class="review-comment-count">{{item.handCommentCount}}</text>
+              </view>
+              <view
+                wx:if="{{item.replayAvailable}}"
+                class="review-replay-trigger {{item.onboardingReviewReplayTargetClass}}"
+                catchtap="openHandReplay"
+                data-id="{{item._id}}"
+                aria-label="play replay"
+              >
+                <view class="review-replay-icon"></view>
+              </view>
+              <view wx:if="{{item.aiReviewReady || item.aiReviewGenerating || item.canRequestAiAdvice}}" class="review-ai-badge {{item.aiReviewGenerating ? 'loading' : 'ready'}} {{item.onboardingReviewAiAdviceTargetClass}}" catchtap="openAiAdviceSheet" data-id="{{item._id}}">
+                <view wx:if="{{item.aiReviewGenerating}}" class="review-ai-badge-dot"></view>
+                <text>{{item.aiReviewGenerating ? 'AI生成中' : 'AI建议'}}</text>
+              </view>
           </view>
         </view>
       </view>
     </view>
+    </view>
     <view wx:else class="empty">还没有可复盘的手牌。</view>
+  </view>
+
+  <view wx:if="{{replayVisible}}" class="review-replay-modal">
+    <view class="review-replay-mask" bindtap="closeHandReplay"></view>
+    <view class="review-replay-panel onboarding-target-review-replay-sheet" catchtap="stopModalTap">
+      <hand-replay-player replay="{{replayData}}" bindclose="closeHandReplay" />
+    </view>
+  </view>
+
+  <view wx:if="{{handCommentVisible}}" class="review-comment-modal">
+    <view class="review-comment-mask" bindtap="closeHandComment"></view>
+    <view class="review-comment-panel" catchtap="stopModalTap">
+      <view class="review-comment-head">
+        <view class="review-comment-close" bindtap="closeHandComment">关闭</view>
+        <view class="review-comment-save review-comment-save-inline {{handCommentSaving ? 'saving' : ''}}" bindtap="saveHandComment">{{handCommentSaving ? '保存中' : '保存评论'}}</view>
+      </view>
+      <view wx:if="{{handCommentItems.length}}" class="review-comment-list">
+        <view wx:for="{{handCommentItems}}" wx:key="id" class="review-comment-item">
+          <view class="review-comment-text">{{item.text}}</view>
+          <view wx:if="{{item.timeDisplay}}" class="review-comment-time">{{item.timeDisplay}}</view>
+        </view>
+      </view>
+      <view wx:else class="review-comment-empty">还没有评论。</view>
+      <textarea
+        class="review-comment-input"
+        value="{{handCommentDraft}}"
+        maxlength="500"
+        placeholder="写下这手牌的观察、问题或复盘结论"
+        bindinput="onHandCommentInput"
+      ></textarea>
+    </view>
+  </view>
+
+  <view wx:if="{{aiAdviceSheetVisible}}" class="review-ai-sheet-modal">
+    <view class="review-ai-sheet-mask" bindtap="closeAiAdviceSheet"></view>
+    <view class="review-ai-sheet-panel onboarding-target-review-ai-sheet" catchtap="stopModalTap">
+      <view class="review-ai-sheet-handle"></view>
+      <view class="review-ai-sheet-head">
+        <view>
+          <view class="review-ai-sheet-kicker">EV BRAIN · STRUCTURED REVIEW</view>
+          <view class="review-ai-sheet-title">AI建议</view>
+        </view>
+        <view class="review-ai-sheet-close" bindtap="closeAiAdviceSheet">×</view>
+      </view>
+      <scroll-view scroll-y="true" class="review-ai-sheet-scroll">
+        <template is="ai-advice-card" data="{{view: aiAdviceSheetView, mode: 'sheet'}}" />
+      </scroll-view>
+      <view class="review-ai-sheet-actions">
+        <button class="review-ai-sheet-btn" bindtap="closeAiAdviceSheet">关闭</button>
+        <button class="review-ai-sheet-btn primary" bindtap="goHandDetailPage">完整详情</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{reviewChoiceVisible}}" class="review-choice-modal">
+    <view class="review-choice-mask" bindtap="closeReviewChoice"></view>
+    <view class="review-choice-panel" catchtap="stopModalTap">
+      <view class="review-choice-handle"></view>
+      <view class="review-choice-title">选择复盘方式</view>
+      <view class="review-choice-sub">语音复盘适合补充想法，精准录入适合逐街校准行动线。</view>
+      <view class="review-choice-grid">
+        <view class="review-choice-card" data-mode="voice" bindtap="chooseReviewMode">
+          <view class="review-choice-icon">V</view>
+          <view class="review-choice-name">语音复盘</view>
+          <view class="review-choice-desc">进入原复盘页</view>
+        </view>
+        <view class="review-choice-card primary" data-mode="ledger" bindtap="chooseReviewMode">
+          <view class="review-choice-icon">P</view>
+          <view class="review-choice-name">精准录入</view>
+          <view class="review-choice-desc">按牌桌逐街录入</view>
+        </view>
+      </view>
+      <view class="review-choice-cancel" bindtap="closeReviewChoice">取消</view>
+    </view>
   </view>
 
   <view wx:if="{{filterModalVisible}}" class="review-filter-modal">
@@ -107,10 +204,10 @@
 
       <scroll-view scroll-y="true" class="review-filter-scroll">
         <view class="review-filter-block">
-          <view class="kpi-label">牌局</view>
+          <view class="kpi-label">牌局状态</view>
           <view class="review-chip-wrap session">
-            <view wx:for="{{draftSessionOptions}}" wx:key="_id" class="pill review-filter-pill {{item.active ? 'active' : ''}}" bindtap="selectSession" data-id="{{item._id}}">
-              <text>{{item.title}}</text>
+            <view wx:for="{{draftSessionStatusOptions}}" wx:key="key" class="pill review-filter-pill {{item.active ? 'active' : ''}}" bindtap="selectSessionStatus" data-key="{{item.key}}">
+              <text>{{item.label}}</text>
             </view>
           </view>
         </view>
@@ -168,7 +265,7 @@
         </view>
       </view>
 
-      <view wx:if="{{detailLoading}}" class="empty">详情加载中...</view>
+      <view wx:if="{{detailLoading && !detailHand}}" class="empty">详情加载中...</view>
 
       <view wx:elif="{{detailHand}}">
         <view class="review-hero-summary">
@@ -179,7 +276,11 @@
                 <text class="mini-card-suit">{{card.suitSymbol}}</text>
               </view>
             </view>
-            <view class="review-position-line">{{detailHand.heroPosition || '-'}}</view>
+            <view class="review-position-meta">
+              <view class="review-position-line">{{detailHand.heroPosition || '-'}}</view>
+              <view class="review-copy-hand-id-btn" bindtap="copyDetailHandId">复制ID</view>
+              <view class="review-copy-hand-id-btn export" bindtap="openDetailExport">导出</view>
+            </view>
             <view class="small muted">
               {{detailHand.playedDate || '-'}} · {{detailHand.stakeLevel || '-'}}
             </view>
@@ -187,22 +288,43 @@
           <view class="review-hero-result">
             <view class="review-profit review-detail-profit {{detailHand.currentProfit >= 0 ? 'positive' : 'negative'}}">{{detailHand.currentProfitDisplay}}</view>
             <view class="review-result-bb">{{detailHand.resultBBDisplay}}</view>
+            <view wx:if="{{detailHand.hasAllInEvDisplay}}" class="review-all-in-ev-pill">
+              <text class="review-all-in-ev-label">All-in EV</text>
+              <text class="review-all-in-ev-value">{{detailHand.allInEvDisplay}}</text>
+            </view>
           </view>
         </view>
 
-        <view wx:if="{{!voicePanelVisible}}" class="review-voice-entry" bindtap="handleVoiceEntry">
-          <view class="review-voice-entry-main">
-            <view class="review-voice-entry-title">语音输入复盘</view>
-            <view class="review-voice-entry-desc">用手机 AI 输入法转文字，再让 AI 提取字段并回填。</view>
+        <view wx:if="{{!voicePanelVisible}}" class="review-detail-review-entry">
+          <view class="review-detail-entry-head">
+            <view class="section-title">{{detailHand.hasCompletedReview ? '重新复盘' : '开始复盘'}}</view>
+            <view class="small muted">两种方式都会回到同一张手牌详情，成功后更新 AI 建议。</view>
           </view>
-          <view class="review-voice-entry-action">{{parsedVoice ? '继续' : '开始'}}</view>
+          <view class="review-detail-entry-grid">
+            <view class="review-detail-entry-card onboarding-target-review-voice" bindtap="handleVoiceEntry">
+              <view class="review-detail-entry-icon voice">□</view>
+              <view class="review-detail-entry-main">
+                <view class="review-detail-entry-title">语音录入复盘</view>
+                <view class="review-detail-entry-desc">补充口述思路和行动线</view>
+              </view>
+              <view class="review-detail-entry-arrow">›</view>
+            </view>
+            <view class="review-detail-entry-card primary onboarding-target-review-ledger" bindtap="openDetailLedgerReview">
+              <view class="review-detail-entry-icon ledger">▤</view>
+              <view class="review-detail-entry-main">
+                <view class="review-detail-entry-title">完整录入复盘</view>
+                <view class="review-detail-entry-desc">用桌面 replay 精准补全</view>
+              </view>
+              <view class="review-detail-entry-arrow">›</view>
+            </view>
+          </view>
         </view>
 
         <view wx:if="{{voicePanelVisible}}" class="review-detail-card review-voice-card">
           <view class="review-voice-head">
             <view>
               <view class="section-title">语音输入复盘</view>
-              <view class="small muted">{{voiceStatus || '使用手机AI输入法进行语音转文字方式进行复盘，推荐使用豆包输入法。'}}</view>
+              <view class="small muted">{{voiceStatus || '使用手机 AI 输入法转文字，再让 AI 提取字段并回填。'}}</view>
             </view>
             <view class="review-voice-head-actions">
               <view class="review-voice-badge">AI 提取</view>
@@ -212,7 +334,7 @@
           <view class="review-voice-label-row">
             <view class="label">原始口述</view>
             <view class="review-voice-label-actions">
-              <view class="review-voice-count">{{voiceNote.length}} 字</view>
+              <view class="review-voice-count">{{voiceNoteLength}} 字</view>
               <view class="review-voice-clear" bindtap="clearVoiceNote">清空</view>
             </view>
           </view>
@@ -221,6 +343,7 @@
             placeholder=""
             value="{{voiceNote}}"
             bindinput="onVoiceNoteInput"
+            bindblur="commitVoiceNoteDraft"
             cursor-spacing="120"
             maxlength="-1"
           ></textarea>
@@ -228,14 +351,14 @@
             <view class="review-voice-spinner"></view>
             <view class="review-voice-loading-text">
               <view>正在解析口述内容</view>
-              <view class="small muted">AI 正在提取位置、底池、输赢和三条街牌面，请稍等。</view>
+              <view class="small muted">AI 正在提取位置、底池、输赢和逐街牌面，请稍等。</view>
             </view>
           </view>
           <view class="review-voice-actions">
-            <button class="voice-action-btn voice-action-parse" bindtap="parseVoiceNote" disabled="{{voiceBusy || !voiceNote}}">
+            <button class="voice-action-btn voice-action-parse onboarding-target-review-parse" bindtap="parseVoiceNote" disabled="{{voiceBusy || !voiceNoteHasText}}">
               {{voiceBusy ? '解析中...' : '解析字段'}}
             </button>
-            <button class="voice-action-btn voice-action-apply" bindtap="applyVoicePatch" disabled="{{voiceBusy || !parsedVoice || voiceNeedsRefresh}}">
+            <button class="voice-action-btn voice-action-apply onboarding-target-review-apply" bindtap="applyVoicePatch" disabled="{{voiceBusy || !parsedVoice || voiceNeedsRefresh}}">
               确认回填
             </button>
           </view>
@@ -277,7 +400,7 @@
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">日期</view>
                 <view class="review-edit-hint">编辑</view>
-                <input class="review-field-input" value="{{parsedVoice.playedDate}}" data-field="playedDate" bindinput="onParsedVoiceFieldInput" placeholder="-" />
+                <input class="review-field-input" value="{{parsedVoice.playedDate}}" data-field="playedDate" bindinput="onParsedVoiceFieldInput" bindblur="commitParsedVoiceFieldValue" bindconfirm="commitParsedVoiceFieldValue" focus="{{parsedVoice.focusPlayedDate}}" placeholder="-" />
               </view>
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">级别</view>
@@ -287,17 +410,15 @@
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">人数</view>
                 <view class="review-edit-hint">编辑</view>
-                <input class="review-field-input" value="{{parsedVoice.playerCountDisplayText}}" data-field="playerCount" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'playerCount'}}" placeholder="" />
+                <input class="review-field-input" value="{{parsedVoice.playerCountDisplayText}}" data-field="playerCount" bindinput="onParsedVoiceFieldInput" bindblur="commitParsedVoiceFieldValue" bindconfirm="commitParsedVoiceFieldValue" focus="{{parsedVoice.focusPlayerCount}}" placeholder="" />
               </view>
-              <view class="review-voice-meta-item unified-field-card editable">
+              <view class="review-voice-meta-item unified-field-card editable {{voiceStraddleMissingClass}}">
                 <view class="kpi-label">是否 Straddle</view>
                 <view class="review-edit-hint">勾选</view>
-                <checkbox-group class="detail-checkbox-group" data-field="hasStraddle" bindchange="onParsedVoiceToggleChange">
-                  <label class="detail-checkbox">
-                    <checkbox value="1" checked="{{parsedVoice.hasStraddle}}" color="#00d1ff" />
-                    <text>{{parsedVoice.hasStraddle ? '是' : '否'}}</text>
-                  </label>
-                </checkbox-group>
+                <view class="voice-straddle-segment">
+                  <view class="voice-straddle-option {{parsedVoice.straddleYesClass}}" data-value="1" bindtap="selectVoiceStraddleOption">是</view>
+                  <view class="voice-straddle-option {{parsedVoice.straddleNoClass}}" data-value="0" bindtap="selectVoiceStraddleOption">否</view>
+                </view>
               </view>
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">Hero 位置</view>
@@ -315,24 +436,19 @@
                 <view class="review-field-picker" data-field="opponentType" bindtap="openVoicePresetSelector">{{parsedVoice.opponentTypeText || '-'}}</view>
               </view>
               <view class="review-voice-meta-item unified-field-card editable">
-                <view class="kpi-label">有效筹码</view>
-                <view class="review-edit-hint">编辑</view>
-                <input class="review-field-input" value="{{parsedVoice.effectiveStack}}" data-field="effectiveStack" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'effectiveStack'}}" placeholder="-" />
-              </view>
-              <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">当前底池</view>
                 <view class="review-edit-hint">编辑</view>
-                <input class="review-field-input" value="{{parsedVoice.potSize}}" data-field="potSize" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'potSize'}}" placeholder="-" />
+                <input class="review-field-input" value="{{parsedVoice.potSize}}" data-field="potSize" bindinput="onParsedVoiceFieldInput" bindblur="commitParsedVoiceFieldValue" bindconfirm="commitParsedVoiceFieldValue" focus="{{parsedVoice.focusPotSize}}" placeholder="-" />
               </view>
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">本手输赢</view>
                 <view class="review-edit-hint">编辑</view>
-                <input class="review-field-input" value="{{parsedVoice.currentProfitDisplayText}}" data-field="currentProfit" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'currentProfit'}}" placeholder="+ 赢 / - 输" />
+                <input class="review-field-input" value="{{parsedVoice.currentProfitDisplayText}}" data-field="currentProfit" bindinput="onParsedVoiceFieldInput" bindblur="commitParsedVoiceFieldValue" bindconfirm="commitParsedVoiceFieldValue" focus="{{parsedVoice.focusCurrentProfit}}" placeholder="+ / -" />
               </view>
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">对手昵称</view>
                 <view class="review-edit-hint">编辑</view>
-                <input class="review-field-input" value="{{parsedVoice.opponentName}}" data-field="opponentName" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'opponentName'}}" placeholder="-" />
+                <input class="review-field-input" value="{{parsedVoice.opponentName}}" data-field="opponentName" bindinput="onParsedVoiceFieldInput" bindblur="commitParsedVoiceFieldValue" bindconfirm="commitParsedVoiceFieldValue" focus="{{parsedVoice.focusOpponentName}}" placeholder="-" />
               </view>
               <view class="review-voice-meta-item unified-field-card editable">
                 <view class="kpi-label">对手手牌</view>
@@ -344,6 +460,7 @@
                       <text class="mini-card-suit">{{card.suitSymbol}}</text>
                     </view>
                   </view>
+                  <text wx:elif="{{parsedVoice.showdownText}}" class="rank-only-card-text">{{parsedVoice.showdownText}}</text>
                   <text wx:else class="board-empty-text"></text>
                 </view>
               </view>
@@ -369,8 +486,8 @@
               <view class="review-detail-text">{{parsedVoice.mindJourney}}</view>
             </view>
             <view class="review-detail-block">
-              <view class="kpi-label">Hero 疑问点</view>
-              <textarea class="review-confirm-textarea" value="{{parsedVoice.heroQuestion}}" data-field="heroQuestion" bindinput="onParsedVoiceFieldInput" focus="{{voiceFocusField === 'heroQuestion'}}" placeholder="-" auto-height="true"></textarea>
+              <view class="kpi-label">Hero 疑问点、待确认、需研究</view>
+              <textarea class="review-confirm-textarea" value="{{parsedVoice.heroQuestion}}" data-field="heroQuestion" bindinput="onParsedVoiceFieldInput" bindblur="commitParsedVoiceFieldValue" focus="{{parsedVoice.focusHeroQuestion}}" placeholder="-" auto-height="true"></textarea>
             </view>
             <view wx:if="{{parsedVoice.streetItems.length}}" class="review-detail-block">
               <view class="kpi-label">逐街识别</view>
@@ -392,11 +509,17 @@
                       <text class="mini-card-suit mini-card-suit-board">{{card.suitSymbol}}</text>
                     </view>
                   </view>
+                  <view
+                    wx:if="{{item.boardEditText}}"
+                    class="review-street-board-edit-text {{item.boardEditClass}}"
+                    data-key="{{item.key}}"
+                    bindtap="openVoiceBoardPicker"
+                  >{{item.boardEditText}}</view>
                   <text wx:if="{{item.pot}}">Pot {{item.pot}}</text>
                 </view>
                 <view class="review-street-edit-row">
-                  <input class="review-field-input review-street-pot-input" value="{{item.pot}}" data-field="streetInputs.{{item.key}}.pot" bindinput="onParsedVoiceFieldInput" placeholder="Pot" />
-                  <input class="review-field-input review-street-action-input" value="{{item.actionLine}}" data-field="streetInputs.{{item.key}}.actionLine" bindinput="onParsedVoiceFieldInput" placeholder="行动线" />
+                  <input class="review-field-input review-street-pot-input" value="{{item.pot}}" data-field="streetInputs.{{item.key}}.pot" bindinput="onParsedVoiceFieldInput" bindblur="commitParsedVoiceFieldValue" bindconfirm="commitParsedVoiceFieldValue" focus="{{item.potFocused}}" placeholder="Pot" />
+                  <input class="review-field-input review-street-action-input" value="{{item.actionLine}}" data-field="streetInputs.{{item.key}}.actionLine" bindinput="onParsedVoiceFieldInput" bindblur="commitParsedVoiceFieldValue" bindconfirm="commitParsedVoiceFieldValue" focus="{{item.actionFocused}}" placeholder="行动线" />
                 </view>
               </view>
             </view>
@@ -416,9 +539,15 @@
         <block wx:if="{{detailHand.shouldShowFullDetails && !voicePanelVisible}}">
         <view class="review-detail-card review-info-card">
           <view class="readonly-field-grid">
-            <view wx:for="{{detailHand.detailRows}}" wx:key="key" class="readonly-field-card">
+            <view wx:for="{{detailHand.detailRows}}" wx:key="key" class="readonly-field-card {{item.rowClass}}">
               <view class="readonly-field-label">{{item.label}}</view>
-              <view class="readonly-field-value">{{item.displayValue}}</view>
+              <view wx:if="{{item.opponentCardsVisual && item.opponentCardsVisual.length}}" class="readonly-field-value cards-inline tight">
+                <view wx:for="{{item.opponentCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                  <text class="mini-card-rank">{{card.rank}}</text>
+                  <text class="mini-card-suit">{{card.suitSymbol}}</text>
+                </view>
+              </view>
+              <view wx:else class="readonly-field-value">{{item.displayValue}}</view>
             </view>
           </view>
         </view>
@@ -459,10 +588,6 @@
               <view wx:for="{{detailHand.tagItems}}" wx:key="label" class="review-hand-tag">{{item.label}}</view>
             </view>
           </view>
-          <view wx:if="{{detailHand.showdown}}" class="review-detail-block">
-            <view class="kpi-label">Showdown</view>
-            <view class="review-detail-text">{{detailHand.showdown}}</view>
-          </view>
           <view wx:if="{{detailHand.notes}}" class="review-detail-block">
             <view class="kpi-label">备注</view>
             <view class="review-detail-text">{{detailHand.notes}}</view>
@@ -474,7 +599,14 @@
           <view class="review-agent-pending-body">
             <view class="review-ai-spinner"></view>
             <view>
-              <view class="review-agent-pending-title">AI 建议生成中</view>
+              <view class="review-agent-pending-title">
+                <text>AI 建议生成中</text>
+                <view class="review-agent-pending-dots" aria-hidden="true">
+                  <view class="review-agent-pending-dot dot-1"></view>
+                  <view class="review-agent-pending-dot dot-2"></view>
+                  <view class="review-agent-pending-dot dot-3"></view>
+                </view>
+              </view>
               <view class="review-agent-pending-text">EV脑 正在根据最新回填信息重新分析。</view>
             </view>
           </view>
@@ -489,13 +621,15 @@
           </view>
         </view>
 
-        <view wx:if="{{detailHand.aiReviewReady}}" class="review-detail-card review-agent-card">
+        <template wx:if="{{detailHand.aiReviewReady}}" is="ai-advice-card" data="{{view: detailHand.aiReviewView, mode: 'inline'}}" />
+
+        <view wx:if="{{false && detailHand.aiReviewReady}}" class="review-detail-card review-agent-card">
           <view class="review-card-head">
             <view>
               <view class="section-title">EV脑 建议</view>
               <view class="small muted">基于当前手牌信息生成的专业复盘建议</view>
             </view>
-            <view class="review-voice-badge">{{detailHand.aiReviewView.provider}}</view>
+            <view class="review-voice-badge">{{detailHand.aiReviewView.providerDisplay}}</view>
           </view>
           <view wx:if="{{detailHand.aiReviewView.verdict}}" class="review-agent-section review-agent-section-verdict">
             <view class="kpi-label">结论</view>
@@ -556,6 +690,22 @@
           <button class="primary-btn" bindtap="goHandDetailPage">完整详情</button>
         </view>
       </view>
+    </view>
+  </view>
+  <view wx:if="{{detailExportVisible}}" class="review-export-layer">
+    <view class="review-export-mask" bindtap="closeDetailExport"></view>
+    <view class="review-export-sheet" catchtap="stopModalTap">
+      <view class="review-export-handle"></view>
+      <view class="review-export-title">导出手牌</view>
+      <view class="review-export-desc">可以把这手牌导出为 PokerStars Hand History 格式，用于 solver、HUD 或其他分析工具。</view>
+      <view class="review-export-head">
+        <view class="review-export-label">导出文本</view>
+        <button class="review-export-copy" bindtap="copyDetailExportText" hover-class="none">复制</button>
+      </view>
+      <scroll-view scroll-y="true" class="review-export-text">
+        <text>{{detailExportText}}</text>
+      </scroll-view>
+      <button class="review-export-close" bindtap="closeDetailExport" hover-class="none">关闭</button>
     </view>
   </view>
   <view wx:if="{{voiceSelectorVisible}}" class="hero-picker-modal">
@@ -684,7 +834,7 @@
       <view class="hero-picker-head">
         <view>
           <view class="hero-picker-title">{{voiceBoardPickerTitle}}</view>
-          <view class="small muted">按牌面点选公牌，已占用牌会自动置灰。</view>
+          <view class="small muted">按牌面点选公牌，已占用的牌会自动置灰。</view>
         </view>
         <button class="picker-close-btn" bindtap="closeVoiceBoardPicker">关闭</button>
       </view>
@@ -726,6 +876,90 @@
       </view>
     </view>
   </view>
+  <view wx:if="{{voiceProgressVisible}}" class="voice-progress-mask" catchtap="noop" catchtouchmove="noop">
+    <view class="voice-progress-panel" catchtap="noop">
+      <view class="voice-progress-title">正在解析</view>
+      <view class="voice-progress-sub">保持当前页面，完成后自动展开识别结果</view>
+      <view class="voice-progress-track">
+        <view class="voice-progress-fill" style="width: {{voiceProgressPercent}}%;"></view>
+      </view>
+      <view class="voice-progress-row">
+        <text>{{voiceProgressStep}}</text>
+        <text>{{voiceProgressPercent}}%</text>
+      </view>
+      <view class="voice-progress-steps">
+        <view wx:for="{{voiceProgressSteps}}" wx:key="index" class="voice-progress-step {{item.activeClass}}">
+          <view class="voice-progress-dot"></view>
+          <text>{{item.label}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
   <view class="tab-bar-spacer"></view>
 </view>
-<agent-chat />
+<onboarding-guide visible="{{onboardingGuideVisible}}" step="{{onboardingGuideStep}}" bindnext="onOnboardingNext" bindskip="onOnboardingSkip" />
+<agent-chat wx:if="{{agentChatReady}}" />
+
+<template name="ai-advice-card">
+  <view class="review-ai-card review-ai-card-{{mode}}">
+    <view wx:if="{{mode !== 'sheet'}}" class="review-ai-card-head">
+      <view>
+        <view class="review-ai-kicker">EV BRAIN</view>
+        <view class="review-ai-title">AI建议</view>
+      </view>
+      <view class="review-ai-card-provider">{{view.providerDisplay}}</view>
+    </view>
+
+    <view wx:if="{{view.verdict}}" class="review-ai-card-verdict">
+      <view class="review-ai-slash-label">结论</view>
+      <view class="review-ai-card-verdict-text">{{view.verdict}}</view>
+    </view>
+
+    <view wx:if="{{view.hasKeyTakeaway}}" class="review-ai-takeaway">
+      <view>
+        <view class="review-ai-takeaway-title">关键行动</view>
+        <view class="review-ai-takeaway-text">{{view.keyTakeaway}}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{view.hasStreetBreakdown}}" class="review-ai-street-panel">
+      <view wx:for="{{view.streetBreakdown}}" wx:key="key" class="review-ai-street-row {{item.rowClass}}">
+        <view class="review-ai-street-head">
+          <view class="review-ai-street-name">{{item.streetDisplay}}</view>
+          <view wx:if="{{item.hasDisplayStatus}}" class="review-ai-street-badge {{item.displayStatusClass}}">{{item.displayStatusText}}</view>
+        </view>
+        <view wx:for="{{item.pointItems}}" wx:for-item="point" wx:key="key" class="review-ai-street-point">
+          <text wx:for="{{point.segments}}" wx:for-item="segment" wx:key="index" class="{{segment.highlight ? 'review-ai-wave-mark' : ''}}">{{segment.text}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{view.hasInsightCards || view.hasExploitSection || view.hasTrainingSection}}" class="review-ai-insight-stack">
+      <view wx:if="{{view.hasInsightCards}}" class="review-ai-insight-group">
+        <view wx:for="{{view.insightCards}}" wx:key="key" class="review-ai-insight-card {{item.type}}">
+          <view class="review-ai-insight-index">{{item.indexText}}</view>
+          <view class="review-ai-insight-title">{{item.label}}</view>
+          <view class="review-ai-insight-text">
+            <text wx:for="{{item.segments}}" wx:for-item="segment" wx:key="index" class="{{segment.highlight ? 'review-ai-wave-mark' : ''}}">{{segment.text}}</text>
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{view.hasExploitSection}}" class="review-ai-insight-card full {{view.exploitSection.type}}">
+        <view class="review-ai-insight-index">{{view.exploitSection.indexText}}</view>
+        <view class="review-ai-insight-title">{{view.exploitSection.label}}</view>
+        <view wx:for="{{view.exploitSection.points}}" wx:key="index" class="review-ai-insight-point">{{item}}</view>
+      </view>
+      <view wx:if="{{view.hasTrainingSection}}" class="review-ai-insight-card full {{view.trainingSection.type}}">
+        <view class="review-ai-insight-index">{{view.trainingSection.indexText}}</view>
+        <view class="review-ai-insight-title">{{view.trainingSection.label}}</view>
+        <view wx:for="{{view.trainingSection.points}}" wx:key="index" class="review-ai-insight-point">{{item}}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{view.answer}}" class="review-ai-fallback-text">{{view.answer}}</view>
+    <view wx:if="{{view.hasMissingFields}}" class="review-ai-missing">
+      <view class="review-ai-insight-title">缺失信息</view>
+      <view wx:for="{{view.missingFields}}" wx:key="index" class="review-ai-insight-point">{{item}}</view>
+    </view>
+  </view>
+</template>

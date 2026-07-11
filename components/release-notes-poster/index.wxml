@@ -1,0 +1,31 @@
+<view wx:if="{{visible && notes}}" class="release-notes-mask" catchtouchmove="noop">
+  <view class="release-notes-poster">
+    <view class="release-notes-slash"></view>
+    <view class="release-notes-head">
+      <view class="release-notes-eyebrow">{{notes.eyebrow}}</view>
+      <view class="release-notes-version">V {{notes.version}}</view>
+      <view class="release-notes-title">{{notes.title}}</view>
+      <view class="release-notes-summary">{{notes.summary}}</view>
+    </view>
+
+    <image
+      wx:if="{{notes.imageUrl && !imageFailed}}"
+      class="release-notes-image"
+      src="{{notes.imageUrl}}"
+      mode="aspectFill"
+      binderror="onImageError"
+    ></image>
+
+    <scroll-view class="release-notes-scroll {{notes.imageUrl && !imageFailed ? 'with-image' : ''}}" scroll-y enhanced show-scrollbar="{{false}}">
+      <view wx:for="{{notes.items}}" wx:key="title" class="release-notes-item">
+        <view class="release-notes-index">{{index + 1}}</view>
+        <view class="release-notes-copy">
+          <view class="release-notes-item-title">{{item.title}}</view>
+          <view wx:if="{{item.description}}" class="release-notes-item-description">{{item.description}}</view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="release-notes-acknowledge" bindtap="onAcknowledge">{{notes.acknowledgeText || '我知道了'}}</view>
+  </view>
+</view>

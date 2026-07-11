@@ -1,10 +1,12 @@
 const dataService = require('../../services/data-service')
-const voiceParser = require('../../utils/voice-parser')
+const aiService = require('../../services/ai-service')
 const cardUi = require('../../utils/card-ui')
 const display = require('../../utils/display')
 const handDetailFields = require('../../utils/hand-detail-fields')
 const reviewTags = require('../../utils/review-tags')
+const handExport = require('../../utils/hand-export')
 
+const REVIEW_PENDING_ENTRY_KEY = 'pokerReviewPendingEntry'
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = [
   { key: 's', symbol: '♠', className: 'spade' },
@@ -28,14 +30,6 @@ function normalizeCardsValue(value, limit) {
 
 function buildBoardVisual(board) {
   return cardUi.parseBoardStreets(board)
-}
-
-function buildParsedVoicePreview(parsedVoice) {
-  if (!parsedVoice) return null
-  return Object.assign({}, parsedVoice, {
-    heroCardsVisual: cardUi.parseHeroCardsInput(parsedVoice.heroCardsInput),
-    boardVisual: buildBoardVisual(parsedVoice.board)
-  })
 }
 
 function buildBoardEditorVisual(form) {
@@ -199,6 +193,12 @@ function getSessionLevel(session) {
   return ''
 }
 
+function getEffectiveHasStraddle(hand, session) {
+  return handDetailFields.normalizeBoolean(
+    (session && session.hasStraddle) || (hand && hand.hasStraddle)
+  )
+}
+
 function getBigBlindFromLevel(levelText, session) {
   const text = String(levelText || '').trim()
   const match = text.match(/^(\d+)\s*\/\s*(\d+)$/)
@@ -227,12 +227,77 @@ function buildSelectorOptions(list, currentValue) {
   })
 }
 
+function number(value) {
+  return Number(value) || 0
+}
+
+function normalizeAdviceActions(actions) {
+  return (actions || []).map(item => ({
+    street: item.street || '',
+    pos: item.pos || '',
+    position: item.position || item.actorLabel || item.pos || '',
+    action: item.action || item.actionType || '',
+    amount: number(item.amount),
+    potAfter: number(item.potAfter)
+  }))
+}
+
+function buildDetailAdviceQuestion(hand) {
+  const source = hand || {}
+  const board = source.board || {}
+  const streets = source.streetInputs || {}
+  const lines = [
+    '请从职业德州扑克现金局教练角度复盘这手牌。',
+    '重点指出明确错误、可优化点、打得好的地方、剥削调整和训练计划。',
+    '不要泛泛而谈，要围绕范围、SPR、位置、下注尺度、对手类型和逐街行动线判断。',
+    'Hero: ' + [source.heroPosition, source.heroCardsInput].filter(Boolean).join(' '),
+    '级别: ' + (source.stakeLevel || ''),
+    '人数/straddle: ' + (source.playerCount || '') + ' / ' + (source.hasStraddle ? '是' : '否'),
+    '有效筹码: ' + (source.effectiveStack || ''),
+    '对手: ' + [source.villainPosition, source.villainType || source.opponentType, source.opponentName].filter(Boolean).join(' '),
+    '牌面: ' + [board.flop, board.turn, board.river].filter(Boolean).join(' / '),
+    '行动线: ' + (
+      source.streetSummary ||
+      ['preflop', 'flop', 'turn', 'river']
+        .map(key => {
+          const street = streets[key] || {}
+          return street.actionLine ? key + ': ' + street.actionLine + (street.pot ? ' Pot ' + street.pot : '') : ''
+        })
+        .filter(Boolean)
+        .join(' / ')
+    ),
+    '结果: ' + (source.currentProfit || 0)
+  ]
+  return lines.filter(item => String(item || '').trim()).join('\n')
+}
+
+function buildAiAdviceErrorText(error) {
+  const raw = error && error.raw || {}
+  return [
+    error && error.aiReviewError,
+    error && error.debugError,
+    raw.aiReviewError,
+    raw.debugError,
+    raw.message,
+    raw.answer,
+    raw.data && raw.data.message,
+    raw.data && raw.data.error,
+    error && error.message,
+    error && error.errMsg,
+    error
+  ]
+    .map(item => String(item || '').trim())
+    .filter(Boolean)[0] || 'EV脑出问题啦，请稍后再重新生成AI建议。'
+}
+
 Page({
   data: {
     handId: '',
     hand: null,
     session: null,
     actions: [],
+    exportVisible: false,
+    exportText: '',
     chipUnit: 'BB',
     positions: [],
     opponentTypes: [],
@@ -251,6 +316,7 @@ Page({
       effectiveStack: '',
       potSize: '',
       currentProfit: '',
+      allInEv: '',
       opponentName: '',
       showdown: '',
       streetSummary: '',
@@ -282,6 +348,7 @@ Page({
     heroPickerDeck: [],
     showdownPickerVisible: false,
     showdownPickerHint: '',
+    showdownPickerText: '',
     showdownPickerPreview: [],
     showdownPickerDeck: [],
     boardEditorVisual: [],
@@ -297,11 +364,11 @@ Page({
     selectorTitle: '',
     selectorKey: '',
     selectorOptions: [],
-    parsedVoice: null,
     editMode: false,
     loading: false
   },
   onLoad(options) {
+    this.pendingInputForm = {}
     this.setData({
       handId: options.id || '',
       editMode: options.edit === '1'
@@ -311,7 +378,59 @@ Page({
   onShow() {
     this.refresh()
   },
+  copyHandId() {
+    const handId = this.data.hand && this.data.hand._id
+    if (!handId) {
+      wx.showToast({ title: '\u6ca1\u6709\u53ef\u590d\u5236\u7684ID', icon: 'none' })
+      return
+    }
+    wx.setClipboardData({
+      data: String(handId),
+      success() {
+        wx.showToast({ title: '\u5df2\u590d\u5236ID', icon: 'success' })
+      }
+    })
+  },
+  openExport() {
+    if (!this.data.exportText) {
+      wx.showToast({ title: '没有可导出的手牌', icon: 'none' })
+      return
+    }
+    this.setData({ exportVisible: true })
+  },
+  closeExport() {
+    this.setData({ exportVisible: false })
+  },
+  copyExportText() {
+    const exportText = this.data.exportText
+    if (!exportText) {
+      wx.showToast({ title: '没有可复制的导出文本', icon: 'none' })
+      return
+    }
+    wx.setClipboardData({
+      data: exportText,
+      success() {
+        wx.showToast({ title: '导出文本已复制', icon: 'success' })
+      }
+    })
+  },
+  startVoiceReview() {
+    const handId = this.data.handId
+    if (!handId) return
+    wx.setStorageSync(REVIEW_PENDING_ENTRY_KEY, {
+      handId,
+      mode: 'voice',
+      createdAt: Date.now()
+    })
+    wx.switchTab({ url: '/pages/review-list/review-list' })
+  },
+  startLedgerReview() {
+    const handId = this.data.handId
+    if (!handId) return
+    wx.navigateTo({ url: '/pages/hand-ledger-input/hand-ledger-input?handId=' + handId })
+  },
   async refresh() {
+    this.pendingInputForm = {}
     this.setData({ loading: true })
     const settings = dataService.getAppSettings()
     const chipUnit = settings.chipUnit
@@ -322,6 +441,7 @@ Page({
     }
     const session = await dataService.getSessionById(hand.sessionId)
     const actions = await dataService.getActionsByHandId(hand._id)
+    const exportText = handExport.buildPokerStarsExport(hand, { session, actions })
     const handBoard = hand.board || {}
     const streetInputs = hand.streetInputs || {}
     const preflopInput = streetInputs.preflop || {}
@@ -332,7 +452,7 @@ Page({
       playedDate: hand.playedDate || getSessionDate(session),
       stakeLevel: hand.stakeLevel || getSessionLevel(session),
       playerCount: String(hand.playerCount || ''),
-      hasStraddle: handDetailFields.normalizeBoolean(hand.hasStraddle),
+      hasStraddle: getEffectiveHasStraddle(hand, session),
       heroPosition: hand.heroPosition || '',
       villainPosition: hand.villainPosition || '',
       villainType: hand.villainType || hand.opponentType || '',
@@ -340,8 +460,12 @@ Page({
       effectiveStack: String(hand.effectiveStack || ''),
       potSize: String(hand.potSize || ''),
       currentProfit: String(hand.currentProfit || 0),
+      isAllIn: !!(hand.isAllIn || hand.allInEvEligible || (hand.allInStreet && String(hand.allInStreet).toLowerCase() !== 'river')),
+      allInEv: hand.allInEv === 0 ? '' : String(hand.allInEv || hand.allInEvProfit || ''),
       opponentName: hand.opponentName || '',
-      showdown: hand.showdown || '',
+      opponentCards: hand.opponentCards || '',
+      opponentCardsSource: hand.opponentCardsSource || '',
+      showdown: hand.opponentCards || hand.showdown || '',
       streetSummary: hand.streetSummary || '',
       preflopActionLine: preflopInput.actionLine || '',
       preflopPot: String(preflopInput.pot || ''),
@@ -377,6 +501,8 @@ Page({
       }),
       session,
       actions,
+      exportText,
+      exportVisible: false,
       chipUnit,
       positions: settings.positions,
       opponentTypes: settings.opponentTypes,
@@ -388,7 +514,11 @@ Page({
       resultBbDisplay: formatResultBb(form.currentProfit, form.stakeLevel, session),
       heroEditorVisual: cardUi.parseHeroCardsInput(form.heroCardsInput),
       showdownPickerHint: '已选 ' + cardUi.parseHeroCardsInput(form.showdown).length + ' / 2 张',
-      showdownPickerPreview: cardUi.parseHeroCardsInput(form.showdown),
+      showdownPickerText: form.showdown,
+      showdownPickerPreview: cardUi.parseOpponentCardsInput(form.showdown, {
+        board: form.board,
+        heroCardsInput: form.heroCardsInput
+      }),
       showdownPickerDeck: buildShowdownPickerDeck(form),
       heroPickerVisible: false,
       heroPickerHint: '',
@@ -396,6 +526,7 @@ Page({
       heroPickerDeck: [],
       showdownPickerVisible: false,
       showdownPickerHint: '',
+      showdownPickerText: form.showdown,
       showdownPickerPreview: [],
       showdownPickerDeck: [],
       boardEditorVisual: buildBoardEditorVisual(form),
@@ -407,6 +538,21 @@ Page({
   onInput(e) {
     const key = e.currentTarget.dataset.key
     const value = e.detail.value
+    if (e.type === 'input') {
+      this.pendingInputForm = Object.assign({}, this.pendingInputForm || {}, { [key]: value })
+      return
+    }
+    this.commitFormInput(key, value)
+  },
+  commitInputValue(e) {
+    const key = e.currentTarget.dataset.key
+    if (!key) return
+    this.commitFormInput(key, e.detail.value)
+  },
+  commitFormInput(key, value) {
+    const pending = Object.assign({}, this.pendingInputForm || {})
+    delete pending[key]
+    this.pendingInputForm = pending
     const nextForm = Object.assign({}, this.data.form, { [key]: value })
     const patch = { ['form.' + key]: value }
     if (key === 'tagsInput') {
@@ -417,11 +563,34 @@ Page({
     }
     this.setData(patch)
   },
+  commitPendingInputs() {
+    const pending = Object.assign({}, this.pendingInputForm || {})
+    const form = Object.assign({}, this.data.form, pending)
+    const keys = Object.keys(pending)
+    if (keys.length) {
+      const patch = {}
+      keys.forEach(key => {
+        patch['form.' + key] = pending[key]
+      })
+      if (keys.indexOf('tagsInput') > -1) {
+        patch.tagOptions = buildTagOptions(form.tagsInput)
+      }
+      if (keys.indexOf('currentProfit') > -1 || keys.indexOf('stakeLevel') > -1) {
+        patch.resultBbDisplay = formatResultBb(form.currentProfit, form.stakeLevel, this.data.session)
+      }
+      this.setData(patch)
+    }
+    this.pendingInputForm = {}
+    return form
+  },
   toggleStraddle() {
     this.setStraddleValue(!this.data.form.hasStraddle)
   },
   onStraddleCheckboxChange(e) {
     this.setStraddleValue((e.detail.value || []).indexOf('1') > -1)
+  },
+  onAllInCheckboxChange(e) {
+    this.commitFormInput('isAllIn', (e.detail.value || []).indexOf('1') > -1)
   },
   setStraddleValue(hasStraddle) {
     const positionOptions = handDetailFields.getPositionOptions(this.data.positions, hasStraddle)
@@ -492,7 +661,11 @@ Page({
     this.setData({
       showdownPickerVisible: true,
       showdownPickerHint: '已选 ' + cardUi.parseHeroCardsInput(this.data.form.showdown).length + ' / 2 张',
-      showdownPickerPreview: cardUi.parseHeroCardsInput(this.data.form.showdown),
+      showdownPickerText: this.data.form.showdown,
+      showdownPickerPreview: cardUi.parseOpponentCardsInput(this.data.form.showdown, {
+        board: this.data.form.board,
+        heroCardsInput: this.data.form.heroCardsInput
+      }),
       showdownPickerDeck: buildShowdownPickerDeck(this.data.form)
     })
   },
@@ -507,7 +680,11 @@ Page({
     const patch = {
       'form.showdown': normalized,
       showdownPickerHint: '已选 ' + cardUi.parseHeroCardsInput(normalized).length + ' / 2 张',
-      showdownPickerPreview: cardUi.parseHeroCardsInput(normalized),
+      showdownPickerText: normalized,
+      showdownPickerPreview: cardUi.parseOpponentCardsInput(normalized, {
+        board: nextForm.board,
+        heroCardsInput: nextForm.heroCardsInput
+      }),
       showdownPickerDeck: buildShowdownPickerDeck(nextForm),
       heroPickerDeck: buildHeroPickerDeck(nextForm)
     }
@@ -732,102 +909,163 @@ Page({
     }
     this.setData(patch)
   },
+  buildAiAdviceRequest(hand, session, actions) {
+    const profile = dataService.getCurrentProfile ? dataService.getCurrentProfile() : {}
+    const settings = dataService.getAppSettings ? dataService.getAppSettings() : {}
+    const source = hand || {}
+    const sessionSource = session || {}
+    const normalizedActions = normalizeAdviceActions(actions || source.actions || [])
+    const structuredHand = Object.assign({}, source, {
+      playerCount: Number(source.playerCount) || 0,
+      effectiveStack: Number(source.effectiveStack) || 0,
+      potSize: Number(source.potSize) || 0,
+      currentProfit: Number(source.currentProfit) || 0,
+      actions: normalizedActions
+    })
+    const question = buildDetailAdviceQuestion(structuredHand)
+    return {
+      mode: 'advice',
+      question,
+      transcript: question,
+      userId: profile && profile.playerId || '',
+      playerId: profile && profile.playerId || '',
+      userTerms: settings.voiceTerms || [],
+      corrections: null,
+      hand: structuredHand,
+      structuredHand,
+      extractedHand: structuredHand,
+      session: sessionSource
+        ? {
+          title: sessionSource.title || '',
+          playerCount: Number(sessionSource.playerCount) || 0,
+          date: sessionSource.date || String(sessionSource.startTime || '').split(' ')[0] || '',
+          venue: sessionSource.venue || '',
+          smallBlind: sessionSource.smallBlind || 0,
+          bigBlind: sessionSource.bigBlind || 0,
+          tableSize: Number(sessionSource.tableSize) || Number(sessionSource.playerCount) || 0,
+          hasStraddle: !!sessionSource.hasStraddle
+        }
+        : null,
+      actions: normalizedActions.map(item => ({
+        street: item.street,
+        actorLabel: item.position || item.pos || '',
+        actionType: item.action || '',
+        amount: item.amount || 0,
+        potAfter: item.potAfter || 0
+      }))
+    }
+  },
+  async generateDetailAiAdvice(handId, payload) {
+    if (!handId) return
+    try {
+      const savedHand = Object.assign({}, payload || {}, { _id: handId })
+      const result = await aiService.reviewHandVoice(this.buildAiAdviceRequest(savedHand, this.data.session, this.data.actions))
+      if (result.code && result.code !== 0) {
+        const error = new Error(result.message || 'EV brain advice failed')
+        error.code = result.code
+        error.raw = result
+        throw error
+      }
+      const aiReview = result.analysis || null
+      const aiReviewError = result && (
+        result.aiReviewError ||
+        result.debugError ||
+        result.message ||
+        result.answer ||
+        result.data && result.data.message ||
+        result.data && result.data.error
+      ) || 'EV脑出问题啦，请稍后再重新生成AI建议。'
+      await dataService.updateHand(handId, {
+        aiReview,
+        aiReviewStatus: aiReview ? 'ready' : 'failed',
+        aiReviewGeneratedAt: Date.now(),
+        aiReviewError: aiReview ? '' : aiReviewError
+      })
+    } catch (error) {
+      try {
+        await dataService.updateHand(handId, {
+          aiReview: null,
+          aiReviewStatus: 'failed',
+          aiReviewError: buildAiAdviceErrorText(error)
+        })
+      } catch (saveError) {
+        console.warn('detail AI advice failure status save failed: ' + (saveError && (saveError.errMsg || saveError.message) || String(saveError)))
+      }
+    }
+  },
   async saveDetail() {
     if (!this.data.editMode) {
       wx.showToast({ title: '只读模式不可编辑', icon: 'none' })
       return
     }
-    const tags = this.data.form.tagsInput
-      ? this.data.form.tagsInput.split(',').map(item => item.trim()).filter(Boolean)
+    const form = this.commitPendingInputs()
+    this.data.form = form
+    const tags = form.tagsInput
+      ? form.tagsInput.split(',').map(item => item.trim()).filter(Boolean)
       : []
-    await dataService.updateHand(this.data.handId, {
-      playedDate: this.data.form.playedDate,
-      stakeLevel: this.data.form.stakeLevel,
-      playerCount: this.data.form.playerCount,
-      hasStraddle: this.data.form.hasStraddle,
-      heroPosition: this.data.form.heroPosition,
-      villainPosition: this.data.form.villainPosition,
-      villainType: this.data.form.villainType,
-      heroCardsInput: this.data.form.heroCardsInput,
-      effectiveStack: this.data.form.effectiveStack,
-      potSize: this.data.form.potSize,
-      currentProfit: this.data.form.currentProfit,
-      resultBB: formatResultBb(this.data.form.currentProfit, this.data.form.stakeLevel, this.data.session),
-      opponentType: this.data.form.villainType,
-      opponentName: this.data.form.opponentName,
-      showdown: this.data.form.showdown,
-      streetSummary: this.data.form.streetSummary,
+    const detailPatch = {
+      playedDate: form.playedDate,
+      stakeLevel: form.stakeLevel,
+      playerCount: form.playerCount,
+      hasStraddle: form.hasStraddle,
+      heroPosition: form.heroPosition,
+      villainPosition: form.villainPosition,
+      villainType: form.villainType,
+      heroCardsInput: form.heroCardsInput,
+      effectiveStack: form.effectiveStack,
+      potSize: form.potSize,
+      currentProfit: form.currentProfit,
+      isAllIn: !!form.isAllIn,
+      allInEv: form.isAllIn ? this.data.form.allInEv : '',
+      allInStreet: form.isAllIn ? (this.data.hand && this.data.hand.allInStreet || '') : '',
+      resultBB: formatResultBb(form.currentProfit, form.stakeLevel, this.data.session),
+      opponentType: form.villainType,
+      opponentName: form.opponentName,
+      opponentCards: form.opponentCards || form.showdown,
+      opponentCardsSource: form.opponentCardsSource || '',
+      showdown: form.showdown,
+      streetSummary: form.streetSummary,
       streetInputs: {
         preflop: {
           board: '',
-          actionLine: this.data.form.preflopActionLine,
-          pot: this.data.form.preflopPot
+          actionLine: form.preflopActionLine,
+          pot: form.preflopPot
         },
         flop: {
-          board: this.data.form.flop,
-          actionLine: this.data.form.flopActionLine,
-          pot: this.data.form.flopPot
+          board: form.flop,
+          actionLine: form.flopActionLine,
+          pot: form.flopPot
         },
         turn: {
-          board: this.data.form.turn,
-          actionLine: this.data.form.turnActionLine,
-          pot: this.data.form.turnPot
+          board: form.turn,
+          actionLine: form.turnActionLine,
+          pot: form.turnPot
         },
         river: {
-          board: this.data.form.river,
-          actionLine: this.data.form.riverActionLine,
-          pot: this.data.form.riverPot
+          board: form.river,
+          actionLine: form.riverActionLine,
+          pot: form.riverPot
         }
       },
       tags,
       board: {
-        flop: this.data.form.flop,
-        turn: this.data.form.turn,
-        river: this.data.form.river
+        flop: form.flop,
+        turn: form.turn,
+        river: form.river
       },
-      ev: this.data.form.ev,
-      notes: this.data.form.mindJourney,
-      mindJourney: this.data.form.mindJourney,
-      heroQuestion: this.data.form.heroQuestion,
+      ev: form.ev,
+      notes: form.mindJourney,
+      mindJourney: form.mindJourney,
+      heroQuestion: form.heroQuestion,
       detailBackfilled: true,
-      voiceNote: this.data.form.voiceNote
-    })
+      voiceNote: form.voiceNote,
+      aiReview: null,
+      aiReviewStatus: 'generating',
+      aiReviewError: ''
+    }
+    await dataService.updateHand(this.data.handId, detailPatch)
+    this.generateDetailAiAdvice(this.data.handId, detailPatch)
     wx.showToast({ title: '详情已保存', icon: 'success' })
-    this.refresh()
-  },
-  parseVoice() {
-    if (!this.data.form.voiceNote) {
-      wx.showToast({ title: '请先输入口述内容', icon: 'none' })
-      return
-    }
-    const parsedVoice = buildParsedVoicePreview(voiceParser.parseVoiceText(this.data.form.voiceNote))
-    this.setData({ parsedVoice })
-    wx.showToast({ title: '已生成复盘建议', icon: 'success' })
-  },
-  async applyVoice() {
-    if (!this.data.parsedVoice) {
-      wx.showToast({ title: '暂无可回填内容', icon: 'none' })
-      return
-    }
-    const parsed = this.data.parsedVoice
-    const patch = {
-      heroPosition: parsed.heroPosition || this.data.hand.heroPosition,
-      heroCardsInput: parsed.heroCardsInput || this.data.hand.heroCardsInput,
-      effectiveStack: parsed.effectiveStack || this.data.hand.effectiveStack,
-      potSize: parsed.potSize || this.data.hand.potSize,
-      currentProfit: parsed.currentProfit || this.data.hand.currentProfit,
-      board: {
-        flop: parsed.board.flop || this.data.form.flop,
-        turn: parsed.board.turn || this.data.form.turn,
-        river: parsed.board.river || this.data.form.river
-      },
-      voiceNote: this.data.form.voiceNote,
-      notes: (this.data.form.mindJourney || '') + '\n[语音复盘] ' + parsed.noteSummary,
-      mindJourney: (this.data.form.mindJourney || '') + '\n[语音复盘] ' + parsed.noteSummary
-    }
-    await dataService.updateHand(this.data.handId, patch)
-    wx.showToast({ title: '已确认回填', icon: 'success' })
-    this.setData({ parsedVoice: null })
     this.refresh()
   },
   deleteHand() {

@@ -1,0 +1,191 @@
+<view wx:if="{{aiReminderEditorVisible}}" class="settings-editor-mask ai-reminder-mask" bindtap="closeAiReminderEditor">
+  <view class="ai-reminder-advice-sheet ai-reminder-sheet" catchtap="noop">
+    <view class="ai-reminder-sheet-slash"></view>
+    <view class="ai-reminder-handle"></view>
+    <view class="ai-reminder-sheet-head">
+      <view>
+        <view class="ai-reminder-sheet-kicker">EV BRAIN · LIVE GUARD</view>
+        <view class="ai-reminder-sheet-title">AI 自动提醒</view>
+      </view>
+      <view class="settings-editor-close ai-reminder-sheet-close" bindtap="closeAiReminderEditor">
+        <view class="icon-close">
+          <view class="icon-close-line"></view>
+          <view class="icon-close-line icon-close-line-rotated"></view>
+        </view>
+      </view>
+    </view>
+
+    <scroll-view class="ai-reminder-sheet-scroll" scroll-y>
+      <view class="ai-reminder-fact-main">
+        <view class="ai-reminder-fact-label">REMINDER RULES</view>
+        <view class="ai-reminder-fact-value">监控止盈止损、时长，也可以根据自己需求配置各种状态检查</view>
+      </view>
+
+      <view class="ai-reminder-verdict">
+        <view class="ai-reminder-section-tag"><text>当前策略</text></view>
+        <view class="ai-reminder-verdict-text">默认在 Session 进行中时间轴提醒；EV脑和微信消息可按每条规则单独开启</view>
+        <view class="ai-reminder-verdict-watermark">GUARD</view>
+      </view>
+
+      <view class="ai-reminder-mini-title"><view class="ai-reminder-mini-diamond"></view><text>止盈止损</text></view>
+      <view class="ai-reminder-rule-panel">
+        <view class="ai-reminder-rule-line"></view>
+        <view class="ai-reminder-rule ai-reminder-rule-danger">
+          <view class="ai-reminder-rule-node"></view>
+          <view class="ai-reminder-rule-body">
+            <view class="ai-reminder-rule-head">
+              <view class="ai-reminder-rule-title">止盈提醒</view>
+              <view class="ai-reminder-rule-status {{aiReminderDraft.rules.profitTarget.amount > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.profitTarget.amount > 0 ? '已开启' : '未开启'}}</view>
+            </view>
+            <view class="ai-reminder-setting-line">
+              <view class="ai-reminder-rule-sub">达到设定盈利时提醒</view>
+              <view class="ai-reminder-input-wrap">
+                <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.profitTarget.amount}}" data-key="profitTarget" bindinput="onAiReminderNumberInput" />
+                <text>HK$</text>
+              </view>
+            </view>
+            <view class="ai-reminder-channel-row">
+              <view class="ai-reminder-channel-label">提醒方式</view>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.profitTarget.evBrain ? 'on' : ''}}" data-key="profitTarget" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.profitTarget.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="profitTarget" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+            </view>
+          </view>
+        </view>
+
+        <view class="ai-reminder-rule">
+          <view class="ai-reminder-rule-node"></view>
+          <view class="ai-reminder-rule-body">
+            <view class="ai-reminder-rule-head">
+              <view class="ai-reminder-rule-title">止损提醒</view>
+              <view class="ai-reminder-rule-status {{aiReminderDraft.rules.lossLimit.amount > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.lossLimit.amount > 0 ? '已开启' : '未开启'}}</view>
+            </view>
+            <view class="ai-reminder-setting-line">
+              <view class="ai-reminder-rule-sub">达到设定亏损时提醒，0 不开启</view>
+              <view class="ai-reminder-input-wrap">
+                <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.lossLimit.amount}}" data-key="lossLimit" bindinput="onAiReminderNumberInput" />
+                <text>HK$</text>
+              </view>
+            </view>
+            <view class="ai-reminder-channel-row">
+              <view class="ai-reminder-channel-label">提醒方式</view>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.lossLimit.evBrain ? 'on' : ''}}" data-key="lossLimit" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.lossLimit.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="lossLimit" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+            </view>
+          </view>
+        </view>
+
+        <view class="ai-reminder-rule ai-reminder-rule-warn">
+          <view class="ai-reminder-rule-node"></view>
+          <view class="ai-reminder-rule-body">
+            <view class="ai-reminder-rule-head">
+              <view class="ai-reminder-rule-title">移动止盈</view>
+              <view class="ai-reminder-rule-status {{aiReminderDraft.rules.trailingProfit.percent > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.trailingProfit.percent > 0 ? '已开启' : '未开启'}}</view>
+            </view>
+            <view class="ai-reminder-setting-line">
+              <view class="ai-reminder-rule-sub">从盈利峰值回撤到设定比例后提醒</view>
+              <view class="ai-reminder-input-wrap">
+                <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.trailingProfit.percent}}" data-key="trailingProfit" bindinput="onAiReminderNumberInput" />
+                <text>%</text>
+              </view>
+            </view>
+            <view class="ai-reminder-channel-row">
+              <view class="ai-reminder-channel-label">提醒方式</view>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.trailingProfit.evBrain ? 'on' : ''}}" data-key="trailingProfit" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.trailingProfit.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="trailingProfit" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+            </view>
+          </view>
+        </view>
+
+        <view class="ai-reminder-rule">
+          <view class="ai-reminder-rule-node"></view>
+          <view class="ai-reminder-rule-body">
+            <view class="ai-reminder-rule-head">
+              <view class="ai-reminder-rule-title">止损后追加风险</view>
+              <view class="ai-reminder-rule-status {{aiReminderDraft.rules.postLossExtraRisk.percent > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.postLossExtraRisk.percent > 0 ? '已开启' : '未开启'}}</view>
+            </view>
+            <view class="ai-reminder-setting-line">
+              <view class="ai-reminder-rule-sub">到达止损后继续亏损该比例时提醒</view>
+              <view class="ai-reminder-input-wrap">
+                <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.postLossExtraRisk.percent}}" data-key="postLossExtraRisk" bindinput="onAiReminderNumberInput" />
+                <text>%</text>
+              </view>
+            </view>
+            <view class="ai-reminder-channel-row">
+              <view class="ai-reminder-channel-label">提醒方式</view>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.postLossExtraRisk.evBrain ? 'on' : ''}}" data-key="postLossExtraRisk" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.postLossExtraRisk.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="postLossExtraRisk" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="ai-reminder-mini-title"><view class="ai-reminder-mini-diamond"></view><text>Session 时长</text></view>
+      <view class="ai-reminder-rule-panel">
+        <view class="ai-reminder-rule-line"></view>
+        <view class="ai-reminder-rule">
+          <view class="ai-reminder-rule-node"></view>
+          <view class="ai-reminder-rule-body">
+            <view class="ai-reminder-rule-head">
+              <view class="ai-reminder-rule-title">时长预提醒</view>
+              <view class="ai-reminder-rule-status {{aiReminderDraft.rules.sessionPreReminder.hoursBefore > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.sessionPreReminder.hoursBefore > 0 ? '已开启' : '未开启'}}</view>
+            </view>
+            <view class="ai-reminder-setting-line">
+              <view class="ai-reminder-rule-sub">提前多少小时提醒，0 不开启</view>
+              <view class="ai-reminder-input-wrap">
+                <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.sessionPreReminder.hoursBefore}}" data-key="sessionPreReminder" bindinput="onAiReminderNumberInput" />
+                <text>小时</text>
+              </view>
+            </view>
+            <view class="ai-reminder-channel-row">
+              <view class="ai-reminder-channel-label">提醒方式</view>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.sessionPreReminder.evBrain ? 'on' : ''}}" data-key="sessionPreReminder" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.sessionPreReminder.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="sessionPreReminder" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+            </view>
+          </view>
+        </view>
+
+        <view class="ai-reminder-rule ai-reminder-rule-warn">
+          <view class="ai-reminder-rule-node"></view>
+          <view class="ai-reminder-rule-body">
+            <view class="ai-reminder-rule-head">
+              <view class="ai-reminder-rule-title">时长上限提醒</view>
+              <view class="ai-reminder-rule-status {{aiReminderDraft.rules.sessionMaxHours.hours > 0 ? '' : 'off'}}">{{aiReminderDraft.rules.sessionMaxHours.hours > 0 ? '已开启' : '未开启'}}</view>
+            </view>
+            <view class="ai-reminder-setting-line">
+              <view class="ai-reminder-rule-sub">达到设定时长时提醒</view>
+              <view class="ai-reminder-input-wrap">
+                <input class="ai-reminder-input" type="number" value="{{aiReminderDraft.rules.sessionMaxHours.hours}}" data-key="sessionMaxHours" bindinput="onAiReminderNumberInput" />
+                <text>小时</text>
+              </view>
+            </view>
+            <view class="ai-reminder-channel-row">
+              <view class="ai-reminder-channel-label">提醒方式</view>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.sessionMaxHours.evBrain ? 'on' : ''}}" data-key="sessionMaxHours" bindtap="toggleAiReminderRuleEvBrain" hover-class="none">EV脑</button>
+              <button class="ai-reminder-subscribe-chip {{aiReminderDraft.rules.sessionMaxHours.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-key="sessionMaxHours" bindtap="toggleAiReminderRuleSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="ai-reminder-mini-title"><view class="ai-reminder-mini-diamond"></view><text>纯文本提醒</text></view>
+      <view wx:for="{{aiReminderDraft.textReminders}}" wx:key="id" wx:for-item="textRule" wx:for-index="index" class="ai-reminder-text-rule">
+        <view class="ai-reminder-text-row">
+          <input class="ai-reminder-text-input" value="{{textRule.title}}" data-index="{{index}}" data-field="title" placeholder="提醒文本，例如 不要 overcall" placeholder-class="settings-editor-placeholder" bindinput="onAiReminderTextInput" />
+          <view class="ai-reminder-text-delete" data-index="{{index}}" bindtap="removeAiReminderTextRule">删除</view>
+        </view>
+        <textarea class="ai-reminder-textarea" value="{{textRule.content}}" data-index="{{index}}" data-field="content" placeholder="具体内容：每记录一手牌后 EV脑都会提醒这段话" placeholder-class="settings-editor-placeholder" bindinput="onAiReminderTextInput" auto-height />
+        <view class="ai-reminder-channel-row">
+          <view class="ai-reminder-channel-label">提醒方式</view>
+          <button class="ai-reminder-subscribe-chip {{textRule.evBrain ? 'on' : ''}}" data-index="{{index}}" bindtap="toggleAiReminderTextEvBrain" hover-class="none">EV脑</button>
+          <button class="ai-reminder-subscribe-chip {{textRule.subscribeMessage ? 'on' : ''}} {{aiReminderDraft.subscribeMessageAvailable ? '' : 'disabled'}}" data-index="{{index}}" bindtap="toggleAiReminderTextSubscribeMessage" hover-class="none">{{aiReminderDraft.subscribeMessageAvailable ? '微信消息' : '微信消息未配置'}}</button>
+        </view>
+      </view>
+      <view class="ai-reminder-add-text" bindtap="addAiReminderTextRule">+ 添加纯文本提醒</view>
+    </scroll-view>
+
+    <view class="settings-editor-actions ai-reminder-sheet-actions">
+      <view class="settings-editor-action settings-editor-action-secondary" bindtap="closeAiReminderEditor">取消</view>
+      <view class="settings-editor-action settings-editor-action-primary" bindtap="saveAiReminderSettings">保存</view>
+    </view>
+  </view>
+</view>

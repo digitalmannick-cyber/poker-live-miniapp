@@ -1,0 +1,22 @@
+<view wx:if="{{visible && step}}" class="onboarding-guide" catchtouchmove="noop">
+  <view class="onboarding-guide-mask"></view>
+  <view class="onboarding-guide-highlight" style="{{measuredHighlightStyle || step.highlightStyle}}"></view>
+  <view class="onboarding-guide-card" style="{{measuredCardStyle || step.cardStyle}}">
+    <view class="onboarding-guide-head">
+      <view>
+        <view class="onboarding-guide-kicker">新手向导</view>
+        <view class="onboarding-guide-title">{{step.title}}</view>
+      </view>
+      <view class="onboarding-guide-step">{{step.current}} / {{step.total}}</view>
+    </view>
+    <view class="onboarding-guide-copy">{{step.copy}}</view>
+    <view wx:if="{{step.example}}" class="onboarding-guide-example">
+      <view class="onboarding-guide-example-label">示例数据</view>
+      <view class="onboarding-guide-example-value">{{step.example}}</view>
+    </view>
+    <view class="onboarding-guide-actions">
+      <button class="onboarding-guide-btn ghost" hover-class="none" bindtap="onSkip">跳过</button>
+      <button class="onboarding-guide-btn primary" hover-class="none" bindtap="onNext">{{step.isLast ? '完成' : '下一步'}}</button>
+    </view>
+  </view>
+</view>

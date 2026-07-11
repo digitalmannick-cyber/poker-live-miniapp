@@ -2,7 +2,10 @@
   "pages": [
     "pages/session-list/session-list",
     "pages/hand-record/hand-record",
+    "pages/hand-ledger-input/hand-ledger-input",
     "pages/review-list/review-list",
+    "pages/player-notes/player-notes",
+    "pages/player-note-detail/player-note-detail",
     "pages/stats/stats",
     "pages/profile/profile",
     "pages/home/home",
@@ -17,7 +20,9 @@
     "backgroundColor": "#0b0b0f"
   },
   "usingComponents": {
-    "agent-chat": "/components/agent-chat/agent-chat"
+    "agent-chat": "/components/agent-chat/agent-chat",
+    "onboarding-guide": "/components/onboarding-guide/index",
+    "release-notes-poster": "/components/release-notes-poster/index"
   },
   "tabBar": {
     "custom": true,
@@ -31,12 +36,12 @@
         "text": "场次"
       },
       {
-        "pagePath": "pages/hand-record/hand-record",
-        "text": "记牌"
+        "pagePath": "pages/review-list/review-list",
+        "text": "手牌"
       },
       {
-        "pagePath": "pages/review-list/review-list",
-        "text": "复盘"
+        "pagePath": "pages/player-notes/player-notes",
+        "text": "玩家"
       },
       {
         "pagePath": "pages/stats/stats",

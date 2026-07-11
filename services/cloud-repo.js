@@ -21,6 +21,20 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+function normalizeAllInStreet(value) {
+  const text = String(value || '').trim().toLowerCase()
+  if (/^(pre|preflop|pre-flop|pf)$/.test(text)) return 'preflop'
+  if (/^(flop|turn|river)$/.test(text)) return text
+  return text
+}
+
+function isPreRiverAllIn(merged) {
+  const source = merged || {}
+  const street = normalizeAllInStreet(source.allInStreet || source.allInRound || source.allInStage || source.allInEvStreet)
+  if (street === 'river') return false
+  return !!source.isAllIn || !!source.allInEvEligible || !!street
+}
+
 function normalizePlayerId(value) {
   return String(value || '').trim().toUpperCase()
 }
@@ -60,6 +74,30 @@ function calculateDurationMinutes(startTime, endTime) {
   const end = parseDateTimeValue(endTime)
   if (!start || !end) return 0
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
+}
+
+function optionalNumber(value) {
+  if (value === '' || value === null || value === undefined) return ''
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : ''
+}
+
+function isHistoryImportHand(hand) {
+  const source = hand && hand.source || hand && hand.voiceExtract && hand.voiceExtract.source
+  return source === 'feishu_base_history_import'
+}
+
+function isHistoryImportSession(session) {
+  const source = session && session.source
+  return source && source.type === 'feishu_base_history_import'
+}
+
+function historyImportMinutes(sessions, hands) {
+  const historyHands = (Array.isArray(hands) ? hands : []).filter(isHistoryImportHand)
+  if (!historyHands.length) return 0
+  const historySessions = (Array.isArray(sessions) ? sessions : []).filter(isHistoryImportSession)
+  const existingMinutes = historySessions.reduce((sum, item) => sum + (Number(item.durationMinutes) || 0), 0)
+  return existingMinutes > 0 ? 0 : 360 * 60
 }
 
 function stripUndefined(value) {
@@ -180,11 +218,17 @@ function formatHand(doc) {
       effectiveStack: 0,
       potSize: 0,
       currentProfit: 0,
+      isAllIn: false,
+      allInEv: '',
       resultBB: '',
       opponentType: '',
       opponentName: '',
       board: { flop: '', turn: '', river: '' },
+      opponentCards: '',
+      opponentCardsSource: '',
       showdown: '',
+      showdownType: '',
+      showdownReason: '',
       streetInputs: {},
       ev: '',
       tags: [],
@@ -204,6 +248,47 @@ function formatHand(doc) {
   )
 }
 
+function parseDateTimeMs(value) {
+  const text = String(value || '').trim()
+  if (!text) return 0
+  const parsed = new Date(text.indexOf('T') > -1 ? text : text.replace(' ', 'T'))
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime()
+}
+
+function getRecordTimeMs(item) {
+  return Number(item && (item.createdAt || item.updatedAt)) || 0
+}
+
+function getSessionBusinessMs(session) {
+  const startMs = parseDateTimeMs(session && session.startTime)
+  if (startMs) return startMs
+  const dateText = String(session && session.date || '').trim()
+  if (dateText) {
+    const dateMs = parseDateTimeMs(dateText + ' 00:00')
+    if (dateMs) return dateMs
+  }
+  return getRecordTimeMs(session)
+}
+
+function getHandBusinessMs(hand) {
+  const dateText = String(hand && hand.playedDate || '').trim()
+  if (dateText) {
+    const dateMs = parseDateTimeMs(dateText + ' 00:00')
+    if (dateMs) return dateMs
+  }
+  return getRecordTimeMs(hand)
+}
+
+function compareSessionBusinessDesc(a, b) {
+  return getSessionBusinessMs(b) - getSessionBusinessMs(a) ||
+    getRecordTimeMs(b) - getRecordTimeMs(a)
+}
+
+function compareHandBusinessDesc(a, b) {
+  return getHandBusinessMs(b) - getHandBusinessMs(a) ||
+    getRecordTimeMs(b) - getRecordTimeMs(a)
+}
+
 function buildSessionDoc(base, patch) {
   const merged = Object.assign({}, base || {}, patch || {})
   const smallBlind = Number(merged.smallBlind) || 0
@@ -218,8 +303,10 @@ function buildSessionDoc(base, patch) {
     startTime: merged.startTime || '',
     endTime: merged.endTime || '',
     venue: merged.venue || '',
+    blindPreset: merged.blindPreset || (smallBlind && bigBlind ? smallBlind + '/' + bigBlind : ''),
     smallBlind,
     bigBlind,
+    hasStraddle: !!merged.hasStraddle,
     tableSize: Number(merged.tableSize) || 8,
     buyIn,
     cashOut,
@@ -230,6 +317,7 @@ function buildSessionDoc(base, patch) {
     handCount: Number(merged.handCount) || 0,
     status: status,
     notes: merged.notes || '',
+    timelineEvents: Array.isArray(merged.timelineEvents) ? merged.timelineEvents : [],
     createdAt: merged.createdAt || now(),
     updatedAt: now()
   })
@@ -251,6 +339,10 @@ function buildHandDoc(base, patch) {
     effectiveStack: Number(merged.effectiveStack) || 0,
     potSize: Number(merged.potSize) || 0,
     currentProfit: Number(merged.currentProfit) || 0,
+    isAllIn: isPreRiverAllIn(merged),
+    allInEv: optionalNumber(merged.allInEv),
+    allInStreet: merged.allInStreet || '',
+    allInPot: optionalNumber(merged.allInPot),
     resultBB: merged.resultBB || '',
     opponentType: merged.opponentType || '',
     opponentName: merged.opponentName || '',
@@ -259,7 +351,11 @@ function buildHandDoc(base, patch) {
       turn: merged.turn != null ? merged.turn : undefined,
       river: merged.river != null ? merged.river : undefined
     }),
-    showdown: merged.showdown || '',
+    opponentCards: merged.opponentCards || '',
+    opponentCardsSource: merged.opponentCardsSource || '',
+    showdown: merged.opponentCards || merged.showdown || '',
+    showdownType: merged.showdownType || '',
+    showdownReason: merged.showdownReason || '',
     streetInputs: Object.assign({}, base && base.streetInputs ? base.streetInputs : {}, patch && patch.streetInputs ? patch.streetInputs : {}),
     ev: merged.ev || '',
     tags: Array.isArray(merged.tags) ? merged.tags : [],
@@ -268,13 +364,24 @@ function buildHandDoc(base, patch) {
     streetSummary: merged.streetSummary || '',
     heroQuestion: merged.heroQuestion || '',
     detailBackfilled: !!merged.detailBackfilled,
+    inputMode: merged.inputMode || '',
+    reviewSource: merged.reviewSource || '',
+    ledgerState: merged.ledgerState || null,
     voiceNote: merged.voiceNote || '',
     voiceExtract: merged.voiceExtract || null,
     aiReview: merged.aiReview || null,
+    aiReviewStatus: merged.aiReviewStatus || '',
+    aiReviewGeneratedAt: merged.aiReviewGeneratedAt || '',
+    aiReviewError: merged.aiReviewError || '',
     reviewStatus: ['idle', 'extracted', 'reviewed'].indexOf(merged.reviewStatus) > -1 ? merged.reviewStatus : 'idle',
     createdAt: merged.createdAt || now(),
     updatedAt: now()
   })
+}
+
+function applySessionHandDefaults(payload, session) {
+  if (!session || !session.hasStraddle) return payload
+  return Object.assign({}, payload || {}, { hasStraddle: true })
 }
 
 function buildProfileDoc(profile) {
@@ -314,6 +421,9 @@ function buildSettingsOverrideDoc(playerId, settings) {
   }
   if (JSON.stringify(merged.opponentTypes || []) !== JSON.stringify(defaults.opponentTypes || [])) {
     doc.opponentTypes = clone(merged.opponentTypes || [])
+  }
+  if (JSON.stringify(merged.aiReminders || {}) !== JSON.stringify(defaults.aiReminders || {})) {
+    doc.aiReminders = clone(merged.aiReminders)
   }
 
   return stripUndefined(doc)
@@ -418,6 +528,16 @@ async function seedBusinessData(backup) {
   return true
 }
 
+async function mergeBusinessData(backup) {
+  const data = backup || {}
+  const playerId = normalizePlayerId(data.profile && data.profile.playerId) || requireCurrentPlayerId()
+  await upsertMany(COLLECTIONS.sessions, data.sessions, playerId)
+  await upsertMany(COLLECTIONS.hands, data.hands, playerId)
+  await upsertMany(COLLECTIONS.handActions, data.handActions, playerId)
+  await upsertMany(COLLECTIONS.bankrollLogs, data.bankrollLogs, playerId)
+  return true
+}
+
 async function replaceBusinessData(backup) {
   const data = backup || {}
   const playerId = normalizePlayerId(data.profile && data.profile.playerId) || requireCurrentPlayerId()
@@ -458,7 +578,7 @@ async function getSessions() {
   const list = await fetchAll(offset =>
     db.collection(COLLECTIONS.sessions).where({ playerId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
-  return list.map(formatSession)
+  return list.map(formatSession).sort(compareSessionBusinessDesc)
 }
 
 async function getSessionById(sessionId) {
@@ -478,14 +598,16 @@ async function getHandsBySessionId(sessionId) {
   const list = await fetchAll(offset =>
     db.collection(COLLECTIONS.hands).where({ playerId, sessionId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
-  return list.map(formatHand)
+  return list.map(formatHand).sort(compareHandBusinessDesc)
 }
 
 async function getRecentHands(limit) {
   const db = getDbOrThrow()
   const playerId = requireCurrentPlayerId()
-  const result = await db.collection(COLLECTIONS.hands).where({ playerId }).orderBy('updatedAt', 'desc').limit(limit || 5).get()
-  return (result.data || []).map(formatHand)
+  const list = await fetchAll(offset =>
+    db.collection(COLLECTIONS.hands).where({ playerId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
+  )
+  return list.map(formatHand).sort(compareHandBusinessDesc).slice(0, limit || 5)
 }
 
 async function getHandById(handId) {
@@ -511,8 +633,10 @@ async function getActionsByHandId(handId) {
 async function createSession(payload) {
   const db = getDbOrThrow()
   const playerId = requireCurrentPlayerId()
-  const existingSessions = await getSessions()
-  sessionRules.assertCanCreateSession(existingSessions)
+  if (!payload || payload.status === 'active' || !payload.status) {
+    const existingSessions = await getSessions()
+    sessionRules.assertCanCreateSession(existingSessions)
+  }
   const doc = withPlayerScope(buildSessionDoc(null, Object.assign({}, payload, { createdAt: now() })), playerId)
   const result = await db.collection(COLLECTIONS.sessions).add({ data: doc })
   return Object.assign({ _id: result._id }, doc)
@@ -584,14 +708,15 @@ async function replaceActions(handId, sessionId, actions) {
 async function createHand(payload) {
   const db = getDbOrThrow()
   const playerId = requireCurrentPlayerId()
-  const handDoc = withPlayerScope(buildHandDoc(null, Object.assign({}, payload, { createdAt: now() })), playerId)
+  const session = await getSessionById(payload.sessionId)
+  const handPayload = applySessionHandDefaults(payload, session)
+  const handDoc = withPlayerScope(buildHandDoc(null, Object.assign({}, handPayload, { createdAt: now() })), playerId)
   const handResult = await db.collection(COLLECTIONS.hands).add({ data: handDoc })
   const handId = handResult._id
-  await replaceActions(handId, payload.sessionId, payload.actions || [])
+  await replaceActions(handId, handPayload.sessionId, handPayload.actions || [])
 
-  const session = await getSessionById(payload.sessionId)
   if (session) {
-    await updateSession(payload.sessionId, {
+    await updateSession(handPayload.sessionId, {
       handCount: (session.handCount || 0) + 1
     })
   }
@@ -669,12 +794,12 @@ async function getReviewHands(filters) {
     const list = await fetchAll(offset =>
       db.collection(COLLECTIONS.hands).where({ playerId, sessionId: filters.sessionId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
     )
-    return list.map(formatHand)
+    return list.map(formatHand).sort(compareHandBusinessDesc)
   }
   const list = await fetchAll(offset =>
     db.collection(COLLECTIONS.hands).where({ playerId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
-  return list.map(formatHand)
+  return list.map(formatHand).sort(compareHandBusinessDesc)
 }
 
 async function getStatsSummary() {
@@ -682,7 +807,7 @@ async function getStatsSummary() {
   const hands = await getReviewHands()
   const sessionCount = sessions.length
   const totalProfit = sessions.reduce((sum, item) => sum + (Number(item.totalProfit) || 0), 0)
-  const totalMinutes = sessions.reduce((sum, item) => sum + (Number(item.durationMinutes) || 0), 0)
+  const totalMinutes = sessions.reduce((sum, item) => sum + (Number(item.durationMinutes) || 0), 0) + historyImportMinutes(sessions, hands)
   const bankrollCurrent = 12000 + totalProfit
   return {
     sessionCount,
@@ -700,6 +825,7 @@ module.exports = {
   getSettings,
   saveSettings,
   seedBusinessData,
+  mergeBusinessData,
   replaceBusinessData,
   clearAllData,
   getSessions,

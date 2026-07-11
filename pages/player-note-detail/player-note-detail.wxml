@@ -1,0 +1,151 @@
+<view class="app-bg"></view>
+<view class="container player-detail-shell">
+  <view class="player-detail-top">
+    <view class="player-detail-back" bindtap="goBack">‹</view>
+    <view class="player-detail-title">{{editMode ? (mode === 'new' ? '新增玩家' : '编辑玩家') : note.name}}</view>
+    <view wx:if="{{!editMode}}" class="player-detail-edit" bindtap="startEdit">编辑</view>
+  </view>
+
+  <view wx:if="{{editMode}}" class="photo-editor">
+    <view class="photo-pick" bindtap="choosePlayerPhoto">
+      <image wx:if="{{form.avatarDisplayUrl || form.avatarUrl}}" class="photo-pick-img" src="{{form.avatarDisplayUrl || form.avatarUrl}}" mode="aspectFill"></image>
+      <view wx:else class="photo-placeholder">
+        <view class="photo-placeholder-head"></view>
+        <view class="photo-placeholder-body"></view>
+      </view>
+    </view>
+    <view class="photo-actions">
+      <view class="photo-action-primary" bindtap="choosePlayerPhoto">{{form.avatarUrl ? '更换照片' : '添加照片'}}</view>
+      <view wx:if="{{form.avatarUrl}}" class="photo-action-secondary" bindtap="clearPlayerPhoto">移除</view>
+    </view>
+    <view class="photo-crop-hint">选择后可裁剪、缩放，确认头像预览区域</view>
+  </view>
+
+  <view wx:if="{{editMode}}" class="detail-card form-card">
+    <view class="field-block">
+      <view class="field-label">玩家名字</view>
+      <input class="field-input" value="{{form.name}}" placeholder="例如 老张" bindinput="onNameInput" />
+    </view>
+    <view class="field-block">
+      <view class="field-label">玩家类型</view>
+      <view class="type-grid">
+        <view wx:for="{{typeOptions}}" wx:key="label" class="type-option {{item.active ? 'active' : ''}}" data-type="{{item.label}}" bindtap="selectType">{{item.label}}</view>
+      </view>
+    </view>
+    <view class="field-block">
+      <view class="field-label">leak 标签</view>
+      <view class="leak-grid">
+        <view wx:for="{{leakOptions}}" wx:key="label" class="leak-option {{item.active ? 'active' : ''}}" data-label="{{item.label}}" bindtap="toggleLeakTag">
+          <text>{{item.label}}</text>
+          <text class="leak-remove" data-label="{{item.label}}" catchtap="removeLeakTag">×</text>
+        </view>
+      </view>
+      <view class="new-leak-row">
+        <input class="field-input leak-input" value="{{newLeakTag}}" placeholder="新增 leak 标签" bindinput="onNewLeakInput" />
+        <view class="small-action" bindtap="addLeakTag">添加</view>
+      </view>
+    </view>
+    <view class="field-block">
+      <view class="field-label">note</view>
+      <textarea class="note-textarea" value="{{form.note}}" placeholder="记录倾向、showdown 信息、 exploit 计划" maxlength="1200" bindinput="onNoteInput"></textarea>
+    </view>
+    <view wx:if="{{saveError}}" class="save-error">{{saveError}}</view>
+    <view class="detail-actions">
+      <view class="secondary-action" bindtap="cancelEdit">取消</view>
+      <view class="primary-action {{saving ? 'is-saving' : ''}}" bindtap="saveNote">{{saving ? '保存中' : '保存'}}</view>
+    </view>
+  </view>
+
+  <view wx:elif="{{note}}" class="detail-card player-profile-card">
+    <view class="profile-head">
+      <view class="profile-avatar">
+        <image wx:if="{{note.avatarDisplayUrl || note.avatarUrl}}" class="profile-avatar-img" src="{{note.avatarDisplayUrl || note.avatarUrl}}" mode="aspectFill"></image>
+        <text wx:else>{{note.avatarText}}</text>
+      </view>
+      <view class="profile-main">
+        <view class="profile-name">{{note.name}}</view>
+        <view class="profile-meta">{{note.updatedDate || note.createdDate}} · {{battleHands.length}} 手对战</view>
+        <view class="profile-type" style="background: {{note.typeColor}};">{{note.type}}</view>
+      </view>
+    </view>
+    <view wx:if="{{note.leakTags.length}}" class="detail-tags">
+      <view wx:for="{{note.leakTags}}" wx:key="*this" class="detail-tag">{{item}}</view>
+    </view>
+    <view class="note-content">{{note.note || '暂无 note'}}</view>
+  </view>
+
+  <view wx:if="{{!editMode && note}}" class="detail-card battle-section">
+    <view class="section-head">
+      <view>
+        <view class="section-title-main">对战手牌</view>
+        <view class="section-sub">展示 Hero 和该玩家打过的已记录手牌</view>
+      </view>
+      <view class="small-action" bindtap="openHandPicker">添加</view>
+    </view>
+
+    <view wx:if="{{battleHands.length}}" class="battle-list">
+      <view wx:for="{{battleHands}}" wx:key="handId" class="battle-card">
+        <view class="battle-top">
+          <view class="cards-inline tight">
+            <view wx:for="{{item.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+              <text class="mini-card-rank">{{card.rank}}</text>
+              <text class="mini-card-suit">{{card.suitSymbol}}</text>
+            </view>
+          </view>
+          <view wx:if="{{item.heroPosition}}" class="battle-position">{{item.heroPosition}}</view>
+          <view class="battle-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
+        </view>
+        <view class="battle-board">
+          <block wx:for="{{item.boardStreetVisual}}" wx:for-item="street" wx:key="street">
+            <view wx:for="{{street.cards}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-board mini-card-{{card.suitClass}}">
+              <text class="mini-card-rank mini-card-rank-board">{{card.rank}}</text>
+              <text class="mini-card-suit mini-card-suit-board">{{card.suitSymbol}}</text>
+            </view>
+          </block>
+        </view>
+        <view class="battle-meta">{{item.playedDate}} · {{item.relationshipText}}</view>
+        <view wx:if="{{item.hasActionLine}}" class="battle-action-line">{{item.actionLine}}</view>
+        <view class="battle-actions">
+          <view class="small-action" data-id="{{item.handId}}" bindtap="playBattleHand">播放</view>
+          <view class="danger-link" data-id="{{item.handId}}" bindtap="removeBattleHand">移除</view>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="battle-empty">还没有关联对战手牌。</view>
+  </view>
+
+  <view wx:if="{{!editMode && note}}" class="danger-zone" bindtap="deleteNote">删除玩家 note</view>
+</view>
+
+<view wx:if="{{handPickerVisible}}" class="sheet">
+  <view class="sheet-mask" bindtap="closeHandPicker"></view>
+  <view class="sheet-panel" catchtap="stopModalTap">
+    <view class="sheet-head">
+      <view class="sheet-title">选择对战手牌</view>
+      <view class="sheet-close" bindtap="closeHandPicker">关闭</view>
+    </view>
+    <scroll-view scroll-y="true" class="sheet-scroll">
+      <view wx:for="{{handCandidates}}" wx:key="_id" class="candidate-card {{item.linked ? 'linked' : ''}}" data-id="{{item._id}}" data-disabled="{{item.disabled}}" bindtap="addBattleHand">
+        <view class="battle-top">
+          <view class="cards-inline tight">
+            <view wx:for="{{item.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+              <text class="mini-card-rank">{{card.rank}}</text>
+              <text class="mini-card-suit">{{card.suitSymbol}}</text>
+            </view>
+          </view>
+          <view class="battle-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
+        </view>
+        <view class="battle-meta">{{item.playedDate}} {{item.heroPosition}}</view>
+        <view wx:if="{{item.linked}}" class="candidate-linked">已添加</view>
+      </view>
+      <view wx:if="{{!handCandidates.length}}" class="battle-empty">还没有可选择的手牌。</view>
+    </scroll-view>
+  </view>
+</view>
+
+<view wx:if="{{replayVisible}}" class="replay-modal">
+  <view class="sheet-mask" bindtap="closeReplay"></view>
+  <view class="replay-panel" catchtap="stopModalTap">
+    <hand-replay-player replay="{{replayData}}" bindclose="closeReplay" />
+  </view>
+</view>
