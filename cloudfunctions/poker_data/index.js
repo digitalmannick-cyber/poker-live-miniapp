@@ -39,6 +39,20 @@ function now() {
   return Date.now()
 }
 
+function parseDateTimeValue(value) {
+  const text = String(value || '').trim()
+  if (!text) return null
+  const date = new Date(text.replace(' ', 'T'))
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function calculateDurationMinutes(startTime, endTime) {
+  const start = parseDateTimeValue(startTime)
+  const end = parseDateTimeValue(endTime)
+  if (!start || !end) return 0
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
+}
+
 function normalizeAllInStreet(value) {
   const text = String(value || '').trim().toLowerCase()
   if (/^(pre|preflop|pre-flop|pf)$/.test(text)) return 'preflop'
@@ -444,6 +458,10 @@ function buildSessionDoc(base, patch) {
   const status = merged.status || 'active'
   const startTime = merged.startTime || ''
   const endTime = merged.endTime || ''
+  const explicitDuration = Number(merged.durationMinutes)
+  const durationMinutes = Number.isFinite(explicitDuration) && explicitDuration > 0
+    ? explicitDuration
+    : calculateDurationMinutes(startTime, endTime)
   return stripUndefined(Object.assign({}, merged, {
     title: merged.title || (((merged.venue || '') + ' ' + smallBlind + '/' + bigBlind).trim()),
     date: merged.date || String(startTime).split(' ')[0] || '',
@@ -457,7 +475,7 @@ function buildSessionDoc(base, patch) {
     cashOut,
     endingChips: status === 'finished' && cashOut ? cashOut : null,
     totalProfit: status === 'finished' ? (cashOut - buyIn) : (Number(merged.totalProfit) || 0),
-    durationMinutes: Number(merged.durationMinutes) || 0,
+    durationMinutes,
     timerPausedAt: merged.timerPausedAt || '',
     handCount: Number(merged.handCount) || 0,
     status,
