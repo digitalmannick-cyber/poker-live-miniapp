@@ -1151,6 +1151,11 @@ Page({
       wx.showToast({ title: '\u8bf7\u5148\u586b\u5199\u624b\u724c\u4e0e\u8f93\u8d62', icon: 'none' })
       return
     }
+    const profit = Number(form.currentProfit)
+    if (!Number.isFinite(profit)) {
+      wx.showToast({ title: '请输入有效的输赢金额', icon: 'none' })
+      return
+    }
     if (hasDuplicateHeroCards(form.heroCardsInput)) {
       wx.showToast({ title: '\u540c\u70b9\u6570\u624b\u724c\u4e0d\u80fd\u91cd\u590d\u82b1\u8272', icon: 'none' })
       return
@@ -1179,7 +1184,7 @@ Page({
         river: form.river,
         effectiveStack: form.effectiveStack,
         potSize: form.potSize,
-        currentProfit: form.currentProfit,
+        currentProfit: profit,
         isAllIn,
         allInEv: isAllIn ? form.allInEv : '',
         allInStreet: isPreflopAllIn ? 'preflop' : '',
