@@ -59,8 +59,8 @@ const SORT_CONTROLS = [
 ]
 const SWIPE_OPEN_DISTANCE = 72
 const SWIPE_CLOSE_DISTANCE = 24
-const REVIEW_INITIAL_RENDER_LIMIT = 20
-const REVIEW_RENDER_CHUNK_SIZE = 30
+const REVIEW_PAGE_SIZE = 20
+const ON_SHOW_FRESH_MS = 5000
 const LOCKED_QUICK_ENTRY_FIELDS = ['heroCardsInput', 'currentProfit']
 const SESSION_STATUS_OPTIONS = [
   { key: 'active', label: '\u8fdb\u884c\u4e2d' },
@@ -2439,7 +2439,9 @@ Page({
   },
   async onShow() {
     tabBar.syncCustomTabBar('/pages/review-list/review-list')
-    await this.refresh()
+    const hasPendingFilters = !!wx.getStorageSync(REVIEW_PENDING_FILTER_KEY)
+    const isFresh = this.data.hands.length && !hasPendingFilters && Date.now() - Number(this.lastReviewLoadedAt || 0) < ON_SHOW_FRESH_MS
+    if (!isFresh) await this.refresh()
     await this.consumePendingReviewEntry()
     this.syncOnboardingGuide()
   },
@@ -2631,29 +2633,17 @@ Page({
       this.reviewRenderTimer = null
     }
   },
-  scheduleProgressiveHandRender(rawHands, chipUnit, refreshToken, startIndex) {
-    this.clearProgressiveRenderTimer()
-    const list = Array.isArray(rawHands) ? rawHands : []
-    const nextIndex = Number(startIndex) || 0
-    if (nextIndex >= list.length) {
-      if (this.reviewRefreshToken === refreshToken && !this.data.handRenderComplete) {
-        this.setData({ handRenderComplete: true })
-      }
-      return
-    }
-    this.reviewRenderTimer = setTimeout(() => {
-      if (this.reviewRefreshToken !== refreshToken) return
-      const endIndex = Math.min(nextIndex + REVIEW_RENDER_CHUNK_SIZE, list.length)
-      const nextHands = (this.data.hands || []).concat(
-        buildReviewListHandViews(list.slice(nextIndex, endIndex), chipUnit, this.data.swipedHandId)
-      )
-      this.setData({
-        hands: nextHands,
-        handRenderComplete: endIndex >= list.length
-      }, () => {
-        this.scheduleProgressiveHandRender(list, chipUnit, refreshToken, endIndex)
-      })
-    }, 16)
+  onReachBottom() {
+    const list = Array.isArray(this.reviewHandSource) ? this.reviewHandSource : []
+    const nextIndex = (this.data.hands || []).length
+    if (nextIndex >= list.length) return
+    const endIndex = Math.min(nextIndex + REVIEW_PAGE_SIZE, list.length)
+    this.setData({
+      hands: (this.data.hands || []).concat(
+        buildReviewListHandViews(list.slice(nextIndex, endIndex), this.reviewChipUnit, this.data.swipedHandId)
+      ),
+      handRenderComplete: endIndex >= list.length
+    })
   },
   async refresh() {
     const refreshToken = Date.now() + '_' + Math.floor(Math.random() * 1000000)
@@ -2691,14 +2681,17 @@ Page({
     const data = await dataService.getReviewData(nextFilters, { sessions })
     if (this.reviewRefreshToken !== refreshToken) return
     const rawHands = data.hands || []
+    this.reviewHandSource = rawHands
+    this.reviewChipUnit = chipUnit
+    this.lastReviewLoadedAt = Date.now()
     const initialHands = buildReviewListHandViews(
-      rawHands.slice(0, REVIEW_INITIAL_RENDER_LIMIT),
+      rawHands.slice(0, REVIEW_PAGE_SIZE),
       chipUnit,
       this.data.swipedHandId
     )
     this.setData(Object.assign({}, data, {
       hands: initialHands,
-      handRenderComplete: rawHands.length <= REVIEW_INITIAL_RENDER_LIMIT,
+      handRenderComplete: rawHands.length <= REVIEW_PAGE_SIZE,
       chipUnit,
       blindPresets: settings.blindPresets || [],
       positions: settings.positions || [],
@@ -2716,7 +2709,6 @@ Page({
       loading: false
     }), () => {
       this.ensureOnboardingReviewDemo(this.data.onboardingGuideStep)
-      this.scheduleProgressiveHandRender(rawHands, chipUnit, refreshToken, REVIEW_INITIAL_RENDER_LIMIT)
     })
   },
   selectSessionStatus(e) {

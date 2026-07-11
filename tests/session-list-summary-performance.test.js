@@ -16,6 +16,8 @@ global.wx = {
 
 const store = require('../utils/store')
 const dataService = require('../services/data-service')
+const fs = require('node:fs')
+const path = require('node:path')
 
 function resetStore(data) {
   Object.keys(storage).forEach(key => delete storage[key])
@@ -123,4 +125,19 @@ test('review page can request lightweight sessions without summary scanning', as
   } finally {
     store.getReviewHands = originalGetReviewHands
   }
+})
+
+test('session and review pages paginate by 20 and throttle fresh onShow reloads', () => {
+  const sessionSource = fs.readFileSync(path.join(__dirname, '..', 'pages/session-list/session-list.js'), 'utf8')
+  const reviewSource = fs.readFileSync(path.join(__dirname, '..', 'pages/review-list/review-list.js'), 'utf8')
+  const statsSource = fs.readFileSync(path.join(__dirname, '..', 'pages/stats/stats.js'), 'utf8')
+
+  assert.match(sessionSource, /LIST_PAGE_SIZE\s*=\s*20/)
+  assert.match(sessionSource, /onReachBottom\s*\(/)
+  assert.match(reviewSource, /REVIEW_PAGE_SIZE\s*=\s*20/)
+  assert.match(reviewSource, /onReachBottom\s*\(/)
+  ;[sessionSource, reviewSource, statsSource].forEach(source => {
+    assert.match(source, /ON_SHOW_FRESH_MS\s*=\s*5000/)
+    assert.match(source, /Date\.now\(\)/)
+  })
 })

@@ -16,6 +16,8 @@ const { AI_REMINDER_SUBSCRIBE_TEMPLATE_ID } = require('../../config/cloud')
 
 const SWIPE_OPEN_DISTANCE = 72
 const SWIPE_CLOSE_DISTANCE = 48
+const LIST_PAGE_SIZE = 20
+const ON_SHOW_FRESH_MS = 5000
 const PENDING_RECORD_SESSION_ID_KEY = 'pokerLivePendingRecordSessionId'
 const OPEN_CREATE_SESSION_KEY = 'pokerLiveOpenCreateSession'
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
@@ -1056,7 +1058,8 @@ Page({
 
   async onShow() {
     tabBar.syncCustomTabBar('/pages/session-list/session-list')
-    await this.refreshSessions()
+    const isFresh = this.data.sessions.length && Date.now() - Number(this.lastSessionsLoadedAt || 0) < ON_SHOW_FRESH_MS
+    if (!isFresh) await this.refreshSessions()
     this.startDurationClock()
     this.consumeOpenCreateSessionHint()
     this.syncOnboardingGuide()
@@ -1163,8 +1166,10 @@ Page({
       const activeSessionView = buildSessionView(activeSession, settings)
       const venueOptions = buildVenuePresetOptions(settings, this.data.createForm.venue || (settings.venues || [])[0])
       const blindPresetOptions = buildBlindPresetOptions(settings, this.data.createForm.blindPreset || settings.lastBlindPreset)
+      this.sessionListSource = sessions
+      this.lastSessionsLoadedAt = Date.now()
       this.setData({
-        sessions,
+        sessions: sessions.slice(0, LIST_PAGE_SIZE),
         activeSession,
         activeSessionView,
         activeSessionHands: [],
@@ -1180,6 +1185,13 @@ Page({
       this.setData({ sessions: [], loading: false })
       wx.showToast({ title: '本地数据加载失败，已进入空列表', icon: 'none' })
     }
+  },
+
+  onReachBottom() {
+    const source = Array.isArray(this.sessionListSource) ? this.sessionListSource : []
+    const current = this.data.sessions || []
+    if (current.length >= source.length) return
+    this.setData({ sessions: current.concat(source.slice(current.length, current.length + LIST_PAGE_SIZE)) })
   },
 
   async refreshActiveTimeline(activeSession, settings) {

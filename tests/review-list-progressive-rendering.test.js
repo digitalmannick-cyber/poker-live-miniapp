@@ -96,7 +96,7 @@ dataService.refreshOnboardingGuideContext = function refreshOnboardingGuideConte
 
 require('../pages/review-list/review-list.js')
 
-test('review list refresh renders first batch before progressive chunks', async () => {
+test('review list appends one 20-row page only when reaching the bottom', async () => {
   const page = createPageInstance(pageConfig)
 
   await page.refresh()
@@ -105,7 +105,12 @@ test('review list refresh renders first batch before progressive chunks', async 
   assert.equal(page.data.handRenderComplete, false)
   assert.equal(page.data.summary.totalHands, 55)
 
-  await new Promise(resolve => setTimeout(resolve, 80))
+  await page.onReachBottom()
+
+  assert.equal(page.data.hands.length, 40)
+  assert.equal(page.data.handRenderComplete, false)
+
+  await page.onReachBottom()
 
   assert.equal(page.data.hands.length, 55)
   assert.equal(page.data.handRenderComplete, true)

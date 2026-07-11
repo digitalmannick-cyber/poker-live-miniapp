@@ -57,3 +57,16 @@ test('canvas curve lines are drawn in requestAnimationFrame batches within one s
   assert.equal(frameCalls, 4)
   assert(elapsedMs < 1000, `batched canvas drawing should finish within 1 second, got ${elapsedMs}ms`)
 })
+
+test('stats setData view model excludes canvas point and value arrays', () => {
+  const model = statsPage.buildPageModel({
+    bankrollGraph: {
+      labels: ['0h', '1h'],
+      series: [{ key: 'total', values: [0, 100], showInLegend: true }]
+    }
+  })
+
+  assert.equal(Object.prototype.hasOwnProperty.call(model.bankrollGraph, 'labels'), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(model.bankrollGraph.series[0], 'values'), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(model.bankrollGraph.series[0], 'points'), false)
+})

@@ -24,6 +24,7 @@ const CURVE_PLOT = {
 }
 
 const MAX_CURVE_POINTS = 200
+const ON_SHOW_FRESH_MS = 5000
 
 function downsampleLabels(labels, maxPoints) {
   const source = Array.isArray(labels) ? labels : []
@@ -181,6 +182,19 @@ function buildCurveViewModel(graph) {
   }
 }
 
+function buildCurveDisplayModel(graph) {
+  const source = graph || {}
+  const display = Object.assign({}, source)
+  delete display.labels
+  display.series = (source.series || []).map(line => {
+    const item = Object.assign({}, line)
+    delete item.values
+    delete item.points
+    return item
+  })
+  return display
+}
+
 function buildMetricCards(performance) {
   const source = performance || {}
   return [
@@ -216,7 +230,7 @@ function buildPageModel(analytics) {
       averagePot: volatility.averagePotDisplay || '样本不足',
       profitFactor: volatility.profitFactorDisplay || '样本不足'
     }),
-    bankrollGraph: buildCurveViewModel(source.bankrollGraph),
+    bankrollGraph: buildCurveDisplayModel(buildCurveViewModel(source.bankrollGraph)),
     reviewItems: source.reviewPriority || []
   })
 }
@@ -243,6 +257,11 @@ Page({
   },
   onShow() {
     tabBar.syncCustomTabBar('/pages/stats/stats')
+    const isFresh = this.data.hasLoaded && Date.now() - Number(this.lastStatsLoadedAt || 0) < ON_SHOW_FRESH_MS
+    if (isFresh) {
+      this.syncOnboardingGuide()
+      return
+    }
     const renderedFromCache = this.renderCachedStatsRange(this.data.selectedRangeKey)
     const silent = renderedFromCache || this.data.hasLoaded
     this.loadStats(this.data.selectedRangeKey, { silent })
@@ -279,6 +298,8 @@ Page({
     if (!dataService.getCachedStatsData) return false
     const cached = dataService.getCachedStatsData(rangeKey)
     if (!cached || !cached.analytics) return false
+    this.bankrollGraph = buildCurveViewModel(cached.analytics.bankrollGraph)
+    this.lastStatsLoadedAt = Date.now()
     this.setData({
       analytics: buildPageModel(cached.analytics),
       curveTooltip: { visible: false, left: 0, top: 0, label: '', rows: [] },
@@ -302,6 +323,8 @@ Page({
     this.setData({ loading: !silent, errorMessage: '' })
     try {
       const result = await dataService.getStatsData(rangeKey)
+      this.bankrollGraph = buildCurveViewModel(result && result.analytics && result.analytics.bankrollGraph)
+      this.lastStatsLoadedAt = Date.now()
       this.setData({
         analytics: buildPageModel(result && result.analytics),
         curveReloading: true,
@@ -336,7 +359,7 @@ Page({
   },
   drawBankrollGraph(attempt) {
     attempt = attempt || 0
-    const graph = this.data.analytics && this.data.analytics.bankrollGraph
+    const graph = this.bankrollGraph
     if (!graph || !graph.series || !graph.series.length) return
     const query = this.createSelectorQuery()
     query.select('#bankrollCurve').fields({ node: true, size: true }).exec(result => {
@@ -419,7 +442,7 @@ Page({
   },
   onCurveTouch(event) {
     clearTimeout(this.curveTooltipTimer)
-    const graph = this.data.analytics && this.data.analytics.bankrollGraph
+    const graph = this.bankrollGraph
     if (!graph || !graph.labels || graph.labels.length <= 1) return
     const touch = event.touches && event.touches[0] || event.changedTouches && event.changedTouches[0] || {}
     const touchX = number(touch.clientX || touch.x || event.detail && event.detail.x)
@@ -433,7 +456,7 @@ Page({
     }).exec()
   },
   showCurveTooltip(index, ratio) {
-    const graph = this.data.analytics && this.data.analytics.bankrollGraph
+    const graph = this.bankrollGraph
     if (!graph || !graph.series) return
     const visibleCurveSeries = graph.series.filter(line => line.showInChart !== false)
     const clampedIndex = clamp(index, 0, graph.labels.length - 1)
