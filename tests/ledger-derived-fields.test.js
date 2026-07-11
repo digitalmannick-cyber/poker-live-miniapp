@@ -129,3 +129,62 @@ test('preflop all-in equity sampling stays fast and near AA versus QQ equity', (
   assert(equity > 80 && equity < 84, 'AA versus QQ preflop equity should be roughly 81-82%')
   assert(elapsedMs < 450, 'preflop equity sampling must not enumerate every runout before opening hand detail')
 })
+
+test('reuses persisted finite hero equity without sampling again', () => {
+  const hand = buildCacheablePreflopHand('cached_persisted')
+  hand.heroEquityPct = 81.25
+  let sampleCalls = 0
+
+  const result = ledgerDerived.deriveLedgerHandFields(hand, {
+    estimateHeroEquityPct() {
+      sampleCalls += 1
+      return 50
+    }
+  })
+
+  assert.equal(sampleCalls, 0)
+  assert.equal(result.heroEquityPct, 81.25)
+})
+
+test('samples missing equity once and reuses the in-memory hand cache', () => {
+  const hand = buildCacheablePreflopHand('cached_computed')
+  let sampleCalls = 0
+  const options = {
+    estimateHeroEquityPct() {
+      sampleCalls += 1
+      return 82.5
+    }
+  }
+
+  const first = ledgerDerived.deriveLedgerHandFields(hand, options)
+  const second = ledgerDerived.deriveLedgerHandFields(hand, options)
+
+  assert.equal(sampleCalls, 1)
+  assert.equal(first.heroEquityPct, 82.5)
+  assert.equal(second.heroEquityPct, 82.5)
+  assert.equal(hand.heroEquityPct, 82.5, 'newly calculated equity should be written back to the current hand document')
+  assert.equal(first.allInEv, second.allInEv, 'cached equity must not change All-in EV')
+})
+
+function buildCacheablePreflopHand(id) {
+  return {
+    _id: id,
+    heroPosition: 'BB',
+    heroCardsInput: 'AhAd',
+    opponentCards: 'QhQc',
+    currentProfit: 50000,
+    ledgerState: {
+      heroSlot: 'BB',
+      heroCardsInput: 'AhAd',
+      villainCards: 'QhQc',
+      players: {
+        BB: { initialStack: 50000 },
+        HJ: { initialStack: 50000, cards: 'QhQc' }
+      },
+      actions: [
+        { street: 'Pre', pos: 'BB', action: 'All-in', amount: 50000 },
+        { street: 'Pre', pos: 'HJ', action: 'All-in', amount: 50000 }
+      ]
+    }
+  }
+}

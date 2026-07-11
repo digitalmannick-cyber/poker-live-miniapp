@@ -3,10 +3,17 @@ const allInEv = require('./all-in-ev')
 
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = ['s', 'h', 'd', 'c']
+const heroEquityCache = new Map()
 
 function number(value) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function finiteOptionalNumber(value) {
+  if (value === '' || value === null || value === undefined) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function normalizeStreet(value) {
@@ -320,7 +327,21 @@ function deriveLedgerHandFields(handInput, options) {
   const heroCards = parseCards(ledgerState.heroCardsInput || hand.heroCardsInput, 2)
   const villainCards = parseCards(resolveVillainCards(hand, ledgerState, accounting.villainSlot), 2)
   const allInBoard = boardCardsAtAllIn(board, allInStreet)
-  const heroEquityPct = estimateHeroEquityPct(heroCards, villainCards, allInBoard)
+  const cacheKey = String(hand._id || '').trim()
+  let heroEquityPct = finiteOptionalNumber(hand.heroEquityPct)
+  if (heroEquityPct == null && cacheKey) {
+    heroEquityPct = finiteOptionalNumber(heroEquityCache.get(cacheKey))
+  }
+  if (heroEquityPct == null) {
+    const estimate = typeof config.estimateHeroEquityPct === 'function'
+      ? config.estimateHeroEquityPct
+      : estimateHeroEquityPct
+    heroEquityPct = estimate(heroCards, villainCards, allInBoard)
+    if (heroEquityPct != null) {
+      hand.heroEquityPct = heroEquityPct
+      if (cacheKey) heroEquityCache.set(cacheKey, heroEquityPct)
+    }
+  }
   const ev = allInEv.calculateAllInEv({
     isAllIn: true,
     allInStreet,
