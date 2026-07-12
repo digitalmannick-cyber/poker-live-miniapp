@@ -53,6 +53,25 @@ function calculateDurationMinutes(startTime, endTime) {
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
 }
 
+function getSessionDurationBackfill(session) {
+  const item = session || {}
+  if (item.status !== 'finished') return null
+  if (isHistoryImportSession(item)) return null
+  const current = Number(item.durationMinutes) || 0
+  if (current > 0) return null
+  const durationMinutes = calculateDurationMinutes(item.startTime, item.endTime)
+  if (durationMinutes <= 0) return null
+  return {
+    sessionId: item._id || '',
+    title: item.title || '',
+    startTime: item.startTime || '',
+    endTime: item.endTime || '',
+    beforeDurationMinutes: current,
+    durationMinutes,
+    addedMinutes: durationMinutes - current
+  }
+}
+
 function normalizeAllInStreet(value) {
   const text = String(value || '').trim().toLowerCase()
   if (/^(pre|preflop|pre-flop|pf)$/.test(text)) return 'preflop'
@@ -377,7 +396,8 @@ function getAuthorizationToken(event) {
 function resolveOwnerOpenId(event, identity) {
   const wxOpenId = String(identity && identity.OPENID || '').trim()
   if (wxOpenId) return { ownerOpenId: wxOpenId, externalAgent: false }
-  if (normalizeAction(event) === 'agent_export') {
+  const action = normalizeAction(event)
+  if (action === 'agent_export') {
     const token = getAuthorizationToken(event)
     if (!AGENT_EXPORT_TOKEN || !AGENT_EXPORT_OWNER_OPENID) {
       return { error: { code: 'AGENT_EXPORT_NOT_CONFIGURED', message: 'missing AGENT_EXPORT_TOKEN or AGENT_EXPORT_OWNER_OPENID' } }
@@ -386,6 +406,17 @@ function resolveOwnerOpenId(event, identity) {
       return { error: { code: 'AGENT_EXPORT_UNAUTHORIZED', message: 'invalid agent export token' } }
     }
     return { ownerOpenId: AGENT_EXPORT_OWNER_OPENID, externalAgent: true }
+  }
+  if (action === 'backfill_session_durations') {
+    const token = getAuthorizationToken(event)
+    const ownerOpenId = String(event && event.ownerOpenId || AGENT_EXPORT_OWNER_OPENID || '').trim()
+    if (!AGENT_EXPORT_TOKEN || !ownerOpenId) {
+      return { error: { code: 'BACKFILL_NOT_CONFIGURED', message: 'missing AGENT_EXPORT_TOKEN or ownerOpenId' } }
+    }
+    if (!token || token !== AGENT_EXPORT_TOKEN) {
+      return { error: { code: 'BACKFILL_UNAUTHORIZED', message: 'invalid backfill token' } }
+    }
+    return { ownerOpenId, externalAgent: true }
   }
   return { error: { code: 'MISSING_OPENID', message: 'missing openid' } }
 }
@@ -1467,6 +1498,50 @@ async function saveSettingsAction(event, ownerOpenId) {
   }
 }
 
+async function backfillSessionDurationsAction(event, ownerOpenId) {
+  const playerId = normalizePlayerId(event.playerId)
+  if (!playerId) {
+    return { code: 'MISSING_PLAYER_ID', message: 'missing playerId' }
+  }
+  const dryRun = event.dryRun !== false
+  const sessions = await fetchOwnedByPlayer(COLLECTIONS.sessions, playerId, ownerOpenId)
+  const candidates = sessions
+    .map(getSessionDurationBackfill)
+    .filter(Boolean)
+  const addedMinutes = candidates.reduce((sum, item) => sum + item.addedMinutes, 0)
+
+  if (!dryRun) {
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index]
+      const current = await getDocById(COLLECTIONS.sessions, candidate.sessionId)
+      if (!current || normalizePlayerId(current.playerId) !== playerId) continue
+      const currentOwnerOpenId = String(current.ownerOpenId || current._openid || '').trim()
+      if (currentOwnerOpenId !== ownerOpenId) continue
+      const latestBackfill = getSessionDurationBackfill(current)
+      if (!latestBackfill) continue
+      const next = withOwnerScope(Object.assign({}, current, {
+        durationMinutes: latestBackfill.durationMinutes,
+        durationBackfilledAt: now()
+      }), playerId, ownerOpenId)
+      await setDocById(COLLECTIONS.sessions, candidate.sessionId, next)
+      await writeAuditLog(ownerOpenId, playerId, 'backfill_session_duration', candidate.sessionId, current, next, '')
+    }
+  }
+
+  return {
+    code: 0,
+    data: {
+      dryRun,
+      scanned: sessions.length,
+      matched: candidates.length,
+      updated: dryRun ? 0 : candidates.length,
+      addedMinutes,
+      addedHours: Number((addedMinutes / 60).toFixed(1)),
+      samples: candidates.slice(0, 10)
+    }
+  }
+}
+
 function truncateSubscribeValue(value, maxLength) {
   const text = String(value || '').trim()
   return text.length > maxLength ? text.slice(0, maxLength) : text
@@ -1538,6 +1613,9 @@ exports.main = async function main(rawEvent) {
     if (action === 'save_settings') {
       return await saveSettingsAction(event || {}, ownerOpenId)
     }
+    if (action === 'backfill_session_durations') {
+      return await backfillSessionDurationsAction(event || {}, ownerOpenId)
+    }
     if (action === 'list_player_notes') {
       return await listPlayerNotesAction(event || {}, ownerOpenId)
     }
@@ -1604,5 +1682,6 @@ exports.__test = {
   normalizeAction,
   normalizeAgentExportRangeKey,
   normalizeAgentExportRange,
+  getSessionDurationBackfill,
   exportAgentData
 }

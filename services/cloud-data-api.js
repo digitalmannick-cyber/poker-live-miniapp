@@ -82,6 +82,14 @@ function sendAiReminderSubscribeMessage(options) {
   })
 }
 
+function backfillSessionDurations(options) {
+  const config = options || {}
+  return callDataFunction('backfill_session_durations', {
+    playerId: normalizePlayerId(config.playerId),
+    dryRun: config.dryRun !== false
+  })
+}
+
 function saveSettings(options) {
   const config = options || {}
   return callDataFunction('save_settings', {
@@ -242,6 +250,7 @@ module.exports = {
   loginAccount,
   exportBackupPage,
   exportAgentData,
+  backfillSessionDurations,
   sendAiReminderSubscribeMessage,
   __test: {
     normalizePlayerId
