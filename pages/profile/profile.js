@@ -8,6 +8,7 @@ const releaseNotes = require('../../utils/release-notes')
 
 const WECHAT_PROFILE_PROMPT_SEEN_KEY = 'pokerLiveWechatProfilePromptSeen'
 const OPEN_AI_REMINDER_EDITOR_KEY = 'pokerLiveOpenAiReminderEditor'
+const initialProfileStats = dataService.getProfileStatsSnapshot()
 
 function formatProfit(value, unit) {
   const amount = Number(value) || 0
@@ -250,11 +251,12 @@ Page({
       opponentTypes: []
     },
     stats: {
-      handCount: 0,
-      totalProfit: 0,
-      totalHours: '0.0'
+      handCount: initialProfileStats ? initialProfileStats.handCount : 0,
+      totalProfit: initialProfileStats ? initialProfileStats.totalProfit : 0,
+      totalHours: initialProfileStats ? initialProfileStats.totalHours : '0.0'
     },
-    titleProgress: playerTitle.resolvePlayerTitle(0),
+    titleProgress: playerTitle.resolvePlayerTitle(initialProfileStats && initialProfileStats.totalHours),
+    titleStatsReady: !!initialProfileStats,
     titleStatsUnavailable: false,
     titleRouteVisible: false,
     settingsEditorVisible: false,
@@ -302,7 +304,7 @@ Page({
   },
 
   async refresh() {
-    const cachedData = await dataService.getProfilePageData({ preferCache: true, fastLocal: true })
+    const cachedData = await dataService.getProfilePageData({ preferCache: true })
     if (!(cachedData && cachedData.stats && cachedData.stats.statsUnavailable)) {
       this.applyProfilePageData(cachedData)
     }
@@ -336,6 +338,7 @@ Page({
       settings: data.settings,
       stats: data.stats,
       titleProgress: playerTitle.resolvePlayerTitle(data.stats.totalHours),
+      titleStatsReady: !data.stats.statsUnavailable,
       titleStatsUnavailable: !!data.stats.statsUnavailable,
       accountLoggedOut: !!data.accountLoggedOut,
       testAccountActive: !!data.testAccountActive,

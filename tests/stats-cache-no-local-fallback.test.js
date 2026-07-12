@@ -140,6 +140,87 @@ test('profile fast local cache renders local stats before cloud stats cache exis
   assert.equal(profileData.stats.totalHours, '1.5')
 })
 
+test('successful cloud stats refresh persists an account-scoped profile snapshot', async () => {
+  resetFixture()
+  global.wx.cloud = {
+    init() {},
+    callFunction(request) {
+      assert.equal(request.name, 'poker_data')
+      assert.equal(request.data.action, 'sync_stats')
+      return Promise.resolve({
+        result: {
+          code: 0,
+          data: {
+            sessions: [],
+            hands: [],
+            settings: store.getDefaultSettings(),
+            stats: {
+              sessionCount: 13,
+              handCount: 498,
+              totalProfit: 30400,
+              bankrollCurrent: 30400,
+              totalHours: '579.1',
+              hourlyRate: '52.5'
+            }
+          }
+        }
+      })
+    }
+  }
+
+  try {
+    await dataService.getStatsData('all')
+
+    assert.equal(storage.pokerLiveProfileStatsSnapshot.playerId, 'WX-REAL')
+    assert.equal(storage.pokerLiveProfileStatsSnapshot.stats.totalHours, '579.1')
+    assert.equal(dataService.getProfileStatsSnapshot().totalHours, '579.1')
+
+    store.updateProfile({ playerId: 'WX-OTHER' })
+    assert.equal(dataService.getProfileStatsSnapshot(), null)
+  } finally {
+    delete global.wx.cloud
+  }
+})
+
+test('clearing stats cache removes the current account profile snapshot', async () => {
+  resetFixture()
+  storage.pokerLiveProfileStatsSnapshot = {
+    playerId: 'WX-REAL',
+    cachedAt: Date.now(),
+    stats: { handCount: 498, totalProfit: 30400, totalHours: '579.1' }
+  }
+
+  assert.equal(dataService.getProfileStatsSnapshot().totalHours, '579.1')
+  dataService.clearStatsDataCache()
+
+  assert.equal(dataService.getProfileStatsSnapshot(), null)
+  assert.equal(storage.pokerLiveProfileStatsSnapshot, undefined)
+})
+
+test('profile force refresh keeps the trusted snapshot when cloud stats fail', async () => {
+  resetFixture()
+  storage.pokerLiveProfileStatsSnapshot = {
+    playerId: 'WX-REAL',
+    cachedAt: Date.now(),
+    stats: { handCount: 498, totalProfit: 30400, totalHours: '579.1' }
+  }
+  global.wx.cloud = {
+    init() {},
+    callFunction() {
+      return Promise.reject(new Error('network unavailable'))
+    }
+  }
+
+  try {
+    const profileData = await dataService.getProfilePageData({ forceRefresh: true })
+
+    assert.equal(profileData.stats.totalHours, '579.1')
+    assert.equal(profileData.stats.statsUnavailable, undefined)
+  } finally {
+    delete global.wx.cloud
+  }
+})
+
 test('profile stats keep newer local total hours when cloud stats are stale', async () => {
   resetFixture()
   store.importBackup({
@@ -301,6 +382,19 @@ test('settings save keeps newer local presets when cloud returns stale settings'
   } finally {
     delete global.wx.cloud
   }
+})
+
+test('settings changes keep the trusted profile stats snapshot', () => {
+  resetFixture()
+  storage.pokerLiveProfileStatsSnapshot = {
+    playerId: 'WX-REAL',
+    cachedAt: Date.now(),
+    stats: { handCount: 498, totalProfit: 30400, totalHours: '579.1' }
+  }
+
+  dataService.updateSettings({ chipUnit: 'HKD' })
+
+  assert.equal(dataService.getProfileStatsSnapshot().totalHours, '579.1')
 })
 
 test('stats data does not show partial cloud repository data when data cloud function is unavailable', async () => {

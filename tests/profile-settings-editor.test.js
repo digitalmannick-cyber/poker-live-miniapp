@@ -52,6 +52,9 @@ function installProfilePage() {
   Module._load = function patchedLoad(request, parent, isMain) {
     if (request.endsWith('../../services/data-service')) {
       return {
+        getProfileStatsSnapshot() {
+          return null
+        },
         async updateSettings(patch) {
           updateSettingsPatch = patch
           return Object.assign({

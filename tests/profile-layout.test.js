@@ -78,3 +78,13 @@ test('profile page hides test account switching entries', () => {
   assert.doesNotMatch(wxml, /switchToTestAccount/)
   assert.doesNotMatch(wxml, /exitTestAccount/)
 })
+
+test('profile cumulative hours first paint uses a trusted snapshot instead of a temporary number', () => {
+  assert.match(js, /const initialProfileStats = dataService\.getProfileStatsSnapshot\(\)/)
+  assert.match(js, /titleStatsReady:\s*!!initialProfileStats/)
+  assert.match(js, /titleProgress:\s*playerTitle\.resolvePlayerTitle\(initialProfileStats[^)]*totalHours/)
+  assert.doesNotMatch(js, /titleProgress:\s*playerTitle\.resolvePlayerTitle\(0\)/)
+  assert.doesNotMatch(js, /getProfilePageData\(\{\s*preferCache:\s*true,\s*fastLocal:\s*true\s*\}\)/)
+  assert.match(wxml, /wx:if="\{\{titleStatsReady\}\}" class="profile-title-hours"/)
+  assert.match(wxml, /profile-title-hours-skeleton/)
+})

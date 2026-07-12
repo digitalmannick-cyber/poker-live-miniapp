@@ -23,6 +23,7 @@ const ACCOUNT_LOGGED_OUT_KEY = 'pokerLiveAccountLoggedOut'
 const TEST_ACCOUNT_KEY = 'pokerLiveTestAccount'
 const TEST_ACCOUNT_BACKUP_KEY = 'pokerLiveTestAccountBackup'
 const AI_REMINDER_SUBSCRIBE_GRANT_KEY = 'pokerAiReminderSubscribeGrantReady'
+const PROFILE_STATS_SNAPSHOT_KEY = 'pokerLiveProfileStatsSnapshot'
 let cloudRetryAfter = 0
 const statsDataCache = {}
 const statsDataPrefetching = {}
@@ -149,6 +150,63 @@ function normalizeRangeKey(rangeKey) {
   return rangeKey || 'all'
 }
 
+function normalizeProfileStatsSnapshot(stats) {
+  if (!stats || stats.statsUnavailable) return null
+  const totalHours = Number(stats.totalHours)
+  if (!Number.isFinite(totalHours) || totalHours < 0) return null
+  return {
+    sessionCount: Number(stats.sessionCount) || 0,
+    handCount: Number(stats.handCount) || 0,
+    totalProfit: Number(stats.totalProfit) || 0,
+    bankrollCurrent: Number(stats.bankrollCurrent) || 0,
+    totalHours: totalHours.toFixed(1),
+    hourlyRate: Number.isFinite(Number(stats.hourlyRate)) ? Number(stats.hourlyRate).toFixed(1) : '0.0'
+  }
+}
+
+function getProfileStatsSnapshot() {
+  if (typeof wx === 'undefined' || !wx || typeof wx.getStorageSync !== 'function') return null
+  if (isAccountLoggedOut()) return null
+  try {
+    const snapshot = wx.getStorageSync(PROFILE_STATS_SNAPSHOT_KEY)
+    const playerId = getCurrentPlayerId()
+    if (!snapshot || !playerId || String(snapshot.playerId || '').trim().toUpperCase() !== playerId) {
+      return null
+    }
+    return normalizeProfileStatsSnapshot(snapshot.stats)
+  } catch (error) {
+    logCloudBackgroundFailure('read profile stats snapshot failed', error)
+    return null
+  }
+}
+
+function saveProfileStatsSnapshot(stats) {
+  if (typeof wx === 'undefined' || !wx || typeof wx.setStorageSync !== 'function') return false
+  const playerId = getCurrentPlayerId()
+  const normalizedStats = normalizeProfileStatsSnapshot(stats)
+  if (!playerId || !normalizedStats) return false
+  try {
+    wx.setStorageSync(PROFILE_STATS_SNAPSHOT_KEY, {
+      playerId,
+      stats: normalizedStats,
+      cachedAt: Date.now()
+    })
+    return true
+  } catch (error) {
+    logCloudBackgroundFailure('save profile stats snapshot failed', error)
+    return false
+  }
+}
+
+function clearProfileStatsSnapshot() {
+  if (typeof wx === 'undefined' || !wx || typeof wx.removeStorageSync !== 'function') return
+  try {
+    wx.removeStorageSync(PROFILE_STATS_SNAPSHOT_KEY)
+  } catch (error) {
+    logCloudBackgroundFailure('clear profile stats snapshot failed', error)
+  }
+}
+
 function cacheStatsResult(rangeKey, result) {
   if (result) {
     statsDataCache[normalizeRangeKey(rangeKey)] = result
@@ -156,10 +214,13 @@ function cacheStatsResult(rangeKey, result) {
   return result
 }
 
-function clearStatsDataCache() {
+function clearStatsDataCache(options) {
   Object.keys(statsDataCache).forEach(key => {
     delete statsDataCache[key]
   })
+  if (!(options && options.keepProfileSnapshot)) {
+    clearProfileStatsSnapshot()
+  }
 }
 
 function getCachedStatsData(rangeKey) {
@@ -1147,7 +1208,7 @@ async function getStatsData(rangeKey, options) {
       backup: {},
       rangeKey: normalizedRangeKey
     }), CLOUD_STATS_FUNCTION_TIMEOUT_MS, 'cloud stats timeout')
-    return cacheStatsResult(normalizedRangeKey, buildStatsResult(
+    const statsResult = cacheStatsResult(normalizedRangeKey, buildStatsResult(
       result.sessions || [],
       result.hands || [],
       result.settings || store.getSettings(),
@@ -1155,6 +1216,13 @@ async function getStatsData(rangeKey, options) {
       normalizedRangeKey,
       'cloud'
     ))
+    if (normalizedRangeKey === 'all') {
+      const localStats = store.getStatsSummary()
+      saveProfileStatsSnapshot(
+        isProfileCloudStatsBehindLocal(statsResult.stats, localStats) ? localStats : statsResult.stats
+      )
+    }
+    return statsResult
   }
 
   throw new Error('cloud stats function unavailable')
@@ -1212,6 +1280,10 @@ async function getProfilePageData(options) {
   try {
     if (options && options.preferCache) {
       stats = getCachedStatsData('all')
+      if (!stats) {
+        const snapshot = getProfileStatsSnapshot()
+        if (snapshot) stats = { stats: snapshot, source: 'profile_snapshot' }
+      }
       if (!stats && options.fastLocal) {
         stats = getLocalStatsData('all')
       }
@@ -1220,7 +1292,10 @@ async function getProfilePageData(options) {
       stats = keepFreshestProfileStats(stats)
     }
   } catch (error) {
-    stats = keepFreshestProfileStats(getCachedStatsData('all') || { stats: buildUnavailableStatsSummary() })
+    const snapshot = getProfileStatsSnapshot()
+    stats = keepFreshestProfileStats(
+      getCachedStatsData('all') || (snapshot ? { stats: snapshot, source: 'profile_snapshot' } : { stats: buildUnavailableStatsSummary() })
+    )
   }
   if (!stats) {
     stats = { stats: buildUnavailableStatsSummary() }
@@ -1330,7 +1405,7 @@ async function logoutAccount() {
 
 function updateSettings(patch, options) {
   const settings = store.updateSettings(patch)
-  clearStatsDataCache()
+  clearStatsDataCache({ keepProfileSnapshot: true })
   const playerId = getCurrentPlayerId()
   if (options && options.waitForCloud) {
     if (playerId && cloudUtils.canUseCloud()) {
@@ -2014,6 +2089,7 @@ module.exports = {
   getReviewData,
   getStatsData,
   getCachedStatsData,
+  getProfileStatsSnapshot,
   clearStatsDataCache,
   refreshOnboardingGuideContext,
   prefetchStatsData,

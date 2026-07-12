@@ -25,17 +25,20 @@
             <view class="profile-name-display">{{profile.name || '玩家'}}</view>
           </view>
           <view wx:if="{{titleStatsUnavailable}}" class="profile-tag-trigger">称号数据暂不可用</view>
-          <view wx:else class="profile-tag-trigger" catchtap="openTitleRoute">{{titleProgress.current.title}}</view>
+          <view wx:elif="{{titleStatsReady}}" class="profile-tag-trigger" catchtap="openTitleRoute">{{titleProgress.current.title}}</view>
+          <view wx:else class="profile-tag-skeleton" aria-hidden="true"></view>
           <block wx:if="{{!titleStatsUnavailable}}">
-            <view class="profile-title-hours">累计记录 {{titleProgress.hoursDisplay}} 小时</view>
+            <view wx:if="{{titleStatsReady}}" class="profile-title-hours">累计记录 {{titleProgress.hoursDisplay}} 小时</view>
+            <view wx:else class="profile-title-hours-skeleton" aria-hidden="true"></view>
             <view class="profile-title-progress-track">
-              <view class="profile-title-progress-fill" style="width: {{titleProgress.progressPercent}}%;"></view>
+              <view wx:if="{{titleStatsReady}}" class="profile-title-progress-fill" style="width: {{titleProgress.progressPercent}}%;"></view>
             </view>
-            <view class="profile-title-progress-copy">
+            <view wx:if="{{titleStatsReady}}" class="profile-title-progress-copy">
               <view>{{titleProgress.rangeLabel}}</view>
               <view wx:if="{{titleProgress.next}}" class="profile-title-next">距下一称号 {{titleProgress.remainingHours}}h</view>
               <view wx:else class="profile-title-next">最高称号</view>
             </view>
+            <view wx:else class="profile-title-progress-copy-skeleton" aria-hidden="true"></view>
           </block>
         </view>
       </view>

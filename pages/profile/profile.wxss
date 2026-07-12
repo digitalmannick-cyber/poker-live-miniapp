@@ -107,6 +107,30 @@
   white-space: nowrap;
 }
 
+.profile-tag-skeleton {
+  width: 156rpx;
+  height: 42rpx;
+  margin-top: 10rpx;
+  border-radius: 6rpx;
+  background: rgba(255,255,255,0.14);
+}
+
+.profile-title-hours-skeleton {
+  width: 188rpx;
+  height: 21rpx;
+  margin-top: 10rpx;
+  border-radius: 4rpx;
+  background: rgba(255,255,255,0.12);
+}
+
+.profile-title-progress-copy-skeleton {
+  width: 240rpx;
+  height: 18rpx;
+  margin-top: 7rpx;
+  border-radius: 4rpx;
+  background: rgba(255,255,255,0.10);
+}
+
 .profile-title-progress-track {
   width: 320rpx;
   max-width: 100%;
