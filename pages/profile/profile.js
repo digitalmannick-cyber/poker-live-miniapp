@@ -1186,16 +1186,6 @@ Page({
     })
   },
 
-  showAbout() {
-    wx.showModal({
-      title: '关于',
-      content: '智牌屋\n版本 ' + this.data.version + '\n用于记录牌局、手牌、统计与复盘。',
-      showCancel: false,
-      confirmText: '知道了',
-      confirmColor: '#e60012'
-    })
-  },
-
   restartOnboardingGuide() {
     const step = onboardingGuide.resetGuide()
     wx.showToast({ title: '已重新开启新手引导', icon: 'none' })

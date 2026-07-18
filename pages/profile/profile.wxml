@@ -1,5 +1,5 @@
 ﻿<view class="app-bg"></view>
-<view class="container">
+<view class="container profile-command-page">
   <view wx:if="{{accountLoggedOut}}" class="profile-login-hero" bindtap="loginWithWechatAccount">
     <view class="profile-login-avatar">登录</view>
     <view class="profile-login-copy">
@@ -123,172 +123,162 @@
     </scroll-view>
   </view>
 
-  <view wx:if="{{!accountLoggedOut}}" class="section-label">数据管理</view>
-  <view wx:if="{{!accountLoggedOut}}" class="card profile-card-compact">
-    <view class="setting-row" bindtap="importPbtPlayerData">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">导入玩家数据</view>
-          <view class="small muted">支持PBT玩家数据导入，请选择csv文件</view>
+  <view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">偏好设置</view>
+  <view wx:if="{{!accountLoggedOut}}" class="profile-command-section">
+    <view class="profile-command-list">
+      <view class="setting-block">
+        <view class="setting-head">
+          <view>
+            <view class="setting-title">筹码单位</view>
+            <view class="small muted">当前按 {{unitLabel}} 显示总盈亏</view>
+          </view>
+        </view>
+        <view class="segment-row">
+          <view class="segment-item {{settings.chipUnit === 'BB' ? 'active' : ''}}" data-value="BB" bindtap="selectChipUnit">BB</view>
+          <view class="segment-item {{settings.chipUnit === 'CNY' ? 'active' : ''}}" data-value="CNY" bindtap="selectChipUnit">¥</view>
+          <view class="segment-item {{settings.chipUnit === 'HKD' ? 'active' : ''}}" data-value="HKD" bindtap="selectChipUnit">HK$</view>
+          <view class="segment-item {{settings.chipUnit === 'USD' ? 'active' : ''}}" data-value="USD" bindtap="selectChipUnit">$</view>
         </view>
       </view>
-      <view class="setting-arrow">{{importingPbtPlayerData ? '...' : '>'}}</view>
-    </view>
-    <view class="setting-row" bindtap="importPbtBankrollData">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">导入牌局数据</view>
-          <view class="small muted">支持PBT牌局数据导入，请选择csv文件</view>
+
+      <view class="setting-block">
+        <view class="setting-head">
+          <view class="setting-title">场地预设</view>
+          <view class="profile-action compact" bindtap="editVenues">编辑</view>
+        </view>
+        <view class="chip-list">
+          <view wx:for="{{settings.venues}}" wx:key="*this" class="pref-chip">{{item}}</view>
         </view>
       </view>
-      <view class="setting-arrow">></view>
-    </view>
-    <view class="setting-row" bindtap="exportBackup">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">导出牌局数据</view>
-          <view class="small muted">复制完整备份到剪贴板</view>
+
+      <view class="setting-block">
+        <view class="setting-head">
+          <view class="setting-title">级别预设</view>
+          <view class="profile-action compact" bindtap="editBlindPresets">编辑</view>
+        </view>
+        <view class="chip-list">
+          <view wx:for="{{settings.blindPresets}}" wx:key="*this" class="pref-chip">{{item}}</view>
         </view>
       </view>
-      <view class="setting-arrow">></view>
-    </view>
-  </view>
 
-  <view wx:if="{{!accountLoggedOut}}" class="section-label">偏好设置</view>
-  <view wx:if="{{!accountLoggedOut}}" class="card profile-card-compact">
-    <view class="setting-block">
-      <view class="setting-head">
-        <view>
-          <view class="setting-title">筹码单位</view>
-          <view class="small muted">当前按 {{unitLabel}} 显示总盈亏</view>
+      <view class="setting-block">
+        <view class="setting-head">
+          <view class="setting-title">对手类型</view>
+          <view class="profile-action compact" bindtap="editOpponentTypes">编辑</view>
         </view>
-      </view>
-      <view class="segment-row">
-        <view class="segment-item {{settings.chipUnit === 'BB' ? 'active' : ''}}" data-value="BB" bindtap="selectChipUnit">BB</view>
-        <view class="segment-item {{settings.chipUnit === 'CNY' ? 'active' : ''}}" data-value="CNY" bindtap="selectChipUnit">¥</view>
-        <view class="segment-item {{settings.chipUnit === 'HKD' ? 'active' : ''}}" data-value="HKD" bindtap="selectChipUnit">HK$</view>
-        <view class="segment-item {{settings.chipUnit === 'USD' ? 'active' : ''}}" data-value="USD" bindtap="selectChipUnit">$</view>
-      </view>
-    </view>
-
-    <view class="setting-block">
-      <view class="setting-head">
-        <view class="setting-title">场地预设</view>
-        <view class="profile-action compact" bindtap="editVenues">编辑</view>
-      </view>
-      <view class="chip-list">
-        <view wx:for="{{settings.venues}}" wx:key="*this" class="pref-chip">{{item}}</view>
-      </view>
-    </view>
-
-    <view class="setting-block">
-      <view class="setting-head">
-        <view class="setting-title">级别预设</view>
-        <view class="profile-action compact" bindtap="editBlindPresets">编辑</view>
-      </view>
-      <view class="chip-list">
-        <view wx:for="{{settings.blindPresets}}" wx:key="*this" class="pref-chip">{{item}}</view>
-      </view>
-    </view>
-
-    <view class="setting-block">
-      <view class="setting-head">
-        <view class="setting-title">对手类型</view>
-        <view class="profile-action compact" bindtap="editOpponentTypes">编辑</view>
-      </view>
-      <view class="chip-list">
-        <view wx:for="{{settings.opponentTypes}}" wx:key="*this" class="pref-chip">{{item}}</view>
+        <view class="chip-list">
+          <view wx:for="{{settings.opponentTypes}}" wx:key="*this" class="pref-chip">{{item}}</view>
+        </view>
       </view>
     </view>
   </view>
 
-  <view wx:if="{{!accountLoggedOut}}" class="section-label">AI 自动提醒</view>
-  <view wx:if="{{!accountLoggedOut}}" class="card profile-card-compact">
-    <view class="setting-row ai-reminder-entry" catchtap="openAiReminderEditor">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">AI 自动提醒</view>
-          <view class="small muted">{{settings.aiReminders.enabled === false ? '关闭所有提醒' : '已开启，点击进入详细设置'}}</view>
+  <view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">数据管理</view>
+  <view wx:if="{{!accountLoggedOut}}" class="profile-command-section">
+    <view class="profile-command-list">
+      <view class="setting-row" bindtap="importPbtPlayerData">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">导入玩家数据</view>
+            <view class="small muted">支持PBT玩家数据导入，请选择csv文件</view>
+          </view>
         </view>
+        <view class="setting-arrow">{{importingPbtPlayerData ? '...' : '>'}}</view>
       </view>
-      <view class="ai-reminder-entry-switch {{settings.aiReminders.enabled === false ? '' : 'on'}}" catchtap="toggleAiReminderMasterSwitch">
-        <view class="ai-reminder-switch-dot"></view>
+      <view class="setting-row" bindtap="importPbtBankrollData">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">导入牌局数据</view>
+            <view class="small muted">支持PBT牌局数据导入，请选择csv文件</view>
+          </view>
+        </view>
+        <view class="setting-arrow">></view>
+      </view>
+      <view class="setting-row" bindtap="exportBackup">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">导出牌局数据</view>
+            <view class="small muted">复制完整备份到剪贴板</view>
+          </view>
+        </view>
+        <view class="setting-arrow">></view>
       </view>
     </view>
   </view>
 
-  <view wx:if="{{!accountLoggedOut}}" class="section-label">帮助与反馈</view>
-  <view wx:if="{{!accountLoggedOut}}" class="card profile-card-compact">
-    <button class="setting-row customer-feedback-button" open-type="contact" hover-class="none" aria-label="反馈与建议">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">反馈与建议</view>
-          <view class="small muted">反馈问题、Bug 或功能建议</view>
+  <view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">AI 自动提醒</view>
+  <view wx:if="{{!accountLoggedOut}}" class="profile-command-section">
+    <view class="profile-command-list">
+      <view class="setting-row ai-reminder-entry" catchtap="openAiReminderEditor">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">AI 自动提醒</view>
+            <view class="small muted">{{settings.aiReminders.enabled === false ? '关闭所有提醒' : '已开启，点击进入详细设置'}}</view>
+          </view>
+        </view>
+        <view class="ai-reminder-entry-switch {{settings.aiReminders.enabled === false ? '' : 'on'}}" catchtap="toggleAiReminderMasterSwitch">
+          <view class="ai-reminder-switch-dot"></view>
         </view>
       </view>
-      <view class="setting-arrow">></view>
-    </button>
+    </view>
   </view>
 
-  <view class="section-label">账号与数据</view>
-  <view class="card profile-card-compact">
-    <view wx:if="{{accountLoggedOut}}" class="setting-row" bindtap="loginWithWechatAccount">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">使用微信账号登录</view>
-          <view class="small muted">用当前微信恢复历史牌局数据</view>
+  <view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">帮助与反馈</view>
+  <view wx:if="{{!accountLoggedOut}}" class="profile-command-section">
+    <view class="profile-command-list">
+      <button class="setting-row customer-feedback-button" open-type="contact" hover-class="none" aria-label="反馈与建议">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">反馈与建议</view>
+            <view class="small muted">反馈问题、Bug 或功能建议</view>
+          </view>
         </view>
-      </view>
-      <view class="setting-arrow">></view>
-    </view>
-    <view wx:else class="setting-row" bindtap="copyPlayerId">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">复制账号ID</view>
-          <view class="small muted">用于定位和排查当前账号数据</view>
+        <view class="setting-arrow">›</view>
+      </button>
+      <view class="setting-row" bindtap="restartOnboardingGuide">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">新手引导</view>
+            <view class="small muted">重新查看开局、记牌、复盘和统计流程</view>
+          </view>
         </view>
+        <view class="setting-arrow">›</view>
       </view>
-      <view class="setting-arrow">></view>
-    </view>
-    <view class="setting-row danger" bindtap="clearData">
-      <view class="setting-main">
-        <view class="setting-title">清除所有数据</view>
-      </view>
-      <view class="setting-arrow">></view>
-    </view>
-    <view class="setting-row" bindtap="restartOnboardingGuide">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">新手引导</view>
-          <view class="small muted">重新查看开局、记牌、复盘和统计流程</view>
+      <view class="setting-row" bindtap="openReleaseNotes">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">关于与版本更新</view>
+            <view class="small muted">当前版本 {{version}} · 查看更新内容</view>
+          </view>
         </view>
+        <view class="setting-arrow">›</view>
       </view>
-      <view class="setting-arrow">></view>
     </view>
-    <view wx:if="{{!accountLoggedOut}}" class="setting-row" bindtap="openReleaseNotes">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">版本更新</view>
-          <view class="small muted">查看 {{version}} 更新内容</view>
+  </view>
+
+  <view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">账号与安全</view>
+  <view wx:if="{{!accountLoggedOut}}" class="profile-command-section profile-account-section">
+    <view class="profile-command-list">
+      <view class="setting-row" bindtap="copyPlayerId">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">复制账号 ID</view>
+            <view class="small muted">用于定位和排查当前账号数据</view>
+          </view>
         </view>
+        <view class="setting-arrow">›</view>
       </view>
-      <view class="setting-arrow">></view>
-    </view>
-    <view wx:if="{{!accountLoggedOut}}" class="setting-row danger" bindtap="logoutAccount">
-      <view class="setting-main">
-        <view class="setting-title">退出登录</view>
-      </view>
-      <view class="setting-arrow">></view>
-    </view>
-    <view class="setting-row" bindtap="showAbout">
-      <view class="setting-main">
-        <view>
-          <view class="setting-title">关于</view>
-          <view class="small muted">{{version}}</view>
+      <view class="setting-row danger" bindtap="clearData">
+        <view class="setting-main">
+          <view>
+            <view class="setting-title">清除所有数据</view>
+            <view class="small muted">清除资料、设置、牌局和手牌数据</view>
+          </view>
         </view>
+        <view class="setting-arrow">›</view>
       </view>
-      <view class="setting-arrow">></view>
     </view>
+    <view class="profile-logout-action" bindtap="logoutAccount">退出登录</view>
   </view>
 
   <view class="profile-footer">

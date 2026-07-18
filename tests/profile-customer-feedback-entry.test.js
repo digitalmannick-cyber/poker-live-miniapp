@@ -9,10 +9,10 @@ const wxss = fs.readFileSync(path.join(root, 'pages/profile/profile.wxss'), 'utf
 const appConfig = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'))
 
 function helpAndFeedbackMarkup() {
-  const marker = '<view wx:if="{{!accountLoggedOut}}" class="section-label">帮助与反馈</view>'
+  const marker = '<view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">帮助与反馈</view>'
   const start = wxml.indexOf(marker)
   if (start < 0) return ''
-  const nextSection = wxml.indexOf('<view class="section-label">', start + marker.length)
+  const nextSection = wxml.indexOf('class="section-label profile-command-label"', start + marker.length)
   return wxml.slice(start, nextSection < 0 ? wxml.length : nextSection)
 }
 
@@ -20,7 +20,7 @@ test('logged-in profile users can open native customer feedback chat', () => {
   const markup = helpAndFeedbackMarkup()
 
   assert.ok(markup, '帮助与反馈 should have its own logged-in-only section')
-  assert.match(markup, /<view wx:if="\{\{!accountLoggedOut\}\}" class="card profile-card-compact">/)
+  assert.match(markup, /class="profile-command-list"/)
   assert.match(markup, /<button class="setting-row customer-feedback-button" open-type="contact"/)
   assert.match(markup, />反馈与建议<\/view>/)
   assert.match(markup, />反馈问题、Bug 或功能建议<\/view>/)
