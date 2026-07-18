@@ -6,6 +6,7 @@ const path = require('node:path')
 const root = path.join(__dirname, '..')
 const wxml = fs.readFileSync(path.join(root, 'pages/profile/profile.wxml'), 'utf8')
 const js = fs.readFileSync(path.join(root, 'pages/profile/profile.js'), 'utf8')
+const wxss = fs.readFileSync(path.join(root, 'pages/profile/profile.wxss'), 'utf8')
 
 const commandModuleTitles = [
   '偏好设置',
@@ -129,4 +130,17 @@ test('logout is the final actionable profile content', () => {
   assert.ok(accountStart < logout)
   assert.ok(logout < footer)
   assert.doesNotMatch(wxml.slice(logout + 1, footer), /bindtap=|catchtap=|open-type=/)
+})
+
+test('command-list page exposes scoped P5 styling hooks', () => {
+  assert.match(wxml, /class="container profile-command-page"/)
+  assert.match(wxml, /profile-command-section/)
+  assert.match(wxml, /profile-command-label/)
+  assert.match(wxml, /profile-logout-action/)
+  assert.match(wxss, /\.profile-command-page\s+\.profile-command-label/)
+  assert.match(wxss, /\.profile-command-page\s+\.profile-command-list/)
+  assert.match(wxss, /\.profile-command-page\s+\.profile-logout-action/)
+  assert.match(wxss, /clip-path:\s*polygon/)
+  assert.match(wxss, /min-height:\s*88rpx/)
+  assert.match(wxss, /env\(safe-area-inset-bottom\)/)
 })
