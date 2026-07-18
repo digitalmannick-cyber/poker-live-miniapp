@@ -217,6 +217,19 @@
     </view>
   </view>
 
+  <view wx:if="{{!accountLoggedOut}}" class="section-label">帮助与反馈</view>
+  <view wx:if="{{!accountLoggedOut}}" class="card profile-card-compact">
+    <button class="setting-row customer-feedback-button" open-type="contact" hover-class="none" aria-label="反馈与建议">
+      <view class="setting-main">
+        <view>
+          <view class="setting-title">反馈与建议</view>
+          <view class="small muted">反馈问题、Bug 或功能建议</view>
+        </view>
+      </view>
+      <view class="setting-arrow">></view>
+    </button>
+  </view>
+
   <view class="section-label">账号与数据</view>
   <view class="card profile-card-compact">
     <view wx:if="{{accountLoggedOut}}" class="setting-row" bindtap="loginWithWechatAccount">
