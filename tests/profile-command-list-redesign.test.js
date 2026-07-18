@@ -160,7 +160,50 @@ test('command-list page exposes scoped P5 styling hooks', () => {
   assert.match(cssBlock('.profile-command-page .profile-command-label'), /clip-path:\s*polygon\(0 0, 100% 0, 92% 100%, 6% 88%\)/)
   assert.match(cssBlock('.profile-command-page .profile-command-list .setting-row'), /min-height:\s*88rpx/)
   assert.match(cssBlock('.profile-command-page .profile-logout-action'), /min-height:\s*88rpx/)
-  assert.match(cssBlock('.profile-command-page .segment-item'), /min-height:\s*88rpx/)
-  assert.match(cssBlock('.profile-command-page .profile-action.compact'), /min-height:\s*88rpx/)
+  assert.match(cssBlock('.profile-command-page .segment-hit'), /min-height:\s*88rpx/)
+  assert.match(cssBlock('.profile-command-page .segment-item'), /min-height:\s*60rpx/)
+  assert.match(cssBlock('.profile-command-page .profile-action-hit'), /min-height:\s*88rpx/)
+  assert.match(cssBlock('.profile-command-page .profile-action.compact'), /min-height:\s*56rpx/)
   assert.match(cssBlock('.profile-command-page .profile-logged-out-utility-row'), /min-height:\s*88rpx/)
+})
+
+test('preference controls separate compact visuals from 88rpx hit targets', () => {
+  const segmentHits = wxml.match(
+    /<view class="segment-hit" data-value="(?:BB|CNY|HKD|USD)" bindtap="selectChipUnit">\s*<view class="segment-item \{\{settings\.chipUnit === '[A-Z]+' \? 'active' : ''\}\}">(?:BB|¥|HK\$|\$)<\/view>\s*<\/view>/g
+  ) || []
+  const actionHits = wxml.match(
+    /<view class="profile-action-hit" bindtap="(?:editVenues|editBlindPresets|editOpponentTypes)">\s*<view class="profile-action compact">编辑<\/view>\s*<\/view>/g
+  ) || []
+
+  assert.equal(segmentHits.length, 4)
+  assert.equal(actionHits.length, 3)
+
+  const segmentHit = cssBlock('.profile-command-page .segment-hit')
+  const segmentVisual = cssBlock('.profile-command-page .segment-item')
+  const actionHit = cssBlock('.profile-command-page .profile-action-hit')
+  const actionVisual = cssBlock('.profile-command-page .profile-action.compact')
+
+  assert.match(segmentHit, /min-height:\s*88rpx/)
+  assert.match(segmentVisual, /height:\s*60rpx/)
+  assert.match(segmentVisual, /min-height:\s*60rpx/)
+  assert.doesNotMatch(segmentVisual, /min-height:\s*88rpx/)
+  assert.match(actionHit, /min-width:\s*88rpx/)
+  assert.match(actionHit, /min-height:\s*88rpx/)
+  assert.match(actionVisual, /height:\s*56rpx/)
+  assert.match(actionVisual, /min-height:\s*56rpx/)
+  assert.doesNotMatch(actionVisual, /min-height:\s*88rpx/)
+})
+
+test('all command-list arrows use one chevron and a stable loading glyph', () => {
+  assert.match(wxml, /<view class="setting-arrow">\{\{importingPbtPlayerData \? '…' : '›'\}\}<\/view>/)
+  assert.equal((wxml.match(/<view class="setting-arrow">›<\/view>/g) || []).length, 7)
+  assert.doesNotMatch(wxml, /<view class="setting-arrow">><\/view>/)
+  assert.doesNotMatch(wxml, /importingPbtPlayerData \? '\.\.\.' : '>'/)
+
+  const arrow = cssBlock('.setting-arrow')
+  assert.match(arrow, /width:\s*44rpx/)
+  assert.match(arrow, /height:\s*44rpx/)
+  assert.match(arrow, /display:\s*inline-flex/)
+  assert.match(arrow, /align-items:\s*center/)
+  assert.match(arrow, /justify-content:\s*center/)
 })

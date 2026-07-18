@@ -144,17 +144,27 @@
           </view>
         </view>
         <view class="segment-row">
-          <view class="segment-item {{settings.chipUnit === 'BB' ? 'active' : ''}}" data-value="BB" bindtap="selectChipUnit">BB</view>
-          <view class="segment-item {{settings.chipUnit === 'CNY' ? 'active' : ''}}" data-value="CNY" bindtap="selectChipUnit">¥</view>
-          <view class="segment-item {{settings.chipUnit === 'HKD' ? 'active' : ''}}" data-value="HKD" bindtap="selectChipUnit">HK$</view>
-          <view class="segment-item {{settings.chipUnit === 'USD' ? 'active' : ''}}" data-value="USD" bindtap="selectChipUnit">$</view>
+          <view class="segment-hit" data-value="BB" bindtap="selectChipUnit">
+            <view class="segment-item {{settings.chipUnit === 'BB' ? 'active' : ''}}">BB</view>
+          </view>
+          <view class="segment-hit" data-value="CNY" bindtap="selectChipUnit">
+            <view class="segment-item {{settings.chipUnit === 'CNY' ? 'active' : ''}}">¥</view>
+          </view>
+          <view class="segment-hit" data-value="HKD" bindtap="selectChipUnit">
+            <view class="segment-item {{settings.chipUnit === 'HKD' ? 'active' : ''}}">HK$</view>
+          </view>
+          <view class="segment-hit" data-value="USD" bindtap="selectChipUnit">
+            <view class="segment-item {{settings.chipUnit === 'USD' ? 'active' : ''}}">$</view>
+          </view>
         </view>
       </view>
 
       <view class="setting-block">
         <view class="setting-head">
           <view class="setting-title">场地预设</view>
-          <view class="profile-action compact" bindtap="editVenues">编辑</view>
+          <view class="profile-action-hit" bindtap="editVenues">
+            <view class="profile-action compact">编辑</view>
+          </view>
         </view>
         <view class="chip-list">
           <view wx:for="{{settings.venues}}" wx:key="*this" class="pref-chip">{{item}}</view>
@@ -164,7 +174,9 @@
       <view class="setting-block">
         <view class="setting-head">
           <view class="setting-title">级别预设</view>
-          <view class="profile-action compact" bindtap="editBlindPresets">编辑</view>
+          <view class="profile-action-hit" bindtap="editBlindPresets">
+            <view class="profile-action compact">编辑</view>
+          </view>
         </view>
         <view class="chip-list">
           <view wx:for="{{settings.blindPresets}}" wx:key="*this" class="pref-chip">{{item}}</view>
@@ -174,7 +186,9 @@
       <view class="setting-block">
         <view class="setting-head">
           <view class="setting-title">对手类型</view>
-          <view class="profile-action compact" bindtap="editOpponentTypes">编辑</view>
+          <view class="profile-action-hit" bindtap="editOpponentTypes">
+            <view class="profile-action compact">编辑</view>
+          </view>
         </view>
         <view class="chip-list">
           <view wx:for="{{settings.opponentTypes}}" wx:key="*this" class="pref-chip">{{item}}</view>
@@ -193,7 +207,7 @@
             <view class="small muted">支持PBT玩家数据导入，请选择csv文件</view>
           </view>
         </view>
-        <view class="setting-arrow">{{importingPbtPlayerData ? '...' : '>'}}</view>
+        <view class="setting-arrow">{{importingPbtPlayerData ? '…' : '›'}}</view>
       </view>
       <view class="setting-row" bindtap="importPbtBankrollData">
         <view class="setting-main">
@@ -202,7 +216,7 @@
             <view class="small muted">支持PBT牌局数据导入，请选择csv文件</view>
           </view>
         </view>
-        <view class="setting-arrow">></view>
+        <view class="setting-arrow">›</view>
       </view>
       <view class="setting-row" bindtap="exportBackup">
         <view class="setting-main">
@@ -211,7 +225,7 @@
             <view class="small muted">复制完整备份到剪贴板</view>
           </view>
         </view>
-        <view class="setting-arrow">></view>
+        <view class="setting-arrow">›</view>
       </view>
     </view>
   </view>
