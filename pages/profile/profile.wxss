@@ -3203,6 +3203,14 @@
   font-size: 34rpx;
 }
 
+.profile-command-page .segment-item {
+  min-height: 88rpx;
+}
+
+.profile-command-page .profile-action.compact {
+  min-height: 88rpx;
+}
+
 .profile-command-page .segment-item.active {
   color: #ffffff;
   border-color: var(--profile-red);

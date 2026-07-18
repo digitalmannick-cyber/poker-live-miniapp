@@ -22,6 +22,13 @@ function indexOfOrFail(text, label) {
   return index
 }
 
+function cssBlock(selector) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = wxss.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`))
+  assert.ok(match, `${selector} should exist`)
+  return match[1]
+}
+
 function commandModuleMarkup(title) {
   const marker = `<view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">${title}</view>`
   const start = indexOfOrFail(marker, `${title} guarded label`)
@@ -137,10 +144,12 @@ test('command-list page exposes scoped P5 styling hooks', () => {
   assert.match(wxml, /profile-command-section/)
   assert.match(wxml, /profile-command-label/)
   assert.match(wxml, /profile-logout-action/)
-  assert.match(wxss, /\.profile-command-page\s+\.profile-command-label/)
-  assert.match(wxss, /\.profile-command-page\s+\.profile-command-list/)
-  assert.match(wxss, /\.profile-command-page\s+\.profile-logout-action/)
-  assert.match(wxss, /clip-path:\s*polygon/)
-  assert.match(wxss, /min-height:\s*88rpx/)
-  assert.match(wxss, /env\(safe-area-inset-bottom\)/)
+
+  assert.match(cssBlock('.profile-command-page'), /padding-bottom:\s*calc\(190rpx \+ env\(safe-area-inset-bottom\)\)/)
+  assert.match(cssBlock('.profile-command-page .profile-hero'), /clip-path:\s*polygon\(0 0, 100% 0, 96% 90%, 5% 100%\)/)
+  assert.match(cssBlock('.profile-command-page .profile-command-label'), /clip-path:\s*polygon\(0 0, 100% 0, 92% 100%, 6% 88%\)/)
+  assert.match(cssBlock('.profile-command-page .profile-command-list .setting-row'), /min-height:\s*88rpx/)
+  assert.match(cssBlock('.profile-command-page .profile-logout-action'), /min-height:\s*88rpx/)
+  assert.match(cssBlock('.profile-command-page .segment-item'), /min-height:\s*88rpx/)
+  assert.match(cssBlock('.profile-command-page .profile-action.compact'), /min-height:\s*88rpx/)
 })
