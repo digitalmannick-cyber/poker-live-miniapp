@@ -7,15 +7,12 @@ const wxml = fs.readFileSync(path.join(__dirname, '..', 'pages', 'profile', 'pro
 const js = fs.readFileSync(path.join(__dirname, '..', 'pages', 'profile', 'profile.js'), 'utf8')
 
 function sectionMarkup(title) {
-  const marker = `<view wx:if="{{!accountLoggedOut}}" class="section-label">${title}</view>`
-  const fallbackMarker = `<view class="section-label">${title}</view>`
-  const start = wxml.indexOf(marker) >= 0 ? wxml.indexOf(marker) : wxml.indexOf(fallbackMarker)
-  if (start < 0) return ''
-  const next = wxml.indexOf('<view class="section-label"', start + 1)
-  const nextLoggedIn = wxml.indexOf('<view wx:if="{{!accountLoggedOut}}" class="section-label"', start + 1)
-  const candidates = [next, nextLoggedIn].filter(index => index > start)
-  const end = candidates.length ? Math.min(...candidates) : wxml.length
-  return wxml.slice(start, end)
+  const titleMarker = `>${title}</view>`
+  const titleIndex = wxml.indexOf(titleMarker)
+  if (titleIndex < 0) return ''
+  const start = wxml.lastIndexOf('<view', titleIndex)
+  const next = wxml.indexOf('class="section-label profile-command-label"', titleIndex + titleMarker.length)
+  return wxml.slice(start, next < 0 ? wxml.length : next)
 }
 
 test('profile page does not expose position preset editing', () => {
@@ -34,13 +31,15 @@ test('AI auto reminder is its own profile module', () => {
   assert.doesNotMatch(preferences, /AI 自动提醒/)
 })
 
-test('onboarding guide is inside account and data module', () => {
+test('onboarding guide is inside help and feedback module', () => {
   const preferences = sectionMarkup('偏好设置')
-  const account = sectionMarkup('账号与数据')
+  const help = sectionMarkup('帮助与反馈')
+  const account = sectionMarkup('账号与安全')
 
   assert.doesNotMatch(preferences, /新手引导/)
-  assert.match(account, /新手引导/)
-  assert.match(account, /restartOnboardingGuide/)
+  assert.match(help, /新手引导/)
+  assert.match(help, /restartOnboardingGuide/)
+  assert.doesNotMatch(account, /新手引导/)
 })
 
 test('PBT player import lives in profile data management', () => {

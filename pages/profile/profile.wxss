@@ -3110,6 +3110,194 @@
   box-sizing: border-box;
 }
 
+/* Profile P5 command-list redesign. Keep selectors scoped to the page root. */
+.profile-command-page {
+  --profile-red: #ef1028;
+  --profile-red-dark: #a90819;
+  --profile-cyan: #11dff3;
+  --profile-yellow: #ffd733;
+  --profile-ink: #08090d;
+  --profile-panel: #12151d;
+  --profile-line: rgba(255, 255, 255, 0.10);
+  padding-bottom: calc(190rpx + env(safe-area-inset-bottom));
+}
+
+.profile-command-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(158deg, rgba(239, 16, 40, 0.10), transparent 30%),
+    linear-gradient(180deg, #101219 0%, #08090d 58%, #0b0d12 100%);
+}
+
+.profile-command-page .profile-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 30rpx 28rpx 34rpx;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(112deg, #ef1028 0%, #d80d23 72%, #990817 72%);
+  clip-path: polygon(0 0, 100% 0, 96% 90%, 5% 100%);
+  box-shadow: 14rpx 14rpx 0 rgba(0, 0, 0, 0.42);
+}
+
+.profile-command-page .profile-avatar {
+  border: 4rpx solid #ffffff;
+  box-shadow: 8rpx 8rpx 0 rgba(0, 0, 0, 0.50);
+}
+
+.profile-command-page .profile-title-progress-fill {
+  background: var(--profile-yellow);
+}
+
+.profile-command-page .profile-hero-chip {
+  border-radius: 0;
+  border: 0;
+  border-left: 6rpx solid var(--profile-red);
+  background: var(--profile-panel);
+  box-shadow: none;
+}
+
+.profile-command-page .profile-command-section {
+  margin: 0 0 28rpx;
+}
+
+.profile-command-page .profile-command-label {
+  display: table;
+  width: auto;
+  margin: 34rpx 0 20rpx 10rpx;
+  padding: 8rpx 26rpx;
+  color: #08090d;
+  background: #ffffff;
+  font-size: 24rpx;
+  font-weight: 950;
+  line-height: 1.2;
+  letter-spacing: 1rpx;
+  clip-path: polygon(0 0, 100% 0, 92% 100%, 6% 88%);
+  box-shadow: 12rpx 10rpx 0 var(--profile-red);
+}
+
+.profile-command-page .profile-command-list {
+  overflow: hidden;
+  border-left: 4rpx solid rgba(255, 255, 255, 0.16);
+  background: var(--profile-panel);
+}
+
+.profile-command-page .profile-command-list .setting-row {
+  min-height: 88rpx;
+  margin: 0;
+  padding: 20rpx 22rpx;
+  border-bottom: 1rpx solid var(--profile-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.profile-command-page .profile-command-list .setting-row:last-child {
+  border-bottom: 0;
+}
+
+.profile-command-page .setting-arrow {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 34rpx;
+}
+
+.profile-command-page .segment-item {
+  min-height: 88rpx;
+}
+
+.profile-command-page .profile-action.compact {
+  min-height: 88rpx;
+}
+
+.profile-command-page .profile-logged-out-utility {
+  margin-top: 22rpx;
+  border-left: 4rpx solid rgba(255, 255, 255, 0.16);
+  background: var(--profile-panel);
+}
+
+.profile-command-page .profile-logged-out-utility-row {
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 18rpx 22rpx;
+  box-sizing: border-box;
+}
+
+.profile-command-page .profile-logged-out-utility-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-command-page .profile-logged-out-utility-title {
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 900;
+}
+
+.profile-command-page .profile-logged-out-utility-desc {
+  margin-top: 6rpx;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 21rpx;
+}
+
+.profile-command-page .profile-logged-out-utility-arrow {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 34rpx;
+}
+
+.profile-command-page .ai-reminder-entry-switch-hit {
+  flex-shrink: 0;
+  min-width: 88rpx;
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-command-page .segment-item.active {
+  color: #ffffff;
+  border-color: var(--profile-red);
+  background: rgba(239, 16, 40, 0.22);
+  box-shadow: inset 0 -4rpx 0 var(--profile-red);
+}
+
+.profile-command-page .pref-chip {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.profile-command-page .ai-reminder-entry-switch.on {
+  border-color: var(--profile-cyan);
+  background: var(--profile-cyan);
+}
+
+.profile-command-page .profile-command-list .setting-row.danger {
+  color: #ff6b79;
+  background: rgba(239, 16, 40, 0.06);
+}
+
+.profile-command-page .profile-logout-action {
+  min-height: 88rpx;
+  margin-top: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: rgba(239, 16, 40, 0.18);
+  border: 1rpx solid rgba(239, 16, 40, 0.60);
+  font-size: 27rpx;
+  font-weight: 950;
+  clip-path: polygon(3% 0, 100% 0, 97% 100%, 0 90%);
+}
+
+.profile-command-page .profile-logout-action:active {
+  opacity: 0.76;
+  transform: translateY(2rpx);
+}
+
 /* Final device override for the WeChat profile sync dialog. This block must stay last. */
 .wechat-profile-dialog .wechat-sync-panel {
   width: 100%;
