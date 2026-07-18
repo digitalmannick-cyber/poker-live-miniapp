@@ -58,6 +58,16 @@
     <view class="profile-hero-art"></view>
   </view>
 
+  <view wx:if="{{accountLoggedOut}}" class="profile-logged-out-utility">
+    <view class="profile-logged-out-utility-row" bindtap="openReleaseNotes">
+      <view class="profile-logged-out-utility-main">
+        <view class="profile-logged-out-utility-title">关于与版本更新</view>
+        <view class="profile-logged-out-utility-desc">当前版本 {{version}} · 查看更新内容</view>
+      </view>
+      <view class="profile-logged-out-utility-arrow">›</view>
+    </view>
+  </view>
+
   <view wx:if="{{wechatProfilePromptVisible}}" class="wechat-sync-card">
     <view class="wechat-sync-card-main">
       <view class="wechat-sync-card-title">同步微信头像和昵称</view>
@@ -216,8 +226,10 @@
             <view class="small muted">{{settings.aiReminders.enabled === false ? '关闭所有提醒' : '已开启，点击进入详细设置'}}</view>
           </view>
         </view>
-        <view class="ai-reminder-entry-switch {{settings.aiReminders.enabled === false ? '' : 'on'}}" catchtap="toggleAiReminderMasterSwitch">
-          <view class="ai-reminder-switch-dot"></view>
+        <view class="ai-reminder-entry-switch-hit" catchtap="toggleAiReminderMasterSwitch">
+          <view class="ai-reminder-entry-switch {{settings.aiReminders.enabled === false ? '' : 'on'}}">
+            <view class="ai-reminder-switch-dot"></view>
+          </view>
         </view>
       </view>
     </view>

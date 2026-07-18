@@ -49,3 +49,22 @@ test('AI reminder sheet keeps save action in the bottom footer, not in the heade
   assert.doesNotMatch(headMarkup, /bindtap="saveAiReminderSettings"/)
   assert.match(footerMarkup, /bindtap="saveAiReminderSettings"[\s\S]*>保存</)
 })
+
+test('AI reminder master switch uses a dedicated 88rpx hit wrapper', () => {
+  const rowTag = (wxml.match(/<view class="setting-row ai-reminder-entry"[^>]*>/) || [''])[0]
+  const hitTag = (wxml.match(/<view class="ai-reminder-entry-switch-hit"[^>]*>/) || [''])[0]
+  const switchTag = (wxml.match(/<view class="ai-reminder-entry-switch \{\{settings\.aiReminders\.enabled === false \? '' : 'on'\}\}"[^>]*>/) || [''])[0]
+  const hitBlock = cssBlock('.profile-command-page .ai-reminder-entry-switch-hit')
+  const switchBlock = cssBlock('.ai-reminder-entry-switch')
+
+  assert.match(rowTag, /catchtap="openAiReminderEditor"/)
+  assert.match(hitTag, /catchtap="toggleAiReminderMasterSwitch"/)
+  assert.doesNotMatch(switchTag, /catchtap=/)
+  assert.match(hitBlock, /min-width:\s*88rpx/)
+  assert.match(hitBlock, /min-height:\s*88rpx/)
+  assert.match(hitBlock, /display:\s*flex/)
+  assert.match(hitBlock, /align-items:\s*center/)
+  assert.match(hitBlock, /justify-content:\s*center/)
+  assert.match(switchBlock, /width:\s*86rpx/)
+  assert.match(switchBlock, /height:\s*46rpx/)
+})

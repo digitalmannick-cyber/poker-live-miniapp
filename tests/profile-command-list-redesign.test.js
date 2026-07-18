@@ -98,9 +98,19 @@ test('help owns feedback onboarding and the merged release entry', () => {
   assert.ok(onboarding < release, 'onboarding should precede release notes')
 })
 
-test('logged-out profile keeps only the top login hero and no empty command modules', () => {
+test('logged-out profile keeps one login hero and one release utility without logged-in commands', () => {
   assert.match(wxml, /<view wx:if="\{\{accountLoggedOut\}\}" class="profile-login-hero" bindtap="loginWithWechatAccount">/)
   assert.equal((wxml.match(/bindtap="loginWithWechatAccount"/g) || []).length, 1)
+  assert.equal((wxml.match(/wx:if="\{\{accountLoggedOut\}\}" class="profile-login-hero"/g) || []).length, 1)
+  assert.equal((wxml.match(/wx:if="\{\{accountLoggedOut\}\}" class="profile-logged-out-utility"/g) || []).length, 1)
+  assert.equal((wxml.match(/class="profile-logged-out-utility-row"/g) || []).length, 1)
+
+  const utilityMarkup = wxml.match(
+    /<view wx:if="\{\{accountLoggedOut\}\}" class="profile-logged-out-utility">[\s\S]*?<view class="profile-logged-out-utility-row" bindtap="openReleaseNotes">[\s\S]*?<view class="profile-logged-out-utility-title">关于与版本更新<\/view>[\s\S]*?<view class="profile-logged-out-utility-desc">当前版本 \{\{version\}\} · 查看更新内容<\/view>[\s\S]*?<\/view>[\s\S]*?<\/view>/
+  )
+
+  assert.ok(utilityMarkup, 'logged-out release utility should exist')
+  assert.doesNotMatch(utilityMarkup[0], /open-type="contact"|restartOnboardingGuide|selectChipUnit|importPbt|openAiReminderEditor|copyPlayerId|clearData|logoutAccount/)
   assert.doesNotMatch(wxml, /class="setting-row" bindtap="loginWithWechatAccount"/)
   assert.doesNotMatch(wxml, /<view class="section-label profile-command-label">/)
   assert.doesNotMatch(wxml, /<view class="profile-command-section(?: [^"]*)?">/)
@@ -152,4 +162,5 @@ test('command-list page exposes scoped P5 styling hooks', () => {
   assert.match(cssBlock('.profile-command-page .profile-logout-action'), /min-height:\s*88rpx/)
   assert.match(cssBlock('.profile-command-page .segment-item'), /min-height:\s*88rpx/)
   assert.match(cssBlock('.profile-command-page .profile-action.compact'), /min-height:\s*88rpx/)
+  assert.match(cssBlock('.profile-command-page .profile-logged-out-utility-row'), /min-height:\s*88rpx/)
 })
