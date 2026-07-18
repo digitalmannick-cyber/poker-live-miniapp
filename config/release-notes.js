@@ -1,5 +1,5 @@
 module.exports = {
-  version: '3.11',
+  version: '3.14',
   eyebrow: 'VERSION UPDATE',
   title: '智牌屋体验优化',
   summary: 'Session 记录、完整手牌录入与提醒体验进一步优化。',
