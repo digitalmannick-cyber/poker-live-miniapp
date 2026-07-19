@@ -138,6 +138,8 @@ git commit -m "feat: scaffold isolated social service"
 
 **Files:**
 - Create: `cloudfunctions/poker_social/lib/profile.js`
+- Modify: `cloudfunctions/poker_social/lib/repository.js`
+- Modify: `cloudfunctions/poker_social/index.js`
 - Modify: `cloudfunctions/poker_social/app.js`
 - Create: `services/social-service.js`
 - Test: `tests/social-profile.test.js`
@@ -194,7 +196,7 @@ Expected: PASS。
 - [ ] **Step 5: 提交资料能力**
 
 ```powershell
-git add cloudfunctions/poker_social/lib/profile.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-profile.test.js
+git add cloudfunctions/poker_social/lib/profile.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/index.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-profile.test.js
 git commit -m "feat: add private social identity profile"
 ```
 
