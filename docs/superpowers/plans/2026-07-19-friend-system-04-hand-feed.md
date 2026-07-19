@@ -69,11 +69,11 @@ const ACTIVE_SLOTS = {
 - Source construction may read only the approved hand/action/session/snapshot fields. Recursive output scans must reject at least `ownerOpenId/_openid/privatePlayerId/sessionId/sourceHandId/playerId/playerNoteId/playerName/linkedFriendUserId/avatarFileId/avatarUrl/venue/title/notes/note/mindJourney/leakTags/tags/battleHandIds/profit/currentProfit/resultBB/allInEv/allInEvProfit/allInEvAdjustedProfit/buyIn/cashOut/voiceNote/voiceExtract/aiReview/ledgerState/streetInputs/streetSummary`, both as keys and canary values.
 - Add public fixed messages for `BLIND_REQUIRED`、`INVALID_HAND_SNAPSHOT` and `HAND_ACTIONS_REQUIRED`; these codes must not collapse to `SOCIAL_ERROR`.
 
-- [ ] **Step 1: Write real-schema, BB, seat, cards, showdown and recursive-canary tests**
+- [x] **Step 1: Write real-schema, BB, seat, cards, showdown and recursive-canary tests**
 
 Cover 6/8/9 `ACTIVE_SLOTS`, legacy quick-record, every allowed BB field, strict blind parsing, invalid numbers, unknown actions, invalid seats, missing actions, card count/order/duplicates, multi-show and every prohibited key/value. Tests must use real persisted field names, not invented `players` arrays.
 
-- [ ] **Step 2: Run the Task 1 gate and confirm RED**
+- [x] **Step 2: Run the Task 1 gate and confirm RED**
 
 ```powershell
 node --test tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js
@@ -81,15 +81,15 @@ node --test tests/social-hand-snapshot.test.js tests/social-hand-snapshot-securi
 
 Expected: FAIL for missing `hand-snapshot` behavior, not fixture/import mistakes.
 
-- [ ] **Step 3: Implement exact whitelist DTO, BB conversion and deterministic seat mapping**
+- [x] **Step 3: Implement exact whitelist DTO, BB conversion and deterministic seat mapping**
 
 Implement the smallest pure builder that satisfies the approved contract. Do not add repository reads, client payload support, text parsing or result fields to the snapshot module.
 
-- [ ] **Step 4: Implement strict cards/actions/showdown validation and public typed errors**
+- [x] **Step 4: Implement strict cards/actions/showdown validation and public typed errors**
 
 Keep every invalid/ambiguous source path fail closed. Public messages are fixed and contain no hand ID, owner/player or raw exception content.
 
-- [ ] **Step 5: Run focused, social/hand regressions and static checks**
+- [x] **Step 5: Run focused, social/hand regressions and static checks**
 
 ```powershell
 node --test tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js
@@ -103,7 +103,7 @@ git diff --check <task-base>..<task-head>
 
 Expected: all commands exit `0`; any pre-existing baseline failure is listed explicitly.
 
-- [ ] **Step 6: Submit Task 1 for specification review, then code review, then commit**
+- [x] **Step 6: Submit Task 1 for specification review, then code review, then commit**
 
 ```powershell
 git add cloudfunctions/poker_social/lib/hand-snapshot.js cloudfunctions/poker_social/app.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js
