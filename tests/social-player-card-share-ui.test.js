@@ -131,6 +131,7 @@ test('submit blocks invalid/double actions, reuses a failed mutation id, and res
   const loaded = loadDetailPage({ shareCalls: [firstSubmit.promise, secondSubmit.promise] })
   try {
     const instance = readyLibraryInstance(loaded.definition)
+    const timer = installFakeCardShareTimer(instance)
     await instance.openPlayerCardShare()
     await instance.confirmSharePlayerCard()
     assert.match(loaded.calls.toasts[0].title, /请选择一位好友/)
@@ -153,10 +154,48 @@ test('submit blocks invalid/double actions, reuses a failed mutation id, and res
     secondSubmit.resolve({ shareId: 'pcs_1' })
     await retry
     assert.equal(instance._patches.some(patch => patch.cardShareStatus === 'success'), true, 'success should have a visible state before closing')
+    assert.equal(instance.data.cardShareVisible, true)
+    assert.equal(instance.data.cardShareStatus, 'success')
+    assert.equal(timer.pendingIds().length, 1)
+    timer.fire(timer.pendingIds()[0])
     assert.equal(instance.data.cardShareVisible, false)
     assert.equal(instance.data.selectedCardFriendId, '')
     assert.equal(instance.data.cardShareMutationId, '')
     assert.equal(loaded.calls.toasts.at(-1).title, '名片已分享')
+  } finally { loaded.restore() }
+})
+
+test('a cleared success timer cannot write after unload or close a later reopened sheet', async () => {
+  const loaded = loadDetailPage({ pages: [
+    { items: [friend('su_a', '甲')], nextOffset: null },
+    { items: [friend('su_b', '乙')], nextOffset: null },
+    { items: [friend('su_c', '丙')], nextOffset: null }
+  ] })
+  try {
+    const instance = readyLibraryInstance(loaded.definition)
+    const timer = installFakeCardShareTimer(instance)
+    await instance.openPlayerCardShare()
+    instance.selectCardFriend({ currentTarget: { dataset: { id: 'su_a' } } })
+    await instance.confirmSharePlayerCard()
+    const oldTimerId = timer.pendingIds()[0]
+    assert.ok(oldTimerId)
+
+    instance.closePlayerCardShare()
+    assert.equal(instance.data.cardShareVisible, false)
+    await instance.openPlayerCardShare()
+    assert.equal(instance.data.cardShareStatus, 'ready')
+    assert.deepEqual(instance.data.cardFriends.map(item => item.socialUserId), ['su_b'])
+    timer.fireEvenIfCleared(oldTimerId)
+    assert.equal(instance.data.cardShareVisible, true)
+    assert.equal(instance.data.cardShareStatus, 'ready')
+
+    instance.selectCardFriend({ currentTarget: { dataset: { id: 'su_b' } } })
+    await instance.confirmSharePlayerCard()
+    const unloadTimerId = timer.pendingIds()[0]
+    instance.onUnload()
+    const patchCount = instance._patches.length
+    timer.fireEvenIfCleared(unloadTimerId)
+    assert.equal(instance._patches.length, patchCount)
   } finally { loaded.restore() }
 })
 
@@ -239,7 +278,7 @@ function createInstance(definition) {
   const instance = {
     data: JSON.parse(JSON.stringify(definition.data)),
     _patches: [],
-    setData(patch) {
+    setData(patch, callback) {
       this._patches.push(patch)
       Object.keys(patch).forEach(key => {
         const segments = key.split('.')
@@ -251,6 +290,7 @@ function createInstance(definition) {
         }
         target[segments[0]] = patch[key]
       })
+      if (typeof callback === 'function') callback()
     }
   }
   Object.assign(instance, definition)
@@ -289,4 +329,29 @@ function deferred() {
   let reject
   const promise = new Promise((nextResolve, nextReject) => { resolve = nextResolve; reject = nextReject })
   return { promise, resolve, reject }
+}
+
+function installFakeCardShareTimer(instance) {
+  let nextId = 0
+  const pending = new Map()
+  const history = new Map()
+  instance.setCardShareTimer = callback => {
+    nextId += 1
+    pending.set(nextId, callback)
+    history.set(nextId, callback)
+    return nextId
+  }
+  instance.clearCardShareTimer = timerId => pending.delete(timerId)
+  return {
+    pendingIds() { return Array.from(pending.keys()) },
+    fire(timerId) {
+      const callback = pending.get(timerId)
+      pending.delete(timerId)
+      if (callback) callback()
+    },
+    fireEvenIfCleared(timerId) {
+      const callback = history.get(timerId)
+      if (callback) callback()
+    }
+  }
 }

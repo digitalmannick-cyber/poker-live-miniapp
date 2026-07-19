@@ -8,6 +8,7 @@ const socialMutation = require('../../utils/social-mutation')
 
 const AVATAR_UPLOAD_MAX_BYTES = 2 * 1024 * 1024
 const AVATAR_COMPRESS_QUALITIES = [82, 68, 54, 42]
+const CARD_SHARE_SUCCESS_VISIBLE_MS = 600
 
 function buildTypeOptions(settings, selectedType) {
   return (settings && settings.opponentTypes || []).map(type => ({
@@ -391,9 +392,24 @@ Page({
   },
 
   invalidateCardShareRequests() {
+    this.cancelCardShareSuccessTimer()
     this._cardFriendRequestSequence = (Number(this._cardFriendRequestSequence) || 0) + 1
     this._cardShareSubmitSequence = (Number(this._cardShareSubmitSequence) || 0) + 1
     this._cardShareSubmitPromise = null
+  },
+
+  setCardShareTimer(callback) {
+    return setTimeout(callback, CARD_SHARE_SUCCESS_VISIBLE_MS)
+  },
+
+  clearCardShareTimer(timerId) {
+    clearTimeout(timerId)
+  },
+
+  cancelCardShareSuccessTimer() {
+    if (this._cardShareSuccessTimer === null || this._cardShareSuccessTimer === undefined) return
+    this.clearCardShareTimer(this._cardShareSuccessTimer)
+    this._cardShareSuccessTimer = null
   },
 
   isCardFriendRequestCurrent(sequence) {
@@ -749,6 +765,7 @@ Page({
   async openPlayerCardShare() {
     const note = this.data.note
     if (this.data.mode !== 'view' || this.data.editMode || this.data.detailState !== 'ready' || !this.data.id || !note || note.sourceKind === 'friend') return
+    this.cancelCardShareSuccessTimer()
     const requestSequence = this.nextCardFriendRequest()
     this.nextCardShareSubmit()
     this._cardShareMutationUsed = false
@@ -884,21 +901,29 @@ Page({
     }).then(result => {
       if (!this.isCardShareSubmitCurrent(submitSequence)) return result
       this._cardShareMutationUsed = false
-      this.setData({ cardShareStatus: 'success', cardShareError: '' })
-      wx.showToast({ title: '名片已分享', icon: 'success' })
-      this.setData({
-        cardShareVisible: false,
-        cardShareStatus: 'idle',
-        cardSharePreview: null,
-        cardFriends: [],
-        selectedCardFriendId: '',
-        nextCardFriendOffset: null,
-        cardFriendLoadingMore: false,
-        cardFriendLoadMoreError: '',
-        cardShareError: '',
-        cardShareNeedsFriendRefresh: false,
-        cardShareMutationId: ''
+      this.setData({ cardShareStatus: 'success', cardShareError: '' }, () => {
+        if (!this.isCardShareSubmitCurrent(submitSequence)) return
+        this.cancelCardShareSuccessTimer()
+        this._cardShareSuccessTimer = this.setCardShareTimer(() => {
+          this._cardShareSuccessTimer = null
+          if (!this.isCardShareSubmitCurrent(submitSequence) || this.data.cardShareStatus !== 'success') return
+          this.invalidateCardShareRequests()
+          this.setData({
+            cardShareVisible: false,
+            cardShareStatus: 'idle',
+            cardSharePreview: null,
+            cardFriends: [],
+            selectedCardFriendId: '',
+            nextCardFriendOffset: null,
+            cardFriendLoadingMore: false,
+            cardFriendLoadMoreError: '',
+            cardShareError: '',
+            cardShareNeedsFriendRefresh: false,
+            cardShareMutationId: ''
+          })
+        })
       })
+      wx.showToast({ title: '名片已分享', icon: 'success' })
       return result
     }).catch(error => {
       if (!this.isCardShareSubmitCurrent(submitSequence)) return
