@@ -3203,7 +3203,8 @@
   content: '';
   position: absolute;
   left: 22rpx;
-  top: 36rpx;
+  top: 50%;
+  transform: translateY(-50%);
   width: 10rpx;
   height: 10rpx;
   border-radius: 50%;
