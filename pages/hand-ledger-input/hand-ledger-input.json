@@ -1,5 +1,8 @@
 {
   "navigationBarTitleText": "手牌录入",
   "navigationBarBackgroundColor": "#08090d",
-  "navigationBarTextStyle": "white"
+  "navigationBarTextStyle": "white",
+  "usingComponents": {
+    "numeric-amount-sheet": "../../components/numeric-amount-sheet/index"
+  }
 }

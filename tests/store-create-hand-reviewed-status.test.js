@@ -32,6 +32,7 @@ const session = {
   smallBlind: 200,
   bigBlind: 400,
   tableSize: 8,
+  hasStraddle: true,
   buyIn: 40000,
   status: 'active',
   createdAt: 1000,
@@ -48,6 +49,8 @@ const hand = store.createHand({
   sessionId: session._id,
   playedDate: '2026-07-04',
   stakeLevel: '200/400',
+  playerCount: 6,
+  hasStraddle: false,
   heroCardsInput: 'AhQh',
   currentProfit: 3000,
   potSize: 10000,
@@ -69,4 +72,6 @@ assert.equal(saved.reviewStatus, 'reviewed')
 assert.equal(saved.detailBackfilled, true)
 assert.equal(saved.inputMode, 'ledger_full')
 assert.equal(saved.reviewSource, 'ledger_full')
+assert.equal(saved.playerCount, 6)
+assert.equal(saved.hasStraddle, false)
 assert.deepEqual(saved.ledgerState.actions[0], { street: 'Pre', position: 'BTN', action: 'Raise', amount: 1200 })

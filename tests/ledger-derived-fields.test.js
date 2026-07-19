@@ -112,6 +112,72 @@ test('can derive list-safe all-in fields without running equity EV', () => {
   assert.equal(result.allInEvStatus || '', '')
 })
 
+test('does not derive Hero All-in EV when only a short-stack opponent is all-in', () => {
+  const hand = {
+    _id: 'hand_1783854108389_6677',
+    heroPosition: 'MP',
+    heroCardsInput: 'AsKh',
+    opponentCards: 'AdKc',
+    currentProfit: -62000,
+    potSize: 280100,
+    allInEv: 83134.03,
+    allInEvProfit: 83134.03,
+    heroEquityPct: 50.03,
+    terminalStreet: 'preflop',
+    handEndedStreet: 'preflop',
+    postAllInRunoutOnly: true,
+    analysisFocus: 'preflop_all_in',
+    ledgerState: {
+      heroSlot: 'MP',
+      heroCardsInput: 'AsKh',
+      villainCards: 'AdKc',
+      board: { flop: 'QhJd4c', turn: '9c', river: '8s' },
+      players: {
+        MP: { initialStack: 100000, cards: 'AsKh' },
+        BTN: { initialStack: 57000, cards: 'AdKc' },
+        SB: { initialStack: 700000 },
+        CO: { initialStack: 200000, cards: 'QdTd' }
+      },
+      actions: [
+        { street: 'Pre', pos: 'MP', action: 'Raise', amount: 5000 },
+        { street: 'Pre', pos: 'BTN', action: 'All-in', amount: 57000 },
+        { street: 'Pre', pos: 'SB', action: 'Call', amount: 56700 },
+        { street: 'Pre', pos: 'MP', action: 'Call', amount: 52000 },
+        { street: 'Pre', pos: 'CO', action: 'Call', amount: 52000 },
+        { street: 'Flop', action: 'Start' },
+        { street: 'Flop', pos: 'SB', action: 'Check' },
+        { street: 'Flop', pos: 'MP', action: 'Check' },
+        { street: 'Flop', pos: 'CO', action: 'Check' },
+        { street: 'Turn', action: 'Start' },
+        { street: 'Turn', pos: 'SB', action: 'Bet', amount: 5000 },
+        { street: 'Turn', pos: 'MP', action: 'Call', amount: 5000 },
+        { street: 'Turn', pos: 'CO', action: 'Call', amount: 5000 },
+        { street: 'River', action: 'Start' },
+        { street: 'River', pos: 'SB', action: 'Check' },
+        { street: 'River', pos: 'MP', action: 'Check' },
+        { street: 'River', pos: 'CO', action: 'Bet', amount: 40000 },
+        { street: 'River', pos: 'SB', action: 'Fold' },
+        { street: 'River', pos: 'MP', action: 'Fold' },
+        { street: 'River', pos: 'BTN', action: 'Show' }
+      ]
+    }
+  }
+
+  const result = ledgerDerived.deriveLedgerHandFields(hand)
+
+  assert.equal(result.isAllIn, false, 'a non-terminal short-stack all-in must not mark Hero as all-in')
+  assert.equal(result.allInStreet, '')
+  assert.equal(result.allInEvEligible, false)
+  assert.equal(result.allInEvStatus, 'all_in_not_terminal')
+  assert.equal(result.allInEv, '')
+  assert.equal(result.allInEvProfit, '')
+  assert.equal(result.heroEquityPct, '')
+  assert.equal(result.terminalStreet, 'river')
+  assert.equal(result.handEndedStreet, 'river')
+  assert.equal(result.postAllInRunoutOnly, false)
+  assert.equal(result.analysisFocus, '')
+})
+
 test('preflop all-in equity sampling stays fast and near AA versus QQ equity', () => {
   const heroCards = [
     { rank: 'A', suit: 'h' },

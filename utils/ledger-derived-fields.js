@@ -213,6 +213,36 @@ function detectAllInStreet(actions) {
   return street && street !== 'river' ? street : ''
 }
 
+function latestActionStreet(actions) {
+  const found = (actions || []).slice().reverse().find(item => {
+    const street = normalizeStreet(item && item.street)
+    return street === 'preflop' || street === 'flop' || street === 'turn' || street === 'river'
+  })
+  return found ? normalizeStreet(found.street) : ''
+}
+
+function allInEvEligibility(actions, allInStreet, heroSlot) {
+  const streetOrder = { preflop: 0, flop: 1, turn: 2, river: 3 }
+  const source = actions || []
+  const allInIndex = source.findIndex(item => item && item.action === 'All-in')
+  if (allInIndex < 0 || streetOrder[allInStreet] == null) {
+    return { eligible: false, status: 'not_all_in' }
+  }
+  const laterStrategicAction = source.some(item => {
+    if (!item) return false
+    const street = normalizeStreet(item.street)
+    const action = String(item.action || '')
+    return streetOrder[street] > streetOrder[allInStreet] &&
+      action !== 'Start' && action !== 'Show' && action !== 'Muck'
+  })
+  if (laterStrategicAction) return { eligible: false, status: 'all_in_not_terminal' }
+  const heroCommitted = source.slice(allInIndex).some(item => item && item.pos === heroSlot &&
+    (item.action === 'All-in' || item.action === 'Call'))
+  return heroCommitted
+    ? { eligible: true, status: '' }
+    : { eligible: false, status: 'hero_not_all_in' }
+}
+
 function primaryVillainSlot(actions, contributions, heroSlot, players) {
   const allInAction = (actions || []).slice().reverse()
     .find(item => item && item.action === 'All-in' && item.pos && item.pos !== heroSlot)
@@ -294,6 +324,34 @@ function deriveLedgerHandFields(handInput, options) {
   if (!ledgerState || !Array.isArray(ledgerState.actions)) return {}
   const allInStreet = detectAllInStreet(ledgerState.actions)
   if (!allInStreet) return {}
+  const heroSlot = ledgerState.heroSlot || hand.heroPosition || ''
+  const eligibility = allInEvEligibility(ledgerState.actions, allInStreet, heroSlot)
+  if (!eligibility.eligible) {
+    const terminalStreet = latestActionStreet(ledgerState.actions) || normalizeStreet(hand.terminalStreet || hand.handEndedStreet)
+    return {
+      isAllIn: false,
+      allInStreet: '',
+      allInActionStreet: allInStreet,
+      terminalStreet,
+      handEndedStreet: terminalStreet,
+      postAllInRunoutOnly: false,
+      analysisFocus: '',
+      allInEvEligible: false,
+      allInEvStatus: eligibility.status,
+      allInEvSource: '',
+      allInPot: '',
+      heroInvested: '',
+      effectiveAllInPot: '',
+      effectiveAllInStack: '',
+      rawAllInPot: '',
+      rawHeroInvested: '',
+      heroEquityPct: '',
+      allInEv: '',
+      allInEvProfit: '',
+      allInEvAdjustedProfit: '',
+      allInEvLuckDelta: ''
+    }
+  }
   const accounting = cappedAllInAccounting(hand, ledgerState, allInStreet)
   if (!accounting) return {}
   const derived = {

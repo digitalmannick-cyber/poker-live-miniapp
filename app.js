@@ -1,6 +1,5 @@
 require('./utils/polyfills').installPolyfills()
 
-const store = require('./utils/store')
 const LAUNCH_TRACE_KEY = 'pokerLiveLaunchTrace'
 
 function appendLaunchTrace(step, detail) {
@@ -20,35 +19,8 @@ function appendLaunchTrace(step, detail) {
 
 App({
   onLaunch() {
-    appendLaunchTrace('app:onLaunch:start', '')
-    try {
-      store.initStore()
-      appendLaunchTrace('app:onLaunch:store-ready', '')
-      try {
-        const dataService = require('./services/data-service')
-        dataService.bootstrapCloudSync(false, { waitForCloud: false }).catch(syncError => {
-          appendLaunchTrace('app:onLaunch:cloud-sync-failed', syncError && (syncError.message || syncError.errMsg) || String(syncError))
-        })
-        appendLaunchTrace('app:onLaunch:cloud-sync-started', '')
-      } catch (syncStartError) {
-        appendLaunchTrace('app:onLaunch:cloud-sync-start-failed', syncStartError && (syncStartError.message || syncStartError.errMsg) || String(syncStartError))
-      }
-    } catch (error) {
-      const message = error && (error.stack || error.message || error.errMsg) || String(error)
-      appendLaunchTrace('app:onLaunch:store-failed', message)
-      console.warn('store init failed, resetting local store: ' + message)
-      try {
-        wx.removeStorageSync('pokerLiveMiniappStore')
-        if (store.__test && typeof store.__test.resetCachedStoreForTest === 'function') {
-          store.__test.resetCachedStoreForTest()
-        }
-        store.initStore()
-        appendLaunchTrace('app:onLaunch:store-reset-ready', '')
-      } catch (resetError) {
-        appendLaunchTrace('app:onLaunch:store-reset-failed', resetError && (resetError.stack || resetError.message || resetError.errMsg) || String(resetError))
-        console.warn('store reset failed: ' + (resetError && (resetError.stack || resetError.message || resetError.errMsg) || resetError))
-      }
-    }
+    // Let WeChat render the first page before any local-data or cloud work.
+    setTimeout(() => appendLaunchTrace('app:onLaunch:ready', ''), 0)
   },
   onError(error) {
     const message = error && (error.stack || error.message || error.errMsg) || String(error)

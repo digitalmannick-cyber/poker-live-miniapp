@@ -1,4 +1,5 @@
 {
+  "lazyCodeLoading": "requiredComponents",
   "pages": [
     "pages/session-list/session-list",
     "pages/hand-record/hand-record",

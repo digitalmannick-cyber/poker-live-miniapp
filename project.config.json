@@ -75,6 +75,18 @@
         "type": "file"
       },
       {
+        "value": "assets/session-icons/p5-ai-reminder-v251.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/branding/miniapp-avatar",
+        "type": "prefix"
+      },
+      {
+        "value": "assets/p5-knight-bg.svg",
+        "type": "file"
+      },
+      {
         "value": "CLOUD_SETUP",
         "type": "prefix"
       },
@@ -124,6 +136,14 @@
       },
       {
         "value": ".git",
+        "type": "folder"
+      },
+      {
+        "value": ".env.local",
+        "type": "file"
+      },
+      {
+        "value": ".pytest_cache",
         "type": "folder"
       },
       {

@@ -146,6 +146,28 @@ function streetActions(actions, street) {
   })
 }
 
+function normalizedActionKey(action) {
+  if (!action) return ''
+  return [
+    normalizeStreet(action.street),
+    actionPosition(action),
+    actionType(action),
+    numberValue(action.amount)
+  ].join('::')
+}
+
+function dedupeActions(actions) {
+  const result = []
+  const seen = new Set()
+  ;(Array.isArray(actions) ? actions : []).forEach(function (action) {
+    const key = normalizedActionKey(action)
+    if (key && seen.has(key)) return
+    result.push(action)
+    if (key) seen.add(key)
+  })
+  return result
+}
+
 function isBlindAction(action) {
   const type = actionType(action)
   return action && (type === 'Post' || type === 'Str')
@@ -231,9 +253,10 @@ function buildPokerStarsExport(handInput, options) {
   const hand = handInput || {}
   const config = options || {}
   const session = config.session || {}
-  const actions = Array.isArray(config.actions) && config.actions.length
+  const rawActions = Array.isArray(config.actions) && config.actions.length
     ? config.actions
     : Array.isArray(hand.actions) ? hand.actions : []
+  const actions = dedupeActions(rawActions)
   const level = parseLevel(hand.stakeLevel || session.stakeLevel || session.blindLevel, session)
   const seats = buildSeats(hand, session)
   const buttonSeat = (seats.find(item => item.isButton) || seats[1] || seats[0]).seat

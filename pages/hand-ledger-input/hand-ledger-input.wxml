@@ -42,37 +42,43 @@
       <view class="street">{{phaseText}}</view>
     </view>
 
-    <view wx:if="{{phase === 'play' && !saved}}" class="turn-flow" style="{{turnFlowStyle}}"></view>
 
     <block wx:for="{{seats}}" wx:key="slot">
       <view
-        class="seat seat-{{item.slot}} {{item.active ? '' : 'inactive'}} {{item.hero ? 'hero' : ''}} {{item.dealer ? 'dealer-seat' : ''}} {{item.current ? 'current' : ''}} {{item.folded ? 'folded' : ''}} {{item.allIn ? 'allin' : ''}} {{item.animating ? 'seat-animating' : ''}}"
+        class="seat-unit seat-unit-{{item.sizeClass}} seat-edge-{{item.edgeClass}} seat-{{item.slot}} {{item.active ? '' : 'inactive'}} {{item.hero ? 'hero' : ''}} {{item.dealer ? 'dealer-seat' : ''}} {{item.current ? 'current' : ''}} {{item.folded ? 'folded' : ''}} {{item.allIn ? 'allin' : ''}} {{item.animating ? 'seat-animating' : ''}}"
         style="{{item.seatStyle}}"
         data-slot="{{item.slot}}"
         bindtap="tapSeat"
         bindlongpress="longPressSeat"
       >
-        <view class="seat-name">{{item.label}}</view>
-        <view class="seat-stack">{{item.stackText}}</view>
-        <view wx:if="{{item.dealer}}" class="dealer">D</view>
-        <view wx:if="{{item.hero}}" class="hero-badge">HERO</view>
-        <view wx:if="{{item.playerName}}" class="player-tag">{{item.playerName}}</view>
-      </view>
-      <view wx:if="{{item.cardsVisual.length && !item.hero}}" class="seat-cards seat-cards-{{item.cardPlacement}}" style="{{item.cardsStyle}}">
-        <view wx:for="{{item.cardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
-          <text class="mini-card-rank">{{card.rank}}</text>
-          <text class="mini-card-suit">{{card.suitSymbol}}</text>
+        <view class="seat-body">
+          <view wx:if="{{item.hero && item.hasCards}}" class="seat-cards-inline" catchtap="openHeroPicker">
+            <view wx:for="{{item.cardsVisual}}" wx:for-item="card" wx:key="index" class="seat-card mini-card-{{card.suitClass}}">
+              <text class="seat-card-rank">{{card.rank}}</text>
+              <text class="seat-card-suit">{{card.suitSymbol}}</text>
+            </view>
+          </view>
+          <view wx:elif="{{item.hasCards}}" class="seat-cards-inline">
+            <view wx:for="{{item.cardsVisual}}" wx:for-item="card" wx:key="index" class="seat-card mini-card-{{card.suitClass}}">
+              <text class="seat-card-rank">{{card.rank}}</text>
+              <text class="seat-card-suit">{{card.suitSymbol}}</text>
+            </view>
+          </view>
+          <view wx:elif="{{item.hasPlayerAvatar}}" class="seat-avatar-wrap">
+            <image class="seat-avatar-img" src="{{item.playerAvatarDisplayUrl || item.playerAvatarUrl}}" mode="aspectFill"></image>
+          </view>
+          <view class="seat-position {{item.hasCards ? 'with-cards' : ''}} {{item.hasPlayerAvatar && !item.hasCards ? 'avatar-badge' : ''}}">{{item.label}}</view>
+          <view wx:if="{{item.dealer}}" class="dealer">D</view>
         </view>
+        <view class="seat-meta">
+          <text wx:if="{{item.playerName}}" class="seat-player-name">{{item.playerName}}</text>
+          <text class="seat-stack">{{item.stackText}}</text>
+        </view>
+        <view wx:if="{{item.hero}}" class="hero-badge">HERO</view>
+        <view wx:if="{{item.allIn}}" class="allin-badge">ALL-IN</view>
       </view>
-      <view wx:if="{{item.paidText}}" class="bet {{item.betLand ? 'land' : ''}}" style="{{item.betStyle}}">{{item.paidText}}</view>
+      <view wx:if="{{item.paidText}}" class="bet bet-placement-{{item.betPlacement}} {{item.betCompact ? 'compact' : ''}} {{item.betLand ? 'land' : ''}}" style="{{item.betStyle}}">{{item.paidText}}</view>
     </block>
-
-    <view class="hero-cards hero-cards-{{heroCardPlacement}}" style="{{heroCardsStyle}}" bindtap="openHeroPicker">
-      <view wx:for="{{heroCardsVisual}}" wx:key="index" class="mini-card mini-card-{{item.suitClass}}">
-        <text class="mini-card-rank">{{item.rank}}</text>
-        <text class="mini-card-suit">{{item.suitSymbol}}</text>
-      </view>
-    </view>
 
     <view wx:for="{{chipFlights}}" wx:key="key" class="chip-flight" style="{{item.style}}">
       <view wx:for="{{item.chips}}" wx:for-item="chip" wx:key="index" class="chip c{{chip}}"></view>
@@ -87,9 +93,9 @@
   </view>
 
   <view class="timeline-zone">
-    <scroll-view scroll-x="true" enhanced="true" show-scrollbar="{{false}}" class="trail" scroll-left="{{trailScrollLeft}}" scroll-with-animation="true">
+    <scroll-view scroll-x="true" enhanced="true" show-scrollbar="{{false}}" class="trail" scroll-into-view="{{trailIntoView}}" scroll-with-animation="true">
       <view class="trail-inner">
-        <view wx:for="{{trail}}" wx:key="index" class="trail-card trail-{{item.tone}} {{item.active ? 'active' : ''}}" data-index="{{index}}" bindtap="jumpToAction">
+        <view wx:for="{{trail}}" wx:key="index" id="trail-node-{{index}}" class="trail-card trail-{{item.tone}} {{item.active ? 'active' : ''}}" data-index="{{index}}" bindtap="jumpToAction">
           <view class="trail-main">{{item.main}}</view>
           <view class="trail-sub">{{item.sub}}</view>
         </view>
@@ -133,8 +139,11 @@
   <view wx:if="{{phase === 'play'}}" class="play-dock">
     <view class="prompt">
       <view class="undo-text-btn node-nav-btn" bindtap="undo">←上一节点</view>
-      <view class="prompt-text">{{saved ? '已保存 手牌已结束' : activeLabel + ' 行动中'}}</view>
-      <view class="next-street node-nav-btn" bindtap="manualNextStreet">下一节点→</view>
+      <view class="prompt-text {{saved ? 'saved' : 'live'}}">
+        <view wx:if="{{!saved}}" class="prompt-live-dot"></view>
+        <text>{{saved ? '已保存 手牌已结束' : activeLabel + ' 行动中'}}</text>
+      </view>
+      <view class="next-street node-nav-btn" bindtap="goToNextNode">下一节点→</view>
     </view>
     <view class="action-grid">
       <view wx:for="{{actionOptions}}" wx:key="action" class="action-card action-{{item.tone}}" data-action="{{item.action}}" bindtap="tapAction">
@@ -150,28 +159,19 @@
     </view>
   </view>
 
-  <view wx:if="{{stackSheetVisible}}" class="sheet-layer">
-    <view class="sheet-mask" bindtap="closeStackSheet"></view>
-    <view class="stack-sheet">
-      <view class="sheet-handle"></view>
-      <view class="sheet-title">设置 {{seatMenuLabel}} 有效筹码</view>
-      <view class="stack-actions">
-        <view class="danger" bindtap="unsetStack">清空筹码</view>
-        <view bindtap="setAllStacks">其他人设置同样筹码</view>
-      </view>
-      <view class="stack-input-row stack-input-row-single">
-        <label>
-          <text>有效筹码</text>
-          <input type="number" value="{{stackEffectiveInput}}" data-key="stackEffectiveInput" bindinput="onStackInput" />
-        </label>
-      </view>
-      <slider min="0" max="100000" value="{{stackEffectiveInput}}" block-size="20" activeColor="#ffffff" bindchange="onStackSlider" />
-      <view class="sheet-actions">
-        <view bindtap="closeStackSheet">取消</view>
-        <view class="primary" bindtap="saveStackSheet">保存</view>
-      </view>
-    </view>
-  </view>
+  <numeric-amount-sheet
+    visible="{{stackSheetVisible}}"
+    title="设置 {{seatMenuLabel}} 有效筹码"
+    value="{{stackEffectiveInput}}"
+    unit="{{chipUnit}}"
+    presets="{{stackPresets}}"
+    max="{{stackMax}}"
+    accent="#ffffff"
+    secondary-label="其他玩家设置同样筹码"
+    bind:close="closeStackSheet"
+    bind:confirm="confirmStackAmount"
+    bind:secondary="syncStackAmount"
+  />
 
   <view wx:if="{{playerSheetVisible}}" class="sheet-layer">
     <view class="sheet-mask" bindtap="closePlayerSheet"></view>
@@ -184,18 +184,23 @@
         </view>
         <input class="player-library-search" value="{{playerLibraryQuery}}" bindinput="onPlayerLibrarySearchInput" placeholder="搜索玩家姓名" />
         <view wx:if="{{playerLibraryLoading}}" class="player-library-empty">加载玩家库...</view>
-        <scroll-view wx:elif="{{playerLibraryOptions.length}}" scroll-x="true" class="player-library-scroll">
-          <view class="player-library-row">
-            <view
-              wx:for="{{playerLibraryOptions}}"
-              wx:key="_id"
-              class="player-library-chip {{item.active ? 'active' : ''}}"
-              data-id="{{item._id}}"
-              bindtap="selectPlayerLibraryNote"
-            >
+        <scroll-view wx:elif="{{playerLibraryOptions.length}}" scroll-y="true" enhanced="true" show-scrollbar="{{false}}" class="player-library-scroll">
+          <view
+            wx:for="{{playerLibraryOptions}}"
+            wx:key="_id"
+            class="player-library-item {{item.active ? 'active' : ''}}"
+            data-id="{{item._id}}"
+            bindtap="selectPlayerLibraryNote"
+          >
+            <view class="player-library-avatar">
+              <image wx:if="{{item.avatarDisplayUrl || item.avatarUrl}}" class="player-library-avatar-img" src="{{item.avatarDisplayUrl || item.avatarUrl}}" mode="aspectFill"></image>
+              <text wx:else class="player-library-avatar-text">{{item.avatarText}}</text>
+            </view>
+            <view class="player-library-content">
               <view class="player-library-name">{{item.name}}</view>
               <view class="player-library-meta">{{item.type || '未分类'}}</view>
             </view>
+            <view wx:if="{{item.active}}" class="player-library-selected">✓</view>
           </view>
         </scroll-view>
         <view wx:elif="{{playerLibraryQuery}}" class="player-library-empty">没有匹配玩家，可填写下方信息后保存新增</view>
@@ -217,45 +222,23 @@
     </view>
   </view>
 
-  <view wx:if="{{amountSheetVisible}}" class="sheet-layer">
-    <view class="sheet-mask" bindtap="closeAmountSheet"></view>
-    <view class="amount-sheet">
-      <view class="sheet-handle"></view>
-      <view class="sheet-head">
-        <view class="small-btn" bindtap="closeAmountSheet">↶</view>
-        <view class="sheet-title">{{amountActionLabel}}</view>
-      </view>
-      <view class="preset-row">
-        <view wx:for="{{amountPresets}}" wx:key="label" class="preset {{item.custom ? 'custom' : ''}}" data-value="{{item.value}}" data-custom="{{item.custom ? 1 : ''}}" bindtap="pickAmountPreset">{{item.label}}</view>
-      </view>
-      <view class="amount-row">
-        <view class="amount-input amount-input-display {{amountInput ? '' : 'placeholder'}}">{{amountInput || '自定义金额'}}</view>
-        <view class="amount-unit">{{chipUnit}}</view>
-      </view>
-      <view class="amount-keypad">
-        <view class="amount-key" data-digit="1" bindtap="appendAmountDigit">1</view>
-        <view class="amount-key" data-digit="2" bindtap="appendAmountDigit">2</view>
-        <view class="amount-key" data-digit="3" bindtap="appendAmountDigit">3</view>
-        <view class="amount-key" data-digit="4" bindtap="appendAmountDigit">4</view>
-        <view class="amount-key" data-digit="5" bindtap="appendAmountDigit">5</view>
-        <view class="amount-key" data-digit="6" bindtap="appendAmountDigit">6</view>
-        <view class="amount-key" data-digit="7" bindtap="appendAmountDigit">7</view>
-        <view class="amount-key" data-digit="8" bindtap="appendAmountDigit">8</view>
-        <view class="amount-key" data-digit="9" bindtap="appendAmountDigit">9</view>
-        <view class="amount-key amount-key-tool" data-action="clear" bindtap="handleAmountKeyTool">清空</view>
-        <view class="amount-key" data-digit="0" bindtap="appendAmountDigit">0</view>
-        <view class="amount-key amount-key-tool" data-action="backspace" bindtap="handleAmountKeyTool">退格</view>
-      </view>
-      <slider min="0" max="{{maxStack}}" value="{{amountInput}}" block-size="20" activeColor="#ffd429" bindchange="onAmountSlider" />
-      <view class="submit" bindtap="submitAmount">保存</view>
-    </view>
-  </view>
+  <numeric-amount-sheet
+    visible="{{amountSheetVisible}}"
+    title="{{amountActionLabel}}"
+    value="{{amountInput}}"
+    unit="{{chipUnit}}"
+    presets="{{amountPresets}}"
+    max="{{maxStack}}"
+    accent="#ffd429"
+    bind:close="closeAmountSheet"
+    bind:confirm="confirmActionAmount"
+  />
 
   <view wx:if="{{cardPickerVisible}}" class="sheet-layer">
     <view class="sheet-mask" bindtap="closeCardPicker"></view>
     <view class="card-sheet">
       <view class="sheet-head">
-        <view class="small-btn" bindtap="closeCardPicker">↶</view>
+        <view class="small-btn" bindtap="closeCardPicker">←</view>
         <view class="sheet-title">{{cardPickerTitle}}</view>
       </view>
       <view class="picked-row">

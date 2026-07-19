@@ -11,6 +11,7 @@ const cardUi = require('./card-ui')
 const actionLine = require('./action-line')
 const handEntryType = require('./hand-entry-type')
 let cachedStore = null
+let splitHydrationState = Object.create(null)
 const QUICK_DUPLICATE_WINDOW_MS = 10000
 const AI_REMINDER_PENDING_VISIBLE_WINDOW_MS = 10 * 60 * 1000
 
@@ -23,6 +24,8 @@ function normalizeAllInStreet(value) {
 
 function isPreRiverAllIn(source) {
   const hand = source || {}
+  const status = String(hand.allInEvStatus || '').trim().toLowerCase()
+  if (status === 'all_in_not_terminal' || status === 'hero_not_all_in' || status === 'not_all_in') return false
   const street = normalizeAllInStreet(hand.allInStreet || hand.allInRound || hand.allInStage || hand.allInEvStreet)
   if (street === 'river') return false
   return !!hand.isAllIn || !!hand.allInEvEligible || !!street
@@ -200,12 +203,30 @@ function readSplitCollection(collectionKey) {
   return items
 }
 
-function hydrateSplitCollections(data) {
+function hydrateSplitCollection(data, key) {
+  if (!data || splitHydrationState[key]) return data
+  const split = readSplitCollection(key)
+  if (split) data[key] = split
+  splitHydrationState[key] = true
+  return data
+}
+
+function hydrateSplitCollections(data, keys) {
   if (!data) return data
-  SPLIT_COLLECTION_KEYS.forEach(key => {
-    const split = readSplitCollection(key)
-    if (split) data[key] = split
-  })
+  ;(Array.isArray(keys) ? keys : SPLIT_COLLECTION_KEYS).forEach(key => hydrateSplitCollection(data, key))
+  return data
+}
+
+function prepareSplitHydration(data) {
+  splitHydrationState = Object.create(null)
+  hydrateSplitCollections(data, ['hands'])
+  splitHydrationState.handActions = !readSplitMeta('handActions')
+  return data
+}
+
+function readStoreWithActions() {
+  const data = readStore()
+  hydrateSplitCollection(data, 'handActions')
   return data
 }
 
@@ -675,7 +696,7 @@ function readStore() {
   const raw = wx.getStorageSync(STORAGE_KEY)
   if (raw) {
     const next = ensureStoreShape(raw)
-    hydrateSplitCollections(next)
+    prepareSplitHydration(next)
     next.hands = (Array.isArray(next.hands) ? next.hands : []).map(migrateHandEntryMetadata)
     applySettingsStoreOverride(next)
     cachedStore = next
@@ -690,12 +711,18 @@ function readStore() {
     return cachedStore
   }
   const seed = buildInitialStoreData()
+  splitHydrationState = { hands: true, handActions: true }
   cachedStore = seed
   wx.setStorageSync(STORAGE_KEY, seed)
   return cachedStore
 }
 
-function writeStore(data) {
+function writeStore(data, options) {
+  if (options && options.complete) {
+    splitHydrationState.handActions = true
+  } else {
+    hydrateSplitCollection(data, 'handActions')
+  }
   const next = ensureStoreShape(data)
   applySettingsStoreOverride(next)
   const persisted = buildPersistedStore(next)
@@ -710,6 +737,7 @@ function initStore() {
 
 function resetCachedStoreForTest() {
   cachedStore = null
+  splitHydrationState = Object.create(null)
 }
 
 function parseBlindPreset(value) {
@@ -887,7 +915,7 @@ function getHandById(handId) {
 }
 
 function getActionsByHandId(handId) {
-  return readStore().handActions
+  return readStoreWithActions().handActions
     .filter(item => item.handId === handId)
     .sort((a, b) => a.sequence - b.sequence)
 }
@@ -1003,15 +1031,19 @@ function filterReviewHands(hands, filters, nowMs) {
 }
 
 function createHand(payload) {
-  const data = readStore()
+  const data = readStoreWithActions()
   const timestamp = now()
   const sourceSession = (data.sessions || []).find(item => item._id === payload.sessionId)
-  const hasStraddle = !!(payload.hasStraddle || (sourceSession && sourceSession.hasStraddle))
+  const hasStraddle = Object.prototype.hasOwnProperty.call(payload, 'hasStraddle')
+    ? !!payload.hasStraddle
+    : !!(sourceSession && sourceSession.hasStraddle)
   const hand = {
     _id: createId('hand'),
     sessionId: payload.sessionId,
     playedDate: payload.playedDate || '',
     stakeLevel: payload.stakeLevel || '',
+    playerCount: Number(payload.playerCount || payload.tableSize) || 0,
+    venue: payload.venue || payload.location || (sourceSession && sourceSession.venue) || '',
     heroSeat: Number(payload.heroSeat) || 0,
     heroPosition: payload.heroPosition || '',
     villainPosition: payload.villainPosition || '',
@@ -1100,7 +1132,7 @@ function createHand(payload) {
 }
 
 function updateHand(handId, patch) {
-  const data = readStore()
+  const data = readStoreWithActions()
   const previousHand = data.hands.find(item => item._id === handId) || null
   data.hands = data.hands.map(item => {
     if (item._id !== handId) return item
@@ -1197,7 +1229,7 @@ function enqueueAiRemindersForHand(handId, options) {
 }
 
 function deleteHand(handId) {
-  const data = readStore()
+  const data = readStoreWithActions()
   const hand = data.hands.find(item => item._id === handId)
   if (!hand) return false
 
@@ -1209,7 +1241,7 @@ function deleteHand(handId) {
 }
 
 function deleteSession(sessionId) {
-  const data = readStore()
+  const data = readStoreWithActions()
   const session = data.sessions.find(item => item._id === sessionId)
   if (!session) return false
   const handIds = new Set(
@@ -1351,6 +1383,7 @@ function buildBattleHandSummary(hand, playerNote, sessions, actions) {
     venue: (session && session.venue) || '',
     stakeLevel: hand.stakeLevel || (session && session.smallBlind && session.bigBlind ? session.smallBlind + '/' + session.bigBlind : ''),
     actionLine: getHandActionLineSummary(hand),
+    versusSummary: buildBattleVersusSummary(hand, playerNote),
     relationshipText: 'Hero vs ' + (playerNote && playerNote.name || '玩家'),
     replayAvailable: hasHandReplayData(hand, actions),
     unavailable: false
@@ -1362,8 +1395,42 @@ function displaySignedAmount(value) {
   return (number >= 0 ? '+' : '') + number
 }
 
+function resolveBattleOpponentSnapshot(hand, playerNote) {
+  const noteId = String(playerNote && playerNote._id || '').trim()
+  const snapshots = Array.isArray(hand && hand.playerSnapshots) ? hand.playerSnapshots : []
+  if (!noteId) return null
+  return snapshots.find(item => item && String(item.playerNoteId || '').trim() === noteId) || null
+}
+
+function buildBattleVersusSummary(hand, playerNote) {
+  const source = hand || {}
+  const snapshot = resolveBattleOpponentSnapshot(source, playerNote)
+  const opponentPosition = String(
+    snapshot && (snapshot.position || snapshot.slot) ||
+    source.villainPosition ||
+    source.opponentPosition ||
+    ''
+  ).trim()
+  const opponentCardsInput = source.opponentCards || source.showdown || source.villainCards || snapshot && snapshot.cards || ''
+  const opponentCardsVisual = cardUi.parseOpponentCardsInput(opponentCardsInput, {
+    board: source.board || {},
+    heroCardsInput: source.heroCardsInput || ''
+  })
+  const profit = Number(source.currentProfit) || 0
+  return {
+    heroPosition: source.heroPosition || '',
+    heroCardsVisual: cardUi.parseHeroCardsInput(source.heroCardsInput),
+    opponentPosition,
+    opponentCardsVisual,
+    hasOpponentCards: opponentCardsVisual.length === 2,
+    currentProfit: profit,
+    currentProfitDisplay: displaySignedAmount(profit),
+    profitTone: profit > 0 ? 'positive' : (profit < 0 ? 'negative' : 'neutral')
+  }
+}
+
 function getPlayerNoteBattleHands(noteId) {
-  const data = readStore()
+  const data = readStoreWithActions()
   const note = getPlayerNoteById(noteId)
   if (!note) return []
   return note.battleHandIds
@@ -1510,13 +1577,13 @@ function getStatsSummary() {
 }
 
 function exportBackup() {
-  const data = readStore()
+  const data = readStoreWithActions()
   return clone(data)
 }
 
 function importBackup(payload) {
   const next = ensureStoreShape(payload)
-  writeStore(next)
+  writeStore(next, { complete: true })
   writeSettingsStore(next.settings)
   return next
 }
@@ -1524,7 +1591,7 @@ function importBackup(payload) {
 function clearAllData() {
   const seed = buildInitialStoreData()
   removeSettingsStore()
-  writeStore(seed)
+  writeStore(seed, { complete: true })
   return seed
 }
 

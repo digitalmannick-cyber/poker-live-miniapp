@@ -1,8 +1,11 @@
 ﻿const dataService = require('../../services/data-service')
 const aiService = require('../../services/ai-service')
 const cardUi = require('../../utils/card-ui')
+const handSessionContext = require('../../utils/hand-session-context')
+const handTableLayout = require('../../utils/hand-table-layout')
 const allInEv = require('../../utils/all-in-ev')
 const sessionStack = require('../../utils/session-stack')
+const avatarCache = require('../../utils/player-avatar-cache')
 
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = [
@@ -19,11 +22,6 @@ const POSITION_WHEELS = {
   6: ['BTN', 'SB', 'BB', 'UTG', 'HJ', 'CO'],
   8: ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO'],
   9: ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'LJ', 'HJ', 'CO']
-}
-const VISUAL_SLOTS = {
-  6: ['BTN', 'SB', 'BB', 'UTG', 'HJ', 'CO'],
-  8: ['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'HJ', 'CO'],
-  9: ['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'LJ', 'HJ', 'CO']
 }
 const ACTION_ORDER = {
   6: ['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB'],
@@ -343,12 +341,18 @@ function buildPlayerLibraryOption(note, selectedId) {
   const source = note || {}
   const leakTags = Array.isArray(source.leakTags) ? source.leakTags : []
   const alias = Array.isArray(source.alias) ? source.alias : []
+  const avatarUrl = source.avatarUrl || ''
+  const avatarFileId = source.avatarFileId || ''
   return {
     _id: source._id || '',
     name: source.name || '',
     alias,
     type: source.type || '',
     note: source.note || '',
+    avatarUrl,
+    avatarFileId,
+    avatarDisplayUrl: source.avatarDisplayUrl || avatarCache.getAvatarDisplayUrl(avatarFileId, avatarUrl),
+    avatarText: source.avatarText || String(source.name || '?').trim().charAt(0) || '?',
     leakTags,
     leakText: leakTags.slice(0, 2).join(' / '),
     active: !!source._id && source._id === selectedId
@@ -456,78 +460,16 @@ function headsUpAllInReadyToNormalize(playersInput, lastRaiseInput) {
   })
 }
 
-function clampPoint(point, bounds) {
-  const safeBounds = bounds || {}
-  return {
-    x: Math.max(safeBounds.minX == null ? 7 : safeBounds.minX, Math.min(safeBounds.maxX == null ? 93 : safeBounds.maxX, point.x)),
-    y: Math.max(safeBounds.minY == null ? 5 : safeBounds.minY, Math.min(safeBounds.maxY == null ? 95 : safeBounds.maxY, point.y))
-  }
-}
-
-function tablePoint(slot, slots, scale, bounds) {
-  const activeSlots = slots || []
-  const index = activeSlots.indexOf(slot)
-  const count = activeSlots.length || 8
-  const normalizedIndex = index >= 0 ? index : 0
-  const angle = (-45 + normalizedIndex * (360 / count)) * Math.PI / 180
-  const distance = scale == null ? 1 : scale
-  const centerX = 50
-  const centerY = 50
-  const radiusX = 40.8
-  const radiusY = 44.4
-  return clampPoint({
-    x: centerX + Math.cos(angle) * radiusX * distance,
-    y: centerY + Math.sin(angle) * radiusY * distance
-  }, bounds)
-}
-
 function seatPoint(slot, slots) {
-  return tablePoint(slot, slots, 1, { minX: 8.5, maxX: 91.5, minY: 6.5, maxY: 93.5 })
+  return handTableLayout.getSeatLayout((slots || []).length, slot).seat
 }
 
 function betPoint(slot, slots) {
-  return tablePoint(slot, slots, 0.74, { minX: 14, maxX: 86, minY: 13, maxY: 87 })
-}
-
-function cardPoint(slot, slots) {
-  const seat = seatPoint(slot, slots)
-  const centerX = 50
-  const centerY = 50
-  const dx = seat.x - centerX
-  const dy = seat.y - centerY
-  if (dy > 27) {
-    return clampPoint({ x: seat.x, y: seat.y - 9.5 }, { minX: 9, maxX: 91, minY: 8, maxY: 84 })
-  }
-  if (dy < -27) {
-    return clampPoint({ x: seat.x, y: seat.y + 9.5 }, { minX: 9, maxX: 91, minY: 12, maxY: 92 })
-  }
-  const verticalDirection = seat.y < centerY ? 1 : -1
-  return clampPoint({ x: seat.x, y: seat.y + verticalDirection * 9.5 }, { minX: 9, maxX: 91, minY: 8, maxY: 92 })
-}
-
-function cardPlacement(slot, slots) {
-  const seat = seatPoint(slot, slots)
-  if (seat.y < 23) return 'below'
-  if (seat.y > 77) return 'above'
-  return seat.y < 50 ? 'below' : 'above'
+  return handTableLayout.getSeatLayout((slots || []).length, slot).bet
 }
 
 function pointStyle(point) {
   return 'left:' + point.x.toFixed(2) + '%;top:' + point.y.toFixed(2) + '%;'
-}
-
-function offsetPointFromCenter(point, distance) {
-  const centerX = 50
-  const centerY = 50
-  const dx = point.x - centerX
-  const dy = point.y - centerY
-  const length = Math.sqrt(dx * dx + dy * dy) || 1
-  const nextX = point.x + (dx / length) * distance
-  const nextY = point.y + (dy / length) * distance
-  return {
-    x: Math.max(6, Math.min(94, nextX)),
-    y: Math.max(5, Math.min(95, nextY))
-  }
 }
 
 Page({
@@ -580,6 +522,7 @@ Page({
     actions: [],
     trail: [],
     trailScrollLeft: 0,
+    trailIntoView: '',
     timelineActions: null,
     selectedTrailIndex: -1,
     actionOptions: [],
@@ -611,12 +554,18 @@ Page({
     seatMenuLabel: '',
     stackSheetVisible: false,
     stackEffectiveInput: '',
+    stackPresets: [],
+    stackMax: 120000,
     playerSheetVisible: false,
     playerNameInput: '',
     playerNoteInput: '',
     selectedPlayerNoteId: '',
     selectedPlayerType: '',
     selectedPlayerLeakTags: [],
+    playerAvatarUrlInput: '',
+    playerAvatarFileIdInput: '',
+    playerAvatarDisplayUrlInput: '',
+    playerAvatarTextInput: '',
     playerTypeOptions: [],
     playerLibraryQuery: '',
     playerLibraryAllOptions: [],
@@ -669,10 +618,9 @@ Page({
       session = detail && detail.session || session
       sessionHands = detail && detail.hands || []
     }
-    const levelText = session && session.smallBlind && session.bigBlind
-      ? String(session.smallBlind) + '/' + String(session.bigBlind)
-      : this.data.levelText
-    const nextTableMax = String((session && session.tableSize) || this.data.tableMax || '8').replace(/\D/g, '') || '8'
+    const recordedContext = handSessionContext.resolveHandSessionContext(hand, session)
+    const levelText = recordedContext.stakeLevel || this.data.levelText
+    const nextTableMax = String(recordedContext.tableSize || this.data.tableMax || '8').replace(/\D/g, '') || '8'
     const tableIndex = Math.max(0, TABLE_OPTIONS.indexOf(nextTableMax))
     const levelIndex = Math.max(0, LEVEL_OPTIONS.indexOf(levelText))
     const patch = {
@@ -688,7 +636,7 @@ Page({
         type,
         active: false
       })),
-      hasStraddle: !!(session && session.hasStraddle),
+      hasStraddle: recordedContext.hasStraddle,
       defaultStack: sessionCurrentStack(session, sessionHands, hand) || this.data.defaultStack,
       defaultOpponentStack: parseLevel(levelText).bb * 100,
       heroCardsInput: hand && hand.heroCardsInput || this.data.heroCardsInput,
@@ -700,13 +648,23 @@ Page({
     if (hand && hand.ledgerState) {
       this.restoreLedgerState(hand.ledgerState)
     } else {
+      const recordedHeroPosition = hand && String(hand.heroPosition || '').trim()
+      if (recordedHeroPosition && this.positionWheel().indexOf(recordedHeroPosition) > -1) {
+        const inheritedHeroSlot = this.slotForPosition(recordedHeroPosition)
+        if (this.activeSlots().indexOf(inheritedHeroSlot) > -1) {
+          this.setData({
+            heroSlot: inheritedHeroSlot,
+            heroPosition: recordedHeroPosition
+          })
+        }
+      }
       this.resetHandState()
     }
     this.updateAll()
   },
 
   activeSlots() {
-    return VISUAL_SLOTS[this.data.tableMax] || VISUAL_SLOTS[8]
+    return handTableLayout.getActiveSlots(Number(this.data.tableMax))
   },
 
   positionWheel() {
@@ -757,6 +715,7 @@ Page({
         allIn: false,
         initialStack,
         stack: initialStack,
+        stackCustomized: !!current.stackCustomized,
         animating: false,
         betLand: false,
         cards: current.cards || '',
@@ -764,7 +723,11 @@ Page({
         playerName: current.playerName || '',
         playerType: current.playerType || '',
         playerNote: current.playerNote || '',
-        playerLeakTags: current.playerLeakTags || []
+        playerLeakTags: current.playerLeakTags || [],
+        playerAvatarUrl: current.playerAvatarUrl || '',
+        playerAvatarFileId: current.playerAvatarFileId || '',
+        playerAvatarDisplayUrl: current.playerAvatarDisplayUrl || '',
+        playerAvatarText: current.playerAvatarText || ''
       }
     })
     const sbSlot = this.slotForPosition('SB')
@@ -894,20 +857,34 @@ Page({
     const seats = ['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'LJ', 'HJ', 'CO'].map(slot => {
       const player = players[slot] || {}
       const active = activeSlots.indexOf(slot) > -1
-      const seat = seatPoint(slot, activeSlots)
-      const bet = betPoint(slot, activeSlots)
-      const cards = cardPoint(slot, activeSlots)
+      const layout = active
+        ? handTableLayout.getSeatLayout(Number(this.data.tableMax), slot)
+        : { seat: { x: 50, y: 50 }, bet: { x: 50, y: 50 }, size: 'medium', edge: 'top' }
+      const isHero = slot === this.data.heroSlot
+      const cardsVisual = isHero ? heroCardsVisual : parseCards(player.cards || '', 2)
+      const playerAvatarDisplayUrl = player.playerAvatarDisplayUrl || player.playerAvatarUrl || ''
+      const paidText = active && player.paid ? formatMoney(player.paid, this.data.chipUnitValue) : ''
+      const betAnchor = active
+        ? handTableLayout.resolveBetAnchor(Number(this.data.tableMax), slot, {
+          amountText: paidText,
+          hasCards: cardsVisual.length === 2,
+          hasAvatar: !!playerAvatarDisplayUrl,
+          hasPlayerName: !!player.playerName
+        })
+        : layout.bet
       return {
         slot,
         active,
         label: labels[slot] || slot,
-        seatStyle: pointStyle(seat),
-        betStyle: pointStyle(bet),
-        cardsStyle: pointStyle(cards),
-        cardPlacement: cardPlacement(slot, activeSlots),
+        seatStyle: pointStyle(layout.seat),
+        betStyle: pointStyle(betAnchor),
+        betPlacement: betAnchor.placement || '',
+        betCompact: !!betAnchor.compact,
+        sizeClass: layout.size,
+        edgeClass: layout.edge,
         stackText: stackText(player.stack == null ? 40000 : player.stack),
-        paidText: active && player.paid ? formatMoney(player.paid, this.data.chipUnitValue) : '',
-        hero: slot === this.data.heroSlot,
+        paidText,
+        hero: isHero,
         dealer: slot === this.data.dealerSlot,
         current: slot === this.data.activeSlot && this.data.phase === 'play' && !this.data.saved,
         folded: active && !player.live,
@@ -915,12 +892,14 @@ Page({
         animating: !!player.animating,
         betLand: !!player.betLand,
         playerName: player.playerName || '',
-        cardsVisual: parseCards(player.cards || '', 2)
+        playerAvatarDisplayUrl,
+        playerAvatarUrl: player.playerAvatarUrl || '',
+        hasPlayerAvatar: !!(player.playerAvatarDisplayUrl || player.playerAvatarUrl),
+        cardsVisual,
+        hasCards: cardsVisual.length === 2
       }
     })
     const heroPosition = labels[this.data.heroSlot] || ''
-    const heroCardsStyle = pointStyle(cardPoint(this.data.heroSlot, activeSlots))
-    const heroCardPlacement = cardPlacement(this.data.heroSlot, activeSlots)
     const turnFlowStyle = pointStyle(seatPoint(this.data.activeSlot, activeSlots))
     const streetTabs = ['Pre', 'Flop', 'Turn', 'River'].map(key => ({
       key,
@@ -929,6 +908,9 @@ Page({
     }))
     const boardSlots = this.buildBoardSlots()
     const trail = this.buildTrail()
+    const selectedTrailIndex = number(this.data.selectedTrailIndex) >= 0
+      ? Math.min(number(this.data.selectedTrailIndex), Math.max(0, trail.length - 1))
+      : Math.max(0, trail.length - 1)
     const actionOptions = this.buildActionOptions()
     const phaseText = this.data.phase === 'setup'
       ? '\u8bbe\u7f6e\u684c\u5b50'
@@ -945,10 +927,9 @@ Page({
       boardSlots,
       trail,
       trailScrollLeft: Math.max(0, trail.length * 162),
+      trailIntoView: trail.length ? 'trail-node-' + selectedTrailIndex : '',
       actionOptions,
       heroCardsVisual,
-      heroCardsStyle,
-      heroCardPlacement,
       turnFlowStyle,
       potDisplay: formatMoney(this.data.pot, this.data.chipUnitValue),
       autoProfitDisplay: formatMoney(Math.abs(number(this.data.autoProfit)), this.data.chipUnitValue),
@@ -1100,6 +1081,11 @@ Page({
     }
     if (this.data.phase === 'moveButton') {
       this.pushHistory()
+      if (cardTokens(this.data.heroCardsInput, 2).length >= 2) {
+        this.setData({ phase: 'play', cardPickerVisible: false })
+        this.updateAll()
+        return
+      }
       this.setData({ phase: 'heroCards' })
       this.openHeroPicker()
       this.updateAll()
@@ -1203,10 +1189,17 @@ Page({
     }
     if (action === 'stack') {
       const player = this.data.players[slot] || {}
+      const blinds = parseLevel(this.data.levelText)
+      const stackPresets = [100, 200, 300].map(bb => ({
+        label: `${bb}bb`,
+        value: blinds.bb * bb
+      }))
       this.setData({
         seatMenuVisible: false,
         stackSheetVisible: true,
-        stackEffectiveInput: String(player.initialStack || player.stack || 40000)
+        stackEffectiveInput: '0',
+        stackPresets,
+        stackMax: Math.max(blinds.bb * 1000, number(player.initialStack || player.stack))
       })
       return
     }
@@ -1260,14 +1253,19 @@ Page({
   },
 
   setAllStacks() {
-    const current = String(this.data.stackEffectiveInput || '40000')
-    const effectiveStack = number(current)
+    this.syncStackAmount({ detail: { value: number(this.data.stackEffectiveInput) } })
+  },
+
+  syncStackAmount(e) {
+    const effectiveStack = number(e.detail && e.detail.value)
+    if (!effectiveStack) return
     const players = Object.assign({}, this.data.players)
     Object.keys(players).forEach(slot => {
       if (slot === this.data.heroSlot) return
       players[slot] = Object.assign({}, players[slot], {
         initialStack: effectiveStack,
-        stack: effectiveStack
+        stack: effectiveStack,
+        stackCustomized: true
       })
     })
     this.setData({ players, stackSheetVisible: false })
@@ -1275,13 +1273,19 @@ Page({
   },
 
   saveStackSheet() {
+    this.confirmStackAmount({ detail: { value: number(this.data.stackEffectiveInput) } })
+  },
+
+  confirmStackAmount(e) {
     const slot = this.data.seatMenuSlot
     if (!slot || !this.data.players[slot]) return
     const players = Object.assign({}, this.data.players)
-    const effectiveStack = number(this.data.stackEffectiveInput)
+    const effectiveStack = number(e.detail && e.detail.value)
+    if (!effectiveStack) return
     players[slot] = Object.assign({}, players[slot], {
       initialStack: effectiveStack,
-      stack: effectiveStack
+      stack: effectiveStack,
+      stackCustomized: true
     })
     this.setData({ players, stackSheetVisible: false })
     this.updateAll()
@@ -1338,6 +1342,7 @@ Page({
     if (!id) return
     const note = (this.data.playerLibraryAllOptions || this.data.playerLibraryOptions || []).find(item => item._id === id)
     if (!note) return
+    const avatarDisplayUrl = avatarCache.getAvatarDisplayUrl(note.avatarFileId, note.avatarUrl)
     const allOptions = (this.data.playerLibraryAllOptions || []).map(item => Object.assign({}, item, {
       active: item._id === id
     }))
@@ -1348,6 +1353,10 @@ Page({
       playerTypeOptions: buildPlayerTypeOptions(this.data.playerTypeOptions, note.type || ''),
       playerNameInput: note.name || '',
       playerNoteInput: note.note || '',
+      playerAvatarUrlInput: note.avatarUrl || '',
+      playerAvatarFileIdInput: note.avatarFileId || '',
+      playerAvatarDisplayUrlInput: avatarDisplayUrl || note.avatarUrl || '',
+      playerAvatarTextInput: note.avatarText || '',
       playerLibraryAllOptions: allOptions,
       playerLibraryOptions: filterPlayerLibraryOptions(allOptions, this.data.playerLibraryQuery)
     })
@@ -1362,7 +1371,11 @@ Page({
       playerName: '',
       playerType: '',
       playerNote: '',
-      playerLeakTags: []
+      playerLeakTags: [],
+      playerAvatarUrl: '',
+      playerAvatarFileId: '',
+      playerAvatarDisplayUrl: '',
+      playerAvatarText: ''
     })
     this.setData({
       players,
@@ -1372,7 +1385,11 @@ Page({
       selectedPlayerLeakTags: [],
       playerTypeOptions: buildPlayerTypeOptions(this.data.playerTypeOptions, ''),
       playerNameInput: '',
-      playerNoteInput: ''
+      playerNoteInput: '',
+      playerAvatarUrlInput: '',
+      playerAvatarFileIdInput: '',
+      playerAvatarDisplayUrlInput: '',
+      playerAvatarTextInput: ''
     })
     this.updateAll()
   },
@@ -1397,7 +1414,11 @@ Page({
       playerName: this.data.playerNameInput,
       playerType: this.data.selectedPlayerType,
       playerNote: this.data.playerNoteInput,
-      playerLeakTags: this.data.selectedPlayerLeakTags || []
+      playerLeakTags: this.data.selectedPlayerLeakTags || [],
+      playerAvatarUrl: this.data.playerAvatarUrlInput || '',
+      playerAvatarFileId: this.data.playerAvatarFileIdInput || '',
+      playerAvatarDisplayUrl: this.data.playerAvatarDisplayUrlInput || this.data.playerAvatarUrlInput || '',
+      playerAvatarText: this.data.playerAvatarTextInput || ''
     })
   },
 
@@ -1420,7 +1441,11 @@ Page({
         playerName: saved && saved.name || name,
         playerType: saved && saved.type || '未分类',
         playerNote: saved && saved.note || noteText,
-        playerLeakTags: saved && saved.leakTags || []
+        playerLeakTags: saved && saved.leakTags || [],
+        playerAvatarUrl: saved && saved.avatarUrl || '',
+        playerAvatarFileId: saved && saved.avatarFileId || '',
+        playerAvatarDisplayUrl: saved ? avatarCache.getAvatarDisplayUrl(saved.avatarFileId, saved.avatarUrl) : '',
+        playerAvatarText: saved && saved.avatarText || ''
       }
       this.setData({
         selectedPlayerNoteId: playerPatch.playerNoteId,
@@ -1428,7 +1453,11 @@ Page({
         selectedPlayerLeakTags: playerPatch.playerLeakTags,
         playerTypeOptions: buildPlayerTypeOptions(this.data.playerTypeOptions, playerPatch.playerType),
         playerNameInput: playerPatch.playerName,
-        playerNoteInput: playerPatch.playerNote
+        playerNoteInput: playerPatch.playerNote,
+        playerAvatarUrlInput: playerPatch.playerAvatarUrl,
+        playerAvatarFileIdInput: playerPatch.playerAvatarFileId,
+        playerAvatarDisplayUrlInput: playerPatch.playerAvatarDisplayUrl,
+        playerAvatarTextInput: playerPatch.playerAvatarText
       })
       this.applyPlayerSheetToSeat(playerPatch)
     } catch (error) {
@@ -1554,8 +1583,7 @@ Page({
     }
     if (action === 'SHOW') {
       if (!this.ensureShowdownBoardReady('SHOW')) return
-      this.openVillainPicker()
-      return
+      return this.completeShowdownWithKnownCards()
     }
     if (action === 'MUCK') {
       if (!this.ensureShowdownBoardReady('MUCK')) return
@@ -1589,7 +1617,6 @@ Page({
             value: number(this.data.players[this.data.activeSlot].paid) + (number(this.data.players[this.data.activeSlot].stack) || 40000)
           }
         ]
-    presets.push({ label: '\u81ea\u5b9a\u4e49', custom: true })
     this.setData({
       amountSheetVisible: true,
       amountAction: action,
@@ -1642,7 +1669,11 @@ Page({
   },
 
   submitAmount() {
-    const amount = number(this.data.amountInput)
+    this.confirmActionAmount({ detail: { value: number(this.data.amountInput) } })
+  },
+
+  confirmActionAmount(e) {
+    const amount = number(e.detail && e.detail.value)
     if (!amount) {
       wx.showToast({ title: '\u8bf7\u8f93\u5165\u91d1\u989d', icon: 'none' })
       return
@@ -1681,7 +1712,8 @@ Page({
       const isAllIn = action === 'AI' || invested >= number(player.stack)
       player.paid = amount
       pot += invested
-      lastRaise = amount
+      // A short all-in below the current target is a call, not a smaller raise.
+      lastRaise = Math.max(lastRaise, amount)
       const actionName = isAllIn ? 'All-in' : action === 'B' ? 'Bet' : 'Raise'
       if (isAllIn) player.allIn = true
       actions.push({ street: this.data.street, pos: active, position, action: actionName, amount })
@@ -1859,10 +1891,18 @@ Page({
     return true
   },
 
-  manualNextStreet() {
+  goToNextNode() {
     if (this.data.saved) return
-    this.pushHistory()
-    this.advanceStreetAuto()
+    const trail = this.data.trail || []
+    const currentIndex = number(this.data.selectedTrailIndex) >= 0
+      ? number(this.data.selectedTrailIndex)
+      : trail.length - 1
+    const nextIndex = currentIndex + 1
+    if (nextIndex >= trail.length) {
+      wx.showToast({ title: '当前已是最后节点，请先录入行动', icon: 'none' })
+      return
+    }
+    this.jumpToAction({ currentTarget: { dataset: { index: nextIndex } } })
   },
 
   resetStreetContributions() {
@@ -1941,6 +1981,26 @@ Page({
     this.openCardPicker('villain')
   },
 
+  completeShowdownWithKnownCards() {
+    const slot = this.data.activeSlot
+    const player = (this.data.players || {})[slot] || {}
+    const knownCards = cardTokens(player.cards || this.data.villainCards || '', 2).join('')
+    if (cardTokens(knownCards, 2).length < 2) {
+      this.openVillainPicker()
+      return
+    }
+    const players = Object.assign({}, this.data.players)
+    players[slot] = Object.assign({}, player, { cards: knownCards })
+    this.showSavingFeedback()
+    this.setData({
+      villainCards: knownCards,
+      players,
+      cardPickerVisible: false,
+      cardPickerSeatSlot: ''
+    })
+    return this.commitShowdown('Show')
+  },
+
   openSeatCardsPicker(slot) {
     this.setData({ cardPickerSeatSlot: slot })
     this.openCardPicker('seat')
@@ -1966,13 +2026,14 @@ Page({
       tokens = cardTokens(this.data.heroCardsInput, 2)
       title = '\u6211\u4eec\u7684\u624b\u724c'
     } else if (target === 'villain') {
-      tokens = cardTokens(this.data.villainCards || '', 2)
-      title = this.displayLabel(this.data.activeSlot) + ' 鎵嬬墝'
+      const activePlayer = (this.data.players || {})[this.data.activeSlot] || {}
+      tokens = cardTokens(activePlayer.cards || this.data.villainCards || '', 2)
+      title = this.displayLabel(this.data.activeSlot) + ' \u624b\u724c'
     } else if (target === 'seat') {
       const slot = this.data.cardPickerSeatSlot
       const player = this.data.players[slot] || {}
       tokens = cardTokens(player.cards || '', 2)
-      title = this.displayLabel(slot) + ' 鎵嬬墝'
+      title = this.displayLabel(slot) + ' \u624b\u724c'
     } else {
       tokens = cardTokens(this.data.board.flop, 3)
         .concat(cardTokens(this.data.board.turn, 1))
@@ -2111,8 +2172,7 @@ Page({
       this.triggerDealAnimation(this.data.street)
       this.updateAll()
       if (pendingShowdownAction === 'SHOW') {
-        this.openVillainPicker()
-        return
+        return this.completeShowdownWithKnownCards()
       }
       if (pendingShowdownAction === 'MUCK') {
         this.pushHistory()
@@ -2222,6 +2282,7 @@ Page({
     const source = context.source
     if (!source) return
     const replay = this.replayActions(actions)
+    const showdownMode = source.action === 'Show' || source.action === 'Muck'
     this.pushHistory()
     this.setData({
       phase: 'play',
@@ -2233,14 +2294,17 @@ Page({
       lastRaise: replay.lastRaise,
       street: source.street || replay.street,
       activeSlot: source.action === 'Start' ? replay.activeSlot : (source.pos || replay.activeSlot),
-      showdownMode: false,
+      showdownMode,
       resultSheetVisible: false,
       amountSheetVisible: false,
       cardPickerVisible: false,
       saved: false
     })
     this.animateSeats()
-    this.updateAll({ trailScrollLeft: Math.max(0, index * 156) })
+    this.updateAll({
+      trailScrollLeft: Math.max(0, index * 156),
+      trailIntoView: 'trail-node-' + index
+    })
   },
 
   setProfitSign(e) {
@@ -2319,12 +2383,15 @@ Page({
     const heroSlot = this.data.heroSlot
     const heroContribution = number(contributions[heroSlot])
     const totalPot = Object.keys(contributions).reduce((sum, slot) => sum + number(contributions[slot]), 0)
-    const winner = winnerOverride || this.showdownWinner(showdownAction)
+    const heroFolded = heroContribution > 0 && actions.some(item => item &&
+      (item.pos === heroSlot || item.slot === heroSlot) &&
+      String(item.action || '').toLowerCase() === 'fold')
+    const winner = heroFolded ? 'villain' : (winnerOverride || this.showdownWinner(showdownAction))
     let currentProfit = 0
     if (winner === 'hero') currentProfit = totalPot - heroContribution
     else if (winner === 'villain') currentProfit = -heroContribution
     const cap = this.effectiveAllInCap(contributions)
-    if (cap > 0) {
+    if (!heroFolded && cap > 0) {
       if (currentProfit > 0) currentProfit = Math.min(currentProfit, cap)
       if (currentProfit < 0) currentProfit = -Math.min(Math.abs(currentProfit), cap)
     }
@@ -2342,6 +2409,40 @@ Page({
     if (street === 'pre') return 'preflop'
     if (street === 'flop' || street === 'turn') return street
     return ''
+  },
+
+  latestActionStreet(actions) {
+    const found = (actions || []).slice().reverse().find(item => {
+      const street = String(item && item.street || '').toLowerCase()
+      return street === 'pre' || street === 'preflop' || street === 'flop' || street === 'turn' || street === 'river'
+    })
+    if (!found) return ''
+    const street = String(found.street || '').toLowerCase()
+    return street === 'pre' ? 'preflop' : street
+  },
+
+  allInEvEligibility(actions, allInStreet, heroSlot) {
+    const streetOrder = { preflop: 0, flop: 1, turn: 2, river: 3 }
+    const source = actions || []
+    const allInIndex = source.findIndex(item => item && item.action === 'All-in')
+    if (allInIndex < 0 || streetOrder[allInStreet] == null) {
+      return { eligible: false, status: 'not_all_in' }
+    }
+    const laterStrategicAction = source.some(item => {
+      if (!item) return false
+      const street = String(item.street || '').toLowerCase() === 'pre'
+        ? 'preflop'
+        : String(item.street || '').toLowerCase()
+      const action = String(item.action || '')
+      return streetOrder[street] > streetOrder[allInStreet] &&
+        action !== 'Start' && action !== 'Show' && action !== 'Muck'
+    })
+    if (laterStrategicAction) return { eligible: false, status: 'all_in_not_terminal' }
+    const heroCommitted = source.slice(allInIndex).some(item => item && item.pos === heroSlot &&
+      (item.action === 'All-in' || item.action === 'Call'))
+    return heroCommitted
+      ? { eligible: true, status: '' }
+      : { eligible: false, status: 'hero_not_all_in' }
   },
 
   boardCompleteForShowdown() {
@@ -2435,6 +2536,29 @@ Page({
       }
     }
     const heroSlot = this.data.heroSlot
+    const eligibility = this.allInEvEligibility(this.data.actions, allInStreet, heroSlot)
+    if (!eligibility.eligible) {
+      return {
+        isAllIn: false,
+        allInStreet: '',
+        allInActionStreet: allInStreet,
+        allInEvEligible: false,
+        allInEvStatus: eligibility.status,
+        allInEvSource: '',
+        allInPot: 0,
+        heroInvested: 0,
+        effectiveAllInPot: 0,
+        effectiveAllInStack: '',
+        rawAllInPot: 0,
+        rawHeroInvested: 0,
+        heroEquityPct: '',
+        allInEv: '',
+        allInEvProfit: '',
+        allInEvAdjustedProfit: '',
+        allInEvLuckDelta: '',
+        allInBoard: ''
+      }
+    }
     const heroCards = parseCards(this.data.heroCardsInput, 2)
     const players = this.data.players || {}
     const villain = players[villainSlot] || {}
@@ -2504,6 +2628,11 @@ Page({
     const linkedPlayerNoteIds = this.getLinkedPlayerNoteIds()
     const allInFields = this.buildAllInEvFields(allInStreet, contributions, result, villainSlot)
     const displayPotSize = allInStreet && allInFields.allInPot ? allInFields.allInPot : this.data.pot
+    const heroAllInEligible = allInFields.allInEvStatus !== 'hero_not_all_in' &&
+      allInFields.allInEvStatus !== 'all_in_not_terminal'
+    const terminalStreet = heroAllInEligible && allInFields.allInStreet
+      ? allInFields.allInStreet
+      : this.latestActionStreet(this.data.actions)
     const heroPosition = this.data.heroPosition
     const showdownCards = this.data.villainCards || villainPlayer.cards || ''
     const streetInputs = {
@@ -2546,6 +2675,10 @@ Page({
       opponentType: villainPlayer.playerType || '',
       opponentNote: villainPlayer.playerNote || '',
       opponentLeakTags: villainPlayer.playerLeakTags || [],
+      opponentAvatarUrl: villainPlayer.playerAvatarUrl || '',
+      opponentAvatarFileId: villainPlayer.playerAvatarFileId || '',
+      opponentAvatarDisplayUrl: villainPlayer.playerAvatarDisplayUrl || villainPlayer.playerAvatarUrl || '',
+      opponentAvatarText: villainPlayer.playerAvatarText || '',
       playerNoteIds: linkedPlayerNoteIds,
       buttonSeat: this.activeSlots().indexOf(this.data.dealerSlot) + 1,
       heroSeat: this.activeSlots().indexOf(this.data.heroSlot) + 1,
@@ -2564,10 +2697,11 @@ Page({
       currentProfit: result,
       isAllIn: allInFields.isAllIn,
       allInStreet: allInFields.allInStreet,
-      terminalStreet: allInFields.allInStreet || '',
-      handEndedStreet: allInFields.allInStreet || '',
-      postAllInRunoutOnly: !!allInFields.allInStreet,
-      analysisFocus: allInFields.allInStreet ? (allInFields.allInStreet + '_all_in') : '',
+      allInActionStreet: allInFields.allInActionStreet || '',
+      terminalStreet,
+      handEndedStreet: terminalStreet,
+      postAllInRunoutOnly: heroAllInEligible && !!allInFields.allInStreet,
+      analysisFocus: heroAllInEligible && allInFields.allInStreet ? (allInFields.allInStreet + '_all_in') : '',
       allInEvEligible: allInFields.allInEvEligible,
       allInEvStatus: allInFields.allInEvStatus,
       allInEvSource: allInFields.allInEvSource || '',
@@ -2615,6 +2749,10 @@ Page({
           playerType: player.playerType || '',
           playerNote: player.playerNote || '',
           playerLeakTags: player.playerLeakTags || [],
+          avatarUrl: player.playerAvatarUrl || '',
+          avatarFileId: player.playerAvatarFileId || '',
+          avatarDisplayUrl: player.playerAvatarDisplayUrl || player.playerAvatarUrl || '',
+          avatarText: player.playerAvatarText || '',
           stack: player.stack || 0,
           initialStack: player.initialStack || player.stack || 0,
           cards: player.cards || ''

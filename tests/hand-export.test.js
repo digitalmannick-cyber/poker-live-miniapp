@@ -119,4 +119,100 @@ assert.match(persistedText, /Seat 4: Hero won \(\$45800\)/)
 assert.doesNotMatch(persistedText, /Hero mucked/)
 assert.doesNotMatch(persistedText, /^:\s*(?:\$\d+)?$/m)
 
+const duplicatedAllInHand = {
+  _id: 'hand_1783790761523_274',
+  playedAt: '2026-07-12T13:26:01+08:00',
+  stakeLevel: '500/1000',
+  playerCount: 8,
+  heroPosition: 'UTG',
+  villainPosition: 'BB',
+  heroCardsInput: 'KdKc',
+  opponentCards: 'AhKs',
+  currentProfit: -108000,
+  potSize: 221500,
+  effectiveStack: 227500,
+  villainStack: 100000,
+  board: { flop: 'AdQd9s', turn: 'Qs', river: '2c' }
+}
+
+const duplicatedAllInActions = [
+  { street: 'Pre', position: 'UTG', action: 'Raise', amount: 2500, sequence: 1 },
+  { street: 'Pre', position: 'UTG', action: 'Raise', amount: 2500, sequence: 2 },
+  { street: 'Pre', position: 'UTG', action: 'Raise', amount: 2500, sequence: 3 },
+  { street: 'Pre', position: 'UTG+1', action: 'Fold', sequence: 4 },
+  { street: 'Pre', position: 'UTG+1', action: 'Fold', sequence: 5 },
+  { street: 'Pre', position: 'UTG+1', action: 'Fold', sequence: 6 },
+  { street: 'Pre', position: 'LJ', action: 'Call', amount: 2500, sequence: 7 },
+  { street: 'Pre', position: 'LJ', action: 'Call', amount: 2500, sequence: 8 },
+  { street: 'Pre', position: 'LJ', action: 'Call', amount: 2500, sequence: 9 },
+  { street: 'Pre', position: 'HJ', action: 'Fold', sequence: 10 },
+  { street: 'Pre', position: 'HJ', action: 'Fold', sequence: 11 },
+  { street: 'Pre', position: 'HJ', action: 'Fold', sequence: 12 },
+  { street: 'Pre', position: 'CO', action: 'Fold', sequence: 13 },
+  { street: 'Pre', position: 'CO', action: 'Fold', sequence: 14 },
+  { street: 'Pre', position: 'CO', action: 'Fold', sequence: 15 },
+  { street: 'Pre', position: 'BU', action: 'Call', amount: 2500, sequence: 16 },
+  { street: 'Pre', position: 'BU', action: 'Call', amount: 2500, sequence: 17 },
+  { street: 'Pre', position: 'BU', action: 'Call', amount: 2500, sequence: 18 },
+  { street: 'Pre', position: 'SB', action: 'Fold', sequence: 19 },
+  { street: 'Pre', position: 'SB', action: 'Fold', sequence: 20 },
+  { street: 'Pre', position: 'SB', action: 'Fold', sequence: 21 },
+  { street: 'Pre', position: 'BB', action: 'Raise', amount: 15000, sequence: 22 },
+  { street: 'Pre', position: 'BB', action: 'Raise', amount: 15000, sequence: 23 },
+  { street: 'Pre', position: 'BB', action: 'Raise', amount: 15000, sequence: 24 },
+  { street: 'Pre', position: 'UTG', action: 'Raise', amount: 110000, sequence: 25 },
+  { street: 'Pre', position: 'UTG', action: 'Raise', amount: 110000, sequence: 26 },
+  { street: 'Pre', position: 'UTG', action: 'All-in', amount: 227500, sequence: 27 },
+  { street: 'Pre', position: 'LJ', action: 'Fold', sequence: 28 },
+  { street: 'Pre', position: 'LJ', action: 'Fold', sequence: 29 },
+  { street: 'Pre', position: 'LJ', action: 'Fold', sequence: 30 },
+  { street: 'Pre', position: 'BU', action: 'Fold', sequence: 31 },
+  { street: 'Pre', position: 'BU', action: 'Fold', sequence: 32 },
+  { street: 'Pre', position: 'BU', action: 'Fold', sequence: 33 },
+  { street: 'Pre', position: 'BB', action: 'Call', amount: 94000, sequence: 34 },
+  { street: 'Pre', position: 'BB', action: 'Call', amount: 94000, sequence: 35 },
+  { street: 'Pre', position: 'BB', action: 'All-in', amount: 109000, sequence: 36 },
+  { street: 'River', position: 'BB', action: 'Show', sequence: 37 },
+  { street: 'River', position: 'BB', action: 'Show', sequence: 38 },
+  { street: 'River', position: 'BB', action: 'Show', sequence: 39 }
+]
+
+const duplicatedAllInText = handExport.buildPokerStarsExport(duplicatedAllInHand, {
+  session: { venue: 'MGM' },
+  actions: duplicatedAllInActions
+})
+
+function lineCount(textValue, line) {
+  return textValue.split('\n').filter(item => item === line).length
+}
+
+assert.equal(lineCount(duplicatedAllInText, 'UTG+1: folds'), 1)
+assert.equal(lineCount(duplicatedAllInText, 'LJ: calls $2500'), 1)
+assert.equal(lineCount(duplicatedAllInText, 'BU: calls $2500'), 1)
+assert.equal(lineCount(duplicatedAllInText, 'SB: folds'), 1)
+assert.equal(lineCount(duplicatedAllInText, 'BB: shows [Ah Ks]'), 1)
+assert.doesNotMatch(duplicatedAllInText, /raises \$0 to /)
+
+const interleavedDuplicatedText = handExport.buildPokerStarsExport(duplicatedAllInHand, {
+  session: { venue: 'MGM' },
+  actions: [
+    { street: 'Pre', position: 'UTG', action: 'Raise', amount: 2500, sequence: 1, potAfter: 5000 },
+    { street: 'Pre', position: 'UTG+1', action: 'Fold', sequence: 2, potAfter: 5000 },
+    { street: 'Pre', position: 'LJ', action: 'Call', amount: 2500, sequence: 3, potAfter: 7500 },
+    { street: 'Pre', position: 'UTG', action: 'Raise', amount: 2500, sequence: 4, potAfter: 10000 },
+    { street: 'Pre', position: 'UTG+1', action: 'Fold', sequence: 5, potAfter: 10000 },
+    { street: 'Pre', position: 'LJ', action: 'Call', amount: 2500, sequence: 6, potAfter: 12500 },
+    { street: 'Pre', position: 'UTG', action: 'Raise', amount: 2500, sequence: 7, potAfter: 15000 },
+    { street: 'Pre', position: 'UTG+1', action: 'Fold', sequence: 8, potAfter: 15000 },
+    { street: 'Pre', position: 'LJ', action: 'Call', amount: 2500, sequence: 9, potAfter: 17500 },
+    { street: 'River', position: 'BB', action: 'Show', sequence: 10, potAfter: 221500 },
+    { street: 'River', position: 'BB', action: 'Show', sequence: 11, potAfter: 221500 }
+  ]
+})
+
+assert.equal(lineCount(interleavedDuplicatedText, 'Hero: raises $1500 to $2500'), 1)
+assert.equal(lineCount(interleavedDuplicatedText, 'UTG+1: folds'), 1)
+assert.equal(lineCount(interleavedDuplicatedText, 'LJ: calls $2500'), 1)
+assert.equal(lineCount(interleavedDuplicatedText, 'BB: shows [Ah Ks]'), 1)
+
 console.log('hand export checks passed')

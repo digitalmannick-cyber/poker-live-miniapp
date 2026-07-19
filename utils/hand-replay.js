@@ -40,26 +40,49 @@ function formatStackText(value) {
   return amount > 0 ? String(amount) : ''
 }
 
+function findPlayerSnapshotByPosition(hand, position, noteId) {
+  const normalizedPosition = normalizePosition(position)
+  const normalizedNoteId = String(noteId || '').trim()
+  const snapshots = Array.isArray(hand && hand.playerSnapshots) ? hand.playerSnapshots : []
+  return snapshots.find(function (snapshot) {
+    if (!snapshot) return false
+    const snapshotPosition = normalizePosition(snapshot.position || snapshot.pos || snapshot.slot)
+    const snapshotNoteId = String(snapshot.playerNoteId || '').trim()
+    return (normalizedPosition && snapshotPosition === normalizedPosition) ||
+      (normalizedNoteId && snapshotNoteId === normalizedNoteId)
+  }) || null
+}
+
 function buildPlayers(hand) {
   const source = hand || {}
   const heroPosition = normalizePosition(source.heroPosition) || 'BTN'
   const villainPosition = normalizePosition(source.villainPosition)
   const opponentName = String(source.opponentName || '').trim()
+  const opponentPlayerNoteId = String(source.opponentPlayerNoteId || '').trim()
   const effectiveStack = Number(source.effectiveStack) || 0
   const blinds = parseStakeLevel(source.stakeLevel)
   const defaultStack = blinds.bigBlind ? blinds.bigBlind * 100 : 0
   return PLAYER_POSITIONS_8_MAX.map(function (position) {
     const isHero = position === heroPosition
     const isVillain = !!(villainPosition && position === villainPosition)
+    const snapshot = findPlayerSnapshotByPosition(source, position, isVillain ? opponentPlayerNoteId : '')
     const stack = isVillain && effectiveStack ? effectiveStack : defaultStack
+    const avatarDisplayUrl = String(snapshot && snapshot.avatarDisplayUrl || '').trim()
+    const avatarUrl = String(snapshot && snapshot.avatarUrl || (isVillain ? source.opponentAvatarUrl : '') || '').trim()
+    const avatarFileId = String(snapshot && snapshot.avatarFileId || (isVillain ? source.opponentAvatarFileId : '') || '').trim()
+    const playerName = String(snapshot && snapshot.playerName || '').trim()
     return {
       id: position.toLowerCase().replace(/\W+/g, '-'),
       position,
-      name: isHero ? 'Hero' : (isVillain && opponentName ? opponentName : position),
+      name: isHero ? 'Hero' : (playerName || (isVillain && opponentName ? opponentName : position)),
       stackText: formatStackText(stack),
       isHero,
       isVillain,
       isDealer: position === 'BTN',
+      avatarDisplayUrl: avatarDisplayUrl || avatarUrl,
+      avatarUrl,
+      avatarFileId,
+      hasAvatar: !!(avatarDisplayUrl || avatarUrl),
       seatClass: 'seat-' + position.toLowerCase().replace(/\+/, 'plus').replace(/\W+/g, '-')
     }
   })

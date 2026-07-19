@@ -6,6 +6,7 @@ const display = require('../../utils/display')
 const reviewTags = require('../../utils/review-tags')
 const actionLine = require('../../utils/action-line')
 const handDetailFields = require('../../utils/hand-detail-fields')
+const handSessionContext = require('../../utils/hand-session-context')
 const handReplay = require('../../utils/hand-replay')
 const ledgerDerived = require('../../utils/ledger-derived-fields')
 const onboardingGuide = require('../../utils/onboarding-guide')
@@ -643,14 +644,11 @@ function preserveLockedQuickEntryFields(parsedVoice, detailHand) {
 }
 
 function getDefaultPlayerCount(detailHand, detailSession) {
-  return Number(detailHand && detailHand.playerCount) ||
-    Number(detailSession && detailSession.playerCount) ||
-    Number(detailSession && detailSession.tableSize) ||
-    0
+  return handSessionContext.resolveHandSessionContext(detailHand, detailSession).tableSize
 }
 
 function getDefaultHasStraddle(detailHand, detailSession) {
-  return !!((detailSession && detailSession.hasStraddle) || (detailHand && detailHand.hasStraddle))
+  return handSessionContext.resolveHandSessionContext(detailHand, detailSession).hasStraddle
 }
 
 function getDefaultStraddleAmount(detailHand, detailSession) {
@@ -1376,6 +1374,7 @@ function hasUsefulVoiceFields(parsedVoice) {
 
 function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote, options) {
   detailHand = ledgerDerived.withLedgerDerivedFields(detailHand)
+  const recordedContext = handSessionContext.resolveHandSessionContext(detailHand, detailSession)
   const settings = dataService.getAppSettings()
   const profile = dataService.getCurrentProfile ? dataService.getCurrentProfile() : {}
   const config = options || {}
@@ -1386,7 +1385,7 @@ function buildReviewRequest(detailHand, detailSession, detailActions, voiceNote,
     _id: (detailHand && detailHand._id) || '',
     playerCount: getDefaultPlayerCount(detailHand, detailSession),
     playedDate: (detailHand && detailHand.playedDate) || '',
-    stakeLevel: (detailHand && detailHand.stakeLevel) || '',
+    stakeLevel: recordedContext.stakeLevel,
     hasStraddle,
     straddleAmount,
     heroPosition: (detailHand && detailHand.heroPosition) || '',
@@ -2175,16 +2174,13 @@ function stripAutoVoiceReviewNotes(value) {
 
 function buildAllInEvDisplay(hand, chipUnit) {
   if (!hand) return ''
-  const street = String(hand.allInStreet || hand.allInRound || hand.allInStage || hand.allInEvStreet || '').trim().toLowerCase()
-  const normalizedStreet = /^(pre|preflop|pre-flop|pf)$/.test(street) ? 'preflop' : street
-  const isPreRiverAllIn = normalizedStreet === 'preflop' || normalizedStreet === 'flop' || normalizedStreet === 'turn' ||
-    (!normalizedStreet && (hand.isAllIn === true || hand.allInEvEligible === true))
-  if (!isPreRiverAllIn) return ''
+  if (!handDetailFields.isPreRiverAllIn(hand)) return ''
   const raw = hand.allInEv !== undefined && hand.allInEv !== null
     ? hand.allInEv
     : (hand.allInEvProfit !== undefined && hand.allInEvProfit !== null
       ? hand.allInEvProfit
       : hand.allInEvAdjustedProfit)
+  if (raw === '' || raw === undefined || raw === null) return ''
   const value = Number(raw)
   if (!Number.isFinite(value)) return ''
   return display.formatAmount(value, chipUnit)

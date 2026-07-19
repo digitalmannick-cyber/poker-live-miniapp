@@ -101,6 +101,8 @@ function normalizeAllInStreet(value) {
 
 function isPreRiverAllIn(source) {
   const hand = source || {}
+  const status = String(hand.allInEvStatus || '').trim().toLowerCase()
+  if (status === 'all_in_not_terminal' || status === 'hero_not_all_in' || status === 'not_all_in') return false
   const street = normalizeAllInStreet(hand.allInStreet || hand.allInRound || hand.allInStage || hand.allInEvStreet)
   if (street === 'river') return false
   return normalizeBoolean(hand.isAllIn) || normalizeBoolean(hand.allInEvEligible) || !!street
@@ -130,6 +132,7 @@ function normalizeHandDetailForm(hand) {
   const board = source.board || {}
   const streetInputs = source.streetInputs || {}
   const opponentCards = normalizeOpponentCardsValue(source)
+  const isAllIn = isPreRiverAllIn(source)
 
   return {
     playedDate: source.playedDate || '',
@@ -142,8 +145,8 @@ function normalizeHandDetailForm(hand) {
     effectiveStack: source.effectiveStack || '',
     potSize: source.potSize || '',
     currentProfit: source.currentProfit === 0 ? 0 : source.currentProfit || '',
-    isAllIn: isPreRiverAllIn(source),
-    allInEv: source.allInEv === 0 ? 0 : source.allInEv || source.allInEvProfit || source.allInEvAdjustedProfit || '',
+    isAllIn,
+    allInEv: isAllIn ? (source.allInEv === 0 ? 0 : source.allInEv || source.allInEvProfit || source.allInEvAdjustedProfit || '') : '',
     opponentName: source.opponentName || '',
     opponentCards,
     opponentCardsSource: source.opponentCardsSource || '',
@@ -267,6 +270,7 @@ module.exports = {
   getStraddleAmount,
   getPositionOptions,
   normalizeBoolean,
+  isPreRiverAllIn,
   normalizeHandDetailForm,
   hasOnlyQuickEntryDetails,
   buildHandDetailViewModel

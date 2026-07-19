@@ -39,8 +39,10 @@ assert.equal(selected[2].active, true, 'player notes tab should select correctly
 
 assert.match(playerNotesJs, /cardColor:\s*color/, 'player list items should expose type color to the full card')
 assert.match(playerNotesWxss, /background:\s*linear-gradient\(105deg,\s*var\(--player-card-color\)/, 'player cards should tint the whole row by player type')
-assert.match(playerNotesWxss, /min-height:\s*168rpx/, 'player cards should stay compact enough to show more players per screen')
-assert.match(playerNotesWxss, /grid-template-columns:\s*8rpx 124rpx minmax\(0,\s*1fr\)/, 'compact player cards should use a smaller avatar column')
+assert.match(playerNotesWxss, /height:\s*204rpx/, 'player cards should use a fixed height so rows stay visually consistent')
+assert.match(playerNotesWxss, /grid-template-columns:\s*8rpx 156rpx minmax\(0,\s*1fr\)/, 'player cards should use a larger avatar column and more of the row width')
+assert.match(playerNotesWxss, /\.player-type\s*\{[\s\S]*position:\s*absolute/, 'player type badges should not reserve blank space in the content row')
+assert.match(playerNotesWxss, /\.player-tags\s*\{[\s\S]*flex-wrap:\s*nowrap/, 'player leak tags should stay on one row inside fixed-height cards')
 assert.match(playerNotesJs, /avatarCache\.getAvatarDisplayUrl/, 'player list should prefer cached avatar display paths')
 assert.match(playerNotesJs, /avatarCache\.warmPlayerAvatars/, 'player list should warm cloud avatars into local display cache')
 assert.match(avatarCacheJs, /wx\.cloud\.downloadFile/, 'avatar cache should download cloud avatars for later instant display')
@@ -55,5 +57,9 @@ assert.match(playerDetailWxss, /\.primary-action::after,\s*\.secondary-action::a
 assert.match(playerDetailWxml, /bindtap="goBack"/, 'player note detail back button should use navigation logic instead of edit cancel only')
 assert.match(playerDetailJs, /goBack\(\)/, 'player note detail should implement a real back handler')
 assert.match(playerDetailJs, /wx\.redirectTo\(\{\s*url:\s*'\/pages\/hand-detail\/hand-detail\?id='/, 'battle hand detail opened from player notes should replace the detail page so native back returns to the player list')
+assert.match(playerDetailJs, /versusSummary/, 'player battle hands should normalize a compact hero-vs-opponent summary')
+assert.match(playerDetailWxml, /battle-vs-row/, 'player battle hand cards should render a one-line VS summary')
+assert.match(playerDetailWxml, /item\.versusSummary\.hasOpponentCards/, 'opponent cards should render only when showdown cards exist')
+assert.match(playerDetailWxss, /\.battle-vs-row\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+118rpx\s+minmax\(0,\s*1fr\)/, 'VS summary should reserve a narrow center column for VS and profit')
 
 console.log('player notes navigation tests passed')

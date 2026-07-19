@@ -1,13 +1,13 @@
 module.exports = {
-  version: '3.11',
+  version: '3.15',
   eyebrow: 'VERSION UPDATE',
-  title: '智牌屋体验优化',
-  summary: 'Session 记录、完整手牌录入与提醒体验进一步优化。',
+  title: '手牌录入体验升级',
+  summary: '完整录入、金额输入与手牌数据处理进一步优化。',
   items: [
-    { title: 'Session 记录优化', description: '时间轴、输赢和总筹码展示更准确' },
-    { title: '完整手牌录入优化', description: '牌桌布局、行动输入和保存反馈更顺畅' },
-    { title: 'AI 提醒优化', description: '提醒记录和已处理状态展示更清晰' },
-    { title: '数据刷新优化', description: '优先展示最新的 Session 与统计数据' }
+    { title: '完整录入优化', description: '放大牌桌座位与手牌，强化当前行动和节点提示' },
+    { title: '金额输入优化', description: '有效筹码和下注金额支持快捷选择与直接输入' },
+    { title: '手牌数据修复', description: '按手牌当时级别复盘，并补全逐街行动导出' },
+    { title: '稳定性优化', description: '修复全押、秀牌、AI 建议和选择器显示问题' }
   ],
   imageUrl: '',
   acknowledgeText: '我知道了'

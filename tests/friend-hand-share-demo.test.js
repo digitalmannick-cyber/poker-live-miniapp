@@ -1,0 +1,22 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const demoPath = path.join(__dirname, '..', 'web-preview', 'friend-hand-share-demo.html')
+assert.ok(fs.existsSync(demoPath), '发布范围 Demo HTML 应存在')
+
+const html = fs.readFileSync(demoPath, 'utf8')
+
+assert.match(html, /发布手牌/)
+assert.match(html, /data-scope="square"/)
+assert.match(html, /data-scope="all"/)
+assert.match(html, /data-scope="selected"/)
+assert.match(html, /scope-option selected[^>]*data-scope="all"/)
+assert.match(html, /所有已登录用户均可浏览、点赞和评论/)
+assert.match(html, /指定好友/)
+assert.match(html, /friend-picker/)
+assert.match(html, /toggleFriend/)
+assert.match(html, /confirmPublish/)
+assert.match(html, /所有筹码已转换为 BB/)
+assert.match(html, /其他玩家已匿名/)
+assert.match(html, /prefers-reduced-motion/)

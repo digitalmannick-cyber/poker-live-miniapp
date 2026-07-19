@@ -1,0 +1,45 @@
+<view wx:if="{{visible}}" class="amount-sheet-layer" catchtouchmove="noop">
+  <view class="amount-sheet-mask" bindtap="close"></view>
+  <view class="amount-sheet-panel">
+    <view class="amount-sheet-handle"></view>
+    <view class="amount-sheet-head">
+      <view class="amount-sheet-title">{{title}}</view>
+      <view class="amount-sheet-close" bindtap="close">×</view>
+    </view>
+
+    <view wx:if="{{presets.length}}" class="amount-presets">
+      <view
+        wx:for="{{presets}}"
+        wx:key="label"
+        class="amount-preset {{activePresetValue === item.value ? 'active' : ''}}"
+        style="{{activePresetValue === item.value ? 'border-color:' + accent + ';color:' + accent + ';' : ''}}"
+        data-value="{{item.value}}"
+        bindtap="applyPreset"
+      >{{item.label}}</view>
+    </view>
+
+    <view class="amount-display-row">
+      <view class="amount-display">{{draft}}</view>
+      <view class="amount-unit" style="color:{{accent}}">{{unit}}</view>
+    </view>
+
+    <view class="amount-keypad">
+      <view class="amount-key" data-digit="1" bindtap="appendDigit">1</view>
+      <view class="amount-key" data-digit="2" bindtap="appendDigit">2</view>
+      <view class="amount-key" data-digit="3" bindtap="appendDigit">3</view>
+      <view class="amount-key" data-digit="4" bindtap="appendDigit">4</view>
+      <view class="amount-key" data-digit="5" bindtap="appendDigit">5</view>
+      <view class="amount-key" data-digit="6" bindtap="appendDigit">6</view>
+      <view class="amount-key" data-digit="7" bindtap="appendDigit">7</view>
+      <view class="amount-key" data-digit="8" bindtap="appendDigit">8</view>
+      <view class="amount-key" data-digit="9" bindtap="appendDigit">9</view>
+      <view class="amount-key amount-key-tool" bindtap="clearDraft">清空</view>
+      <view class="amount-key" data-digit="0" bindtap="appendDigit">0</view>
+      <view class="amount-key amount-key-tool" bindtap="backspaceDraft">退格</view>
+    </view>
+
+    <slider min="0" max="{{max}}" value="{{draft}}" block-size="20" activeColor="{{accent}}" bindchange="onSliderChange" />
+    <view wx:if="{{secondaryLabel}}" class="amount-secondary" bindtap="secondary">{{secondaryLabel}}</view>
+    <view class="amount-submit" style="background:{{accent}}" bindtap="confirm">保存</view>
+  </view>
+</view>

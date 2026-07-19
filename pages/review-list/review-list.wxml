@@ -261,13 +261,15 @@
           <view class="small muted">{{detailSession ? detailSession.title : ''}}</view>
         </view>
         <view class="review-modal-header-right">
-          <button class="review-top-action close" bindtap="closeHandDetail">关闭</button>
+          <view class="review-detail-close-icon" bindtap="closeHandDetail" role="button" aria-label="关闭" hover-class="review-detail-close-icon-active">
+            <view class="review-detail-close-glyph"></view>
+          </view>
         </view>
       </view>
 
       <view wx:if="{{detailLoading && !detailHand}}" class="empty">详情加载中...</view>
 
-      <view wx:elif="{{detailHand}}">
+      <view wx:elif="{{detailHand}}" class="review-detail-loaded">
         <view class="review-hero-summary">
           <view class="review-hero-left">
             <view class="cards-inline tight review-detail-hero-cards">
@@ -295,6 +297,8 @@
           </view>
         </view>
 
+        <scroll-view class="review-detail-scroll" scroll-y="true" enhanced="true" show-scrollbar="false">
+          <view class="review-detail-scroll-content">
         <view wx:if="{{!voicePanelVisible}}" class="review-detail-review-entry">
           <view class="review-detail-entry-head">
             <view class="section-title">{{detailHand.hasCompletedReview ? '重新复盘' : '开始复盘'}}</view>
@@ -689,6 +693,8 @@
         <view class="review-modal-actions">
           <button class="primary-btn" bindtap="goHandDetailPage">完整详情</button>
         </view>
+          </view>
+        </scroll-view>
       </view>
     </view>
   </view>

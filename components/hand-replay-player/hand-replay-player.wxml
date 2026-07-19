@@ -26,10 +26,14 @@
 
     <view wx:for="{{displayPlayers}}" wx:key="id" class="replay-seat {{item.seatClass}} {{item.isHero ? 'hero' : ''}} {{item.activeClass}}">
       <view wx:if="{{item.actionChipText}}" class="replay-action-chip action-{{item.actionType}}">{{item.actionChipText}}</view>
-      <view class="replay-seat-row">
-        <text class="replay-seat-pos">{{item.position}}</text>
-        <text class="replay-seat-stack">{{item.stackText || '-'}}</text>
+      <view wx:if="{{item.hasAvatar}}" class="replay-seat-avatar">
+        <image class="replay-seat-avatar-img" src="{{item.avatarDisplayUrl || item.avatarUrl}}" mode="aspectFill"></image>
+        <view class="replay-seat-position-badge">{{item.position}}</view>
       </view>
+      <view wx:else class="replay-seat-row">
+        <text class="replay-seat-pos">{{item.position}}</text>
+      </view>
+      <view class="replay-seat-stack">{{item.stackText || '-'}}</view>
       <view class="replay-seat-name">{{item.name}}</view>
       <view wx:if="{{item.isHero}}" class="replay-hero-cards">
         <view wx:for="{{replay.heroCards}}" wx:key="index" class="replay-card replay-hero-card replay-card-{{item.suitClass}}">

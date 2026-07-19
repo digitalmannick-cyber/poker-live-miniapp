@@ -18,6 +18,7 @@ const SWIPE_OPEN_DISTANCE = 72
 const SWIPE_CLOSE_DISTANCE = 48
 const LIST_PAGE_SIZE = 20
 const ON_SHOW_FRESH_MS = 5000
+const INITIAL_SESSION_REFRESH_DELAY_MS = 80
 const PENDING_RECORD_SESSION_ID_KEY = 'pokerLivePendingRecordSessionId'
 const OPEN_CREATE_SESSION_KEY = 'pokerLiveOpenCreateSession'
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
@@ -1056,10 +1057,10 @@ Page({
     this.launchStatsPrefetchTimer = launchPrefetch.scheduleStatsPrefetch(dataService)
   },
 
-  async onShow() {
+  onShow() {
     tabBar.syncCustomTabBar('/pages/session-list/session-list')
     const isFresh = this.data.sessions.length && Date.now() - Number(this.lastSessionsLoadedAt || 0) < ON_SHOW_FRESH_MS
-    if (!isFresh) await this.refreshSessions()
+    if (!isFresh) this.scheduleInitialSessionRefresh()
     this.startDurationClock()
     this.consumeOpenCreateSessionHint()
     this.syncOnboardingGuide()
@@ -1067,11 +1068,19 @@ Page({
   },
 
   onHide() {
+    if (this.initialSessionRefreshTimer) {
+      clearTimeout(this.initialSessionRefreshTimer)
+      this.initialSessionRefreshTimer = null
+    }
     this.clearReleaseNotesCheck()
     this.stopDurationClock()
   },
 
   onUnload() {
+    if (this.initialSessionRefreshTimer) {
+      clearTimeout(this.initialSessionRefreshTimer)
+      this.initialSessionRefreshTimer = null
+    }
     if (this.launchAnimationTimer) {
       clearTimeout(this.launchAnimationTimer)
       this.launchAnimationTimer = null
@@ -1082,6 +1091,14 @@ Page({
     }
     this.clearReleaseNotesCheck()
     this.stopDurationClock()
+  },
+
+  scheduleInitialSessionRefresh() {
+    if (this.initialSessionRefreshTimer) return
+    this.initialSessionRefreshTimer = setTimeout(() => {
+      this.initialSessionRefreshTimer = null
+      this.refreshSessions()
+    }, INITIAL_SESSION_REFRESH_DELAY_MS)
   },
 
   clearReleaseNotesCheck() {
@@ -1697,13 +1714,8 @@ Page({
       wx.showToast({ title: '微信消息未配置', icon: 'none' })
       return false
     }
-    wx.showLoading({ title: '请求微信授权', mask: false })
     let result = null
-    try {
-      result = await dataService.requestAiReminderSubscribePermission(AI_REMINDER_SUBSCRIBE_TEMPLATE_ID)
-    } finally {
-      wx.hideLoading()
-    }
+    result = await dataService.requestAiReminderSubscribePermission(AI_REMINDER_SUBSCRIBE_TEMPLATE_ID)
     if (result && result.accepted) return true
     wx.showToast({ title: '需要允许微信消息', icon: 'none' })
     return false

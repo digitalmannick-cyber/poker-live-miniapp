@@ -1,0 +1,1001 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>好友列表与消息中心 Demo</title>
+    <style>
+      :root {
+        --red: #e60012;
+        --cyan: #2ad8f6;
+        --bg: #08090d;
+        --panel: #171a22;
+        --line: rgba(255, 255, 255, 0.12);
+        --muted: rgba(255, 255, 255, 0.5);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: #fff;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
+          sans-serif;
+        background:
+          radial-gradient(
+            circle at 13% 5%,
+            rgba(230, 0, 18, 0.15),
+            transparent 28%
+          ),
+          radial-gradient(
+            circle at 88% 14%,
+            rgba(42, 216, 246, 0.08),
+            transparent 24%
+          ),
+          var(--bg);
+      }
+      button,
+      input {
+        font: inherit;
+      }
+      .page {
+        max-width: 1080px;
+        margin: auto;
+        padding: 32px 20px 64px;
+      }
+      .intro h1 {
+        margin: 0;
+        font-size: 29px;
+      }
+      .intro p {
+        max-width: 780px;
+        margin: 9px 0 0;
+        color: #8b929e;
+        font-size: 13px;
+        line-height: 1.7;
+      }
+      .stage {
+        display: grid;
+        grid-template-columns: repeat(2, 390px);
+        justify-content: center;
+        gap: 30px;
+        margin-top: 25px;
+      }
+      .phone {
+        position: relative;
+        width: 390px;
+        height: 844px;
+        overflow: hidden;
+        border: 1px solid #373b46;
+        border-radius: 30px;
+        background: #0b0c11;
+        box-shadow: 0 25px 70px rgba(0, 0, 0, 0.5);
+      }
+      .status {
+        height: 29px;
+        padding: 9px 17px 0;
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        font-weight: 900;
+      }
+      .top {
+        height: 51px;
+        display: grid;
+        grid-template-columns: 58px 1fr 58px;
+        align-items: center;
+        padding: 0 12px;
+      }
+      .top-title {
+        text-align: center;
+        font-size: 17px;
+        font-weight: 950;
+      }
+      .top-action {
+        min-height: 34px;
+        border: 0;
+        background: transparent;
+        color: #8d949f;
+        font-size: 9px;
+        font-weight: 900;
+      }
+      .top-action.back {
+        text-align: left;
+        color: #d6d9df;
+      }
+      .top-action.read {
+        text-align: right;
+        color: var(--cyan);
+      }
+      .message-trigger {
+        position: relative;
+        width: 36px;
+        height: 36px;
+        justify-self: end;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: rgba(255, 255, 255, 0.06);
+        color: #fff;
+        font-size: 9px;
+        font-weight: 900;
+      }
+      .badge {
+        position: absolute;
+        right: -5px;
+        top: -5px;
+        min-width: 17px;
+        height: 17px;
+        padding: 0 4px;
+        display: grid;
+        place-items: center;
+        border: 2px solid #0b0c11;
+        border-radius: 99px;
+        background: var(--red);
+        color: #fff;
+        font-size: 7px;
+      }
+      .screen {
+        height: calc(100% - 80px);
+        overflow-y: auto;
+        padding: 0 13px 78px;
+        scrollbar-width: none;
+      }
+      .screen::-webkit-scrollbar {
+        display: none;
+      }
+      .outer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        padding: 4px;
+        border: 1px solid #292d36;
+        border-radius: 13px;
+        background: #101119;
+      }
+      .outer span {
+        padding: 7px;
+        text-align: center;
+        border-radius: 9px;
+        color: #858b98;
+        font-size: 10px;
+        font-weight: 950;
+      }
+      .outer .on {
+        background: #20232c;
+        color: var(--cyan);
+      }
+      .head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        margin: 13px 1px 8px;
+      }
+      .head small {
+        color: #858d99;
+        font-size: 8px;
+        letter-spacing: 2px;
+        font-weight: 950;
+      }
+      .head h2 {
+        margin: 2px 0 0;
+        font-size: 25px;
+      }
+      .add {
+        width: 35px;
+        height: 35px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.07);
+        color: #ff4053;
+        font-size: 22px;
+        line-height: 1;
+      }
+      .inner {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-bottom: 1px solid #292d36;
+      }
+      .inner span {
+        position: relative;
+        padding: 8px;
+        text-align: center;
+        color: #858b98;
+        font-size: 10px;
+        font-weight: 950;
+      }
+      .inner .on {
+        color: #fff;
+      }
+      .inner .on::after {
+        content: "";
+        position: absolute;
+        left: 30%;
+        right: 30%;
+        bottom: -1px;
+        height: 3px;
+        border-radius: 3px;
+        background: var(--cyan);
+      }
+      .search {
+        margin: 10px 0;
+        padding: 0 11px;
+        display: flex;
+        align-items: center;
+        height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: rgba(255, 255, 255, 0.055);
+      }
+      .search input {
+        width: 100%;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: #fff;
+        font-size: 10px;
+      }
+      .filter-row {
+        display: flex;
+        gap: 6px;
+        margin: 0 0 9px;
+        overflow: hidden;
+      }
+      .filter {
+        flex: none;
+        padding: 6px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.05);
+        color: #858b98;
+        font-size: 8px;
+        font-weight: 900;
+      }
+      .filter.on {
+        background: rgba(230, 0, 18, 0.72);
+        color: #fff;
+      }
+      .player-list {
+        display: grid;
+        gap: 8px;
+      }
+      .player-card {
+        --tone: #ae2841;
+        position: relative;
+        display: grid;
+        grid-template-columns: 5px 68px minmax(0, 1fr);
+        gap: 9px;
+        min-height: 116px;
+        padding: 10px 10px 10px 0;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 15px;
+        background: linear-gradient(
+          105deg,
+          color-mix(in srgb, var(--tone) 47%, #171a22),
+          rgba(23, 26, 34, 0.96) 45%,
+          #171a22 78%
+        );
+        cursor: pointer;
+      }
+      .player-card::after {
+        content: "";
+        position: absolute;
+        right: -24px;
+        top: 0;
+        width: 105px;
+        height: 42px;
+        background: rgba(230, 0, 18, 0.2);
+        transform: skewX(-12deg);
+      }
+      .color-bar {
+        width: 5px;
+        height: 100%;
+        border-radius: 99px;
+        background: var(--tone);
+        box-shadow: 0 0 12px var(--tone);
+      }
+      .avatar {
+        width: 68px;
+        height: 68px;
+        align-self: center;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.17);
+        border-radius: 13px;
+        background: rgba(255, 255, 255, 0.09);
+        font-size: 20px;
+        font-weight: 1000;
+      }
+      .player-main {
+        position: relative;
+        z-index: 1;
+        min-width: 0;
+        align-self: center;
+      }
+      .player-name {
+        padding-right: 58px;
+        overflow: hidden;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 1000;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .player-type {
+        position: absolute;
+        top: 0;
+        right: 1px;
+        padding: 4px 7px;
+        border-radius: 99px;
+        background: var(--tone);
+        color: #fff;
+        font-size: 7px;
+        font-weight: 950;
+      }
+      .friend-stats {
+        display: flex;
+        gap: 8px;
+        margin-top: 4px;
+        color: #a5abb5;
+        font-size: 8px;
+      }
+      .friend-stats b {
+        color: var(--cyan);
+        font-size: 9px;
+      }
+      .tags {
+        display: flex;
+        gap: 4px;
+        height: 20px;
+        margin-top: 5px;
+        overflow: hidden;
+      }
+      .tag {
+        flex: none;
+        padding: 4px 7px;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.1);
+        color: #c2c6cd;
+        font-size: 7px;
+        font-weight: 850;
+      }
+      .note {
+        margin-top: 4px;
+        overflow: hidden;
+        color: #777f8a;
+        font-size: 7px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bottom {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        height: 54px;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        align-items: center;
+        border: 1px solid #343844;
+        border-radius: 18px;
+        background: rgba(20, 22, 29, 0.98);
+        color: #7e8490;
+        text-align: center;
+        font-size: 8px;
+      }
+      .bottom b {
+        display: block;
+        margin-top: 2px;
+        font-size: 9px;
+      }
+      .bottom .active {
+        height: 40px;
+        margin: 0 3px;
+        padding-top: 7px;
+        border-radius: 12px;
+        background: #242832;
+        color: #fff;
+      }
+      .bottom em {
+        color: var(--cyan);
+        font-style: normal;
+      }
+      .message-summary {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        margin: 8px 1px 11px;
+      }
+      .message-summary h2 {
+        margin: 0;
+        font-size: 25px;
+      }
+      .message-summary span {
+        color: #747c87;
+        font-size: 8px;
+      }
+      .message-list {
+        display: grid;
+        gap: 8px;
+      }
+      .message-item {
+        position: relative;
+        display: grid;
+        grid-template-columns: 38px minmax(0, 1fr);
+        gap: 9px;
+        padding: 11px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.045);
+        transition:
+          opacity 0.2s ease,
+          border-color 0.2s ease;
+      }
+      .message-item.unread {
+        border-color: rgba(42, 216, 246, 0.23);
+        background: rgba(42, 216, 246, 0.045);
+      }
+      .message-item.unread::before {
+        content: "";
+        position: absolute;
+        left: -3px;
+        top: 20px;
+        width: 6px;
+        height: 20px;
+        border-radius: 99px;
+        background: var(--cyan);
+        box-shadow: 0 0 10px rgba(42, 216, 246, 0.5);
+      }
+      .message-icon {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        border-radius: 11px;
+        background: rgba(255, 255, 255, 0.07);
+        color: #fff;
+        font-size: 9px;
+        font-weight: 1000;
+      }
+      .message-copy {
+        min-width: 0;
+      }
+      .message-copy b {
+        display: block;
+        font-size: 10px;
+      }
+      .message-copy p {
+        margin: 4px 0 0;
+        color: #969da8;
+        font-size: 8px;
+        line-height: 1.45;
+      }
+      .message-copy time {
+        display: block;
+        margin-top: 5px;
+        color: #626a75;
+        font-size: 7px;
+      }
+      .request-actions,
+      .inline-action {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .request-actions button,
+      .inline-action button {
+        min-width: 55px;
+        height: 28px;
+        border: 0;
+        border-radius: 8px;
+        font-size: 8px;
+        font-weight: 950;
+      }
+      .accept {
+        background: var(--red);
+        color: #fff;
+      }
+      .reject {
+        background: rgba(255, 255, 255, 0.08);
+        color: #aeb4bd;
+      }
+      .view {
+        background: rgba(42, 216, 246, 0.1);
+        color: var(--cyan);
+      }
+      .message-item.expired {
+        opacity: 0.58;
+        cursor: pointer;
+      }
+      .message-item.resolved .request-actions {
+        display: none;
+      }
+      .message-item.resolved::after {
+        content: attr(data-result);
+        position: absolute;
+        right: 11px;
+        top: 11px;
+        color: #8f97a2;
+        font-size: 8px;
+        font-weight: 900;
+      }
+      .sheet {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        display: none;
+      }
+      .sheet.show {
+        display: block;
+      }
+      .mask {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.68);
+        backdrop-filter: blur(4px);
+      }
+      .sheet-panel {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 23px 23px 0 0;
+        background: #12151c;
+        animation: sheetUp 0.24s ease-out;
+      }
+      .sheet-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .sheet-head b {
+        font-size: 15px;
+      }
+      .sheet-head button {
+        border: 0;
+        background: transparent;
+        color: #8e96a1;
+        font-size: 9px;
+      }
+      .card-preview {
+        margin-top: 12px;
+        padding: 13px;
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        border-radius: 15px;
+        background: linear-gradient(
+          120deg,
+          rgba(105, 47, 157, 0.34),
+          #171a22 58%
+        );
+      }
+      .preview-profile {
+        display: grid;
+        grid-template-columns: 54px 1fr;
+        gap: 10px;
+        align-items: center;
+      }
+      .preview-profile .avatar {
+        width: 54px;
+        height: 54px;
+      }
+      .preview-profile h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+      .preview-profile p {
+        margin: 5px 0 0;
+        color: #9299a4;
+        font-size: 8px;
+      }
+      .preview-section {
+        margin-top: 11px;
+      }
+      .preview-section b {
+        color: #858d98;
+        font-size: 8px;
+      }
+      .preview-section p {
+        margin: 5px 0 0;
+        color: #c6cad0;
+        font-size: 9px;
+        line-height: 1.55;
+      }
+      .import {
+        width: 100%;
+        height: 40px;
+        margin-top: 13px;
+        border: 0;
+        border-radius: 11px;
+        background: var(--red);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 950;
+      }
+      .toast {
+        position: absolute;
+        z-index: 10;
+        left: 50%;
+        bottom: 82px;
+        max-width: 82%;
+        padding: 9px 13px;
+        border-radius: 10px;
+        background: rgba(245, 247, 250, 0.94);
+        color: #17191e;
+        font-size: 9px;
+        font-weight: 900;
+        opacity: 0;
+        transform: translate(-50%, 8px);
+        pointer-events: none;
+        transition: 0.2s ease;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+      .pulse {
+        animation: phonePulse 0.42s ease-out;
+      }
+      @keyframes sheetUp {
+        from {
+          transform: translateY(22px);
+          opacity: 0;
+        }
+        to {
+          transform: none;
+          opacity: 1;
+        }
+      }
+      @keyframes phonePulse {
+        50% {
+          box-shadow:
+            0 0 0 3px rgba(42, 216, 246, 0.3),
+            0 25px 70px rgba(0, 0, 0, 0.5);
+        }
+      }
+      @media (max-width: 860px) {
+        .stage {
+          grid-template-columns: 390px;
+        }
+      }
+      @media (max-width: 430px) {
+        .page {
+          padding: 18px 8px 45px;
+        }
+        .stage {
+          grid-template-columns: minmax(0, 390px);
+        }
+        .phone {
+          width: min(390px, calc(100vw - 16px));
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="intro">
+        <h1>好友列表 × 消息中心</h1>
+        <p>
+          好友列表沿用玩家库卡片结构，增加好友统计；消息中心作为独立页面承载申请、互动、定向手牌和玩家名片。
+        </p>
+      </header>
+      <div class="stage">
+        <section class="phone" aria-label="好友列表页面">
+          <div class="status"><span>00:26</span><span>5G ▮▮▮</span></div>
+          <div class="top">
+            <span></span><span class="top-title">玩家</span
+            ><button
+              class="message-trigger"
+              aria-label="打开消息中心"
+              onclick="openMessageCenter()"
+            >
+              消息<span class="badge" id="leftBadge">4</span>
+            </button>
+          </div>
+          <div class="screen">
+            <div class="outer">
+              <span class="on">好友</span><span>玩家库</span>
+            </div>
+            <div class="head">
+              <div>
+                <small>FRIENDS</small>
+                <h2>好友列表</h2>
+              </div>
+              <button
+                class="add"
+                aria-label="添加好友"
+                onclick="showToast('通过微信邀请或二维码添加好友', 'leftToast')"
+              >
+                +
+              </button>
+            </div>
+            <div class="inner">
+              <span>动态</span><span class="on">好友</span><span>排行榜</span>
+            </div>
+            <label class="search"
+              ><input placeholder="搜索名字、Leak、Note"
+            /></label>
+            <div class="filter-row">
+              <button class="filter on">全部</button
+              ><button class="filter">紧手</button
+              ><button class="filter">松手</button
+              ><button class="filter">娱乐玩家</button>
+            </div>
+            <div class="player-list">
+              <article
+                class="player-card"
+                style="--tone: #ae2841"
+                tabindex="0"
+                onclick="openFriend('老王 · 深夜局')"
+              >
+                <span class="color-bar"></span><span class="avatar">老王</span>
+                <div class="player-main">
+                  <div class="player-name">老王 · 深夜局</div>
+                  <span class="player-type">玩家类型 · 松凶</span>
+                  <div class="friend-stats">
+                    <span>累计时长 <b>12.6h</b></span
+                    ><span>手牌数 <b>34</b></span>
+                  </div>
+                  <div class="tags">
+                    <span class="tag">Leak · 河牌跟注偏宽</span
+                    ><span class="tag">3Bet 高</span>
+                  </div>
+                  <div class="note">Note：深筹码喜欢用小尺寸延迟下注。</div>
+                </div>
+              </article>
+              <article
+                class="player-card"
+                style="--tone: #3557a9"
+                tabindex="0"
+                onclick="openFriend('银狼')"
+              >
+                <span class="color-bar"></span><span class="avatar">银狼</span>
+                <div class="player-main">
+                  <div class="player-name">银狼</div>
+                  <span class="player-type">玩家类型 · 紧凶</span>
+                  <div class="friend-stats">
+                    <span>累计时长 <b>10.2h</b></span
+                    ><span>手牌数 <b>21</b></span>
+                  </div>
+                  <div class="tags">
+                    <span class="tag">Leak · 防守不足</span
+                    ><span class="tag">常客</span>
+                  </div>
+                  <div class="note">Note：面对大尺寸转牌压力弃牌偏多。</div>
+                </div>
+              </article>
+              <article
+                class="player-card"
+                style="--tone: #7850a6"
+                tabindex="0"
+                onclick="openFriend('幻蝶')"
+              >
+                <span class="color-bar"></span><span class="avatar">幻</span>
+                <div class="player-main">
+                  <div class="player-name">幻蝶</div>
+                  <span class="player-type">玩家类型 · 娱乐</span>
+                  <div class="friend-stats">
+                    <span>累计时长 <b>7.1h</b></span
+                    ><span>手牌数 <b>15</b></span>
+                  </div>
+                  <div class="tags">
+                    <span class="tag">Leak · 翻前跟注多</span>
+                  </div>
+                  <div class="note">Note：情绪稳定，短码时范围明显变宽。</div>
+                </div>
+              </article>
+            </div>
+          </div>
+          <div class="bottom">
+            <span>SESS<b>场次</b></span
+            ><span>HANDS<b>手牌</b></span
+            ><span class="active"><em>PLAYER</em><b>玩家</b></span
+            ><span>STATS<b>统计</b></span
+            ><span>ME<b>我的</b></span>
+          </div>
+          <div class="toast" id="leftToast"></div>
+        </section>
+
+        <section class="phone" id="messagePhone" aria-label="消息中心页面">
+          <div class="status"><span>00:26</span><span>5G ▮▮▮</span></div>
+          <div class="top">
+            <button
+              class="top-action back"
+              onclick="showToast('返回好友页', 'rightToast')"
+            >
+              ‹ 返回</button
+            ><span class="top-title">消息中心</span
+            ><button class="top-action read" onclick="markAllRead()">
+              全部已读
+            </button>
+          </div>
+          <div class="screen">
+            <div class="message-summary">
+              <div>
+                <h2>消息</h2>
+                <span id="unreadSummary">4 条未读</span>
+              </div>
+              <span>仅小程序内通知</span>
+            </div>
+            <div class="message-list">
+              <article class="message-item unread" id="requestItem">
+                <span class="message-icon">申请</span>
+                <div class="message-copy">
+                  <b>好友申请</b>
+                  <p>赤狐申请添加你为好友。</p>
+                  <time>刚刚</time>
+                  <div class="request-actions">
+                    <button class="accept" onclick="acceptRequest(event)">
+                      接受</button
+                    ><button class="reject" onclick="rejectRequest(event)">
+                      拒绝
+                    </button>
+                  </div>
+                </div>
+              </article>
+              <article class="message-item unread">
+                <span class="message-icon">评论</span>
+                <div class="message-copy">
+                  <b>银狼回复了你的手牌</b>
+                  <p>“转牌这里我会主动下注，河牌更好处理。”</p>
+                  <time>12 分钟前</time>
+                </div>
+              </article>
+              <article class="message-item unread">
+                <span class="message-icon">赞</span>
+                <div class="message-copy">
+                  <b>老王等 6 人赞了你的手牌</b>
+                  <p>河牌 A♠Q♠ 同花 · 最终底池 76.5BB</p>
+                  <time>28 分钟前</time>
+                </div>
+              </article>
+              <article class="message-item unread">
+                <span class="message-icon">名片</span>
+                <div class="message-copy">
+                  <b>老王分享了一张玩家名片</b>
+                  <p>玩家“夜鸦” · 分享将在 7 天后失效。</p>
+                  <time>今天 18:06</time>
+                  <div class="inline-action">
+                    <button class="view" onclick="openCardPreview(event)">
+                      查看名片
+                    </button>
+                  </div>
+                </div>
+              </article>
+              <article class="message-item">
+                <span class="message-icon">手牌</span>
+                <div class="message-copy">
+                  <b>幻蝶向你分享了一手牌</b>
+                  <p>指定好友可见 · 固定 BB 化和匿名化。</p>
+                  <time>昨天 23:18</time>
+                </div>
+              </article>
+              <article class="message-item expired" onclick="showUnavailable()">
+                <span class="message-icon">失效</span>
+                <div class="message-copy">
+                  <b>分享内容已失效</b>
+                  <p>内容已不可访问，可能已撤回、过期或权限被取消。</p>
+                  <time>7 月 16 日</time>
+                </div>
+              </article>
+            </div>
+          </div>
+          <div class="sheet" id="cardSheet">
+            <div class="mask" onclick="closeCardPreview()"></div>
+            <div class="sheet-panel">
+              <div class="sheet-head">
+                <b>玩家名片预览</b
+                ><button onclick="closeCardPreview()">关闭</button>
+              </div>
+              <div class="card-preview">
+                <div class="preview-profile">
+                  <span class="avatar">夜鸦</span>
+                  <div>
+                    <h3>夜鸦</h3>
+                    <p>玩家类型 · 松凶</p>
+                  </div>
+                </div>
+                <div class="preview-section">
+                  <b>Leak 标签</b>
+                  <p>河牌跟注偏宽 · 3Bet 频率高</p>
+                </div>
+                <div class="preview-section">
+                  <b>Note</b>
+                  <p>深筹码喜欢用小尺寸延迟下注；被加注后范围明显偏强。</p>
+                </div>
+              </div>
+              <button class="import" onclick="importCard()">
+                导入到玩家库
+              </button>
+            </div>
+          </div>
+          <div class="toast" id="rightToast"></div>
+        </section>
+      </div>
+    </main>
+    <script>
+      let unreadCount = 4;
+      let toastTimer;
+      function showToast(text, targetId) {
+        const toast = document.getElementById(targetId);
+        toast.textContent = text;
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("show"), 1500);
+      }
+      function openMessageCenter() {
+        const phone = document.getElementById("messagePhone");
+        phone.classList.remove("pulse");
+        requestAnimationFrame(() => phone.classList.add("pulse"));
+        phone.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      function openFriend(name) {
+        showToast(`打开好友详情：${name}`, "leftToast");
+      }
+      function resolveRequest(event, result) {
+        event.stopPropagation();
+        const item = document.getElementById("requestItem");
+        item.classList.remove("unread");
+        item.classList.add("resolved");
+        item.dataset.result = result;
+        decrementUnread();
+        showToast(
+          result === "已接受" ? "已成为好友" : "已拒绝申请",
+          "rightToast",
+        );
+      }
+      function acceptRequest(event) {
+        resolveRequest(event, "已接受");
+      }
+      function rejectRequest(event) {
+        resolveRequest(event, "已拒绝");
+      }
+      function decrementUnread() {
+        unreadCount = Math.max(0, unreadCount - 1);
+        updateUnread();
+      }
+      function updateUnread() {
+        const badge = document.getElementById("leftBadge");
+        const summary = document.getElementById("unreadSummary");
+        badge.textContent = unreadCount;
+        badge.hidden = unreadCount === 0;
+        summary.textContent = unreadCount
+          ? `${unreadCount} 条未读`
+          : "暂无未读";
+      }
+      function markAllRead() {
+        document
+          .querySelectorAll(".message-item.unread")
+          .forEach((item) => item.classList.remove("unread"));
+        unreadCount = 0;
+        updateUnread();
+        showToast("已全部标记为已读", "rightToast");
+      }
+      function openCardPreview(event) {
+        event.stopPropagation();
+        document.getElementById("cardSheet").classList.add("show");
+      }
+      function closeCardPreview() {
+        document.getElementById("cardSheet").classList.remove("show");
+      }
+      function importCard() {
+        closeCardPreview();
+        showToast("请选择整体覆盖或新建导入", "rightToast");
+      }
+      function showUnavailable() {
+        showToast("内容已不可访问", "rightToast");
+      }
+    </script>
+  </body>
+</html>

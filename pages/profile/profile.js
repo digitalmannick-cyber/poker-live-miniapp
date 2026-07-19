@@ -53,9 +53,21 @@ function isSubscribeMessageAvailable() {
   return !!String(AI_REMINDER_SUBSCRIBE_TEMPLATE_ID || '').trim()
 }
 
+function getRuntimeAppId() {
+  try {
+    const accountInfo = typeof wx !== 'undefined' && wx.getAccountInfoSync ? wx.getAccountInfoSync() : null
+    return String(accountInfo && accountInfo.miniProgram && accountInfo.miniProgram.appId || '').trim()
+  } catch (error) {
+    return ''
+  }
+}
+
 function getAiReminderSubscribeRejectTitle(result) {
   const status = String(result && result.status || '').toLowerCase()
   const message = String(result && result.message || '').toLowerCase()
+  if (isNoTemplateDataError(result)) {
+    return '模板运行态不可见'
+  }
   if (status === 'skipped' && message.indexOf('template') > -1) {
     return '模板未配置'
   }
@@ -79,7 +91,39 @@ function isAiReminderTemplateUnavailable(result) {
   return message.indexOf('template') > -1 || message.indexOf('tmpl') > -1 || message.indexOf('invalid') > -1 || message.indexOf('not exist') > -1
 }
 
+function isNoTemplateDataError(result) {
+  const message = String(result && result.message || '').toLowerCase()
+  return message.indexOf('no template data return') > -1
+}
+
+function getAiReminderSubscribeDiagnosticContent(result) {
+  const runtimeAppId = getRuntimeAppId() || '未获取到'
+  const templateId = String(result && result.templateId || AI_REMINDER_SUBSCRIBE_TEMPLATE_ID || '').trim() || '未配置'
+  const errCode = result && (result.errCode || result.errcode || result.code)
+  const rawMessage = String(result && result.message || 'unknown').trim()
+  const lines = [
+    '微信没有给当前运行包返回这个模板的数据。',
+    '',
+    '运行 AppID：' + runtimeAppId,
+    '模板 ID：' + templateId,
+    errCode ? ('错误码：' + errCode) : '',
+    '原始错误：' + rawMessage,
+    '',
+    '请确认：1）手机/开发工具打开的是当前 AppID 的最新预览；2）该模板在当前 AppID 的“我的模板”里；3）模板仍是一次性订阅模板。'
+  ].filter(Boolean)
+  return lines.join('\n')
+}
+
 function showAiReminderSubscribeReject(result) {
+  if (isNoTemplateDataError(result)) {
+    wx.showModal({
+      title: '微信消息模板运行态不可见',
+      content: getAiReminderSubscribeDiagnosticContent(result),
+      showCancel: false,
+      confirmText: '知道了'
+    })
+    return
+  }
   if (isAiReminderTemplateUnavailable(result)) {
     wx.showModal({
       title: '微信消息模板不可用',
@@ -707,15 +751,10 @@ Page({
   },
 
   async requestAiReminderSubscribeForDraft() {
-    wx.showLoading({ title: '请求微信授权', mask: false })
     let result = null
-    try {
-      result = await dataService.requestAiReminderSubscribePermission(AI_REMINDER_SUBSCRIBE_TEMPLATE_ID)
-      if (result && result.accepted) {
-        return true
-      }
-    } finally {
-      wx.hideLoading()
+    result = await dataService.requestAiReminderSubscribePermission(AI_REMINDER_SUBSCRIBE_TEMPLATE_ID)
+    if (result && result.accepted) {
+      return true
     }
     console.warn('ai reminder subscribe permission rejected', result)
     showAiReminderSubscribeReject(result)

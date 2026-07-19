@@ -55,10 +55,25 @@ function buildHandCandidate(hand, linkedIds, chipUnit) {
 
 function normalizeBattleHand(item, chipUnit) {
   const source = item || {}
+  const opponentCardsVisual = source.opponentCardsVisual || cardUi.parseOpponentCardsInput(source.opponentCards || source.showdown || source.villainCards || '', {
+    board: source.board || {},
+    heroCardsInput: source.heroCardsInput || ''
+  })
+  const versusSummary = Object.assign({
+    heroPosition: source.heroPosition || '',
+    heroCardsVisual: source.heroCardsVisual || cardUi.parseHeroCardsInput(source.heroCardsInput),
+    opponentPosition: source.opponentPosition || source.villainPosition || '',
+    opponentCardsVisual,
+    hasOpponentCards: opponentCardsVisual.length === 2,
+    currentProfit: Number(source.currentProfit) || 0,
+    currentProfitDisplay: source.currentProfitDisplay || display.formatAmount(source.currentProfit, chipUnit || 'BB'),
+    profitTone: Number(source.currentProfit) > 0 ? 'positive' : (Number(source.currentProfit) < 0 ? 'negative' : 'neutral')
+  }, source.versusSummary || {})
   return Object.assign({}, source, {
     heroCardsVisual: source.heroCardsVisual || cardUi.parseHeroCardsInput(source.heroCardsInput),
     boardStreetVisual: source.boardStreetVisual || cardUi.parseBoardStreets(source.board),
     currentProfitDisplay: source.currentProfitDisplay || display.formatAmount(source.currentProfit, chipUnit || 'BB'),
+    versusSummary,
     hasActionLine: !!String(source.actionLine || '').trim()
   })
 }

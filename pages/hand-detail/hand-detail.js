@@ -3,6 +3,7 @@ const aiService = require('../../services/ai-service')
 const cardUi = require('../../utils/card-ui')
 const display = require('../../utils/display')
 const handDetailFields = require('../../utils/hand-detail-fields')
+const handSessionContext = require('../../utils/hand-session-context')
 const reviewTags = require('../../utils/review-tags')
 const handExport = require('../../utils/hand-export')
 
@@ -194,9 +195,7 @@ function getSessionLevel(session) {
 }
 
 function getEffectiveHasStraddle(hand, session) {
-  return handDetailFields.normalizeBoolean(
-    (session && session.hasStraddle) || (hand && hand.hasStraddle)
-  )
+  return handSessionContext.resolveHandSessionContext(hand, session).hasStraddle
 }
 
 function getBigBlindFromLevel(levelText, session) {
@@ -440,6 +439,7 @@ Page({
       return
     }
     const session = await dataService.getSessionById(hand.sessionId)
+    const recordedContext = handSessionContext.resolveHandSessionContext(hand, session)
     const actions = await dataService.getActionsByHandId(hand._id)
     const exportText = handExport.buildPokerStarsExport(hand, { session, actions })
     const handBoard = hand.board || {}
@@ -448,11 +448,12 @@ Page({
     const flopInput = streetInputs.flop || {}
     const turnInput = streetInputs.turn || {}
     const riverInput = streetInputs.river || {}
+    const normalizedDetailForm = handDetailFields.normalizeHandDetailForm(hand)
     const form = {
       playedDate: hand.playedDate || getSessionDate(session),
-      stakeLevel: hand.stakeLevel || getSessionLevel(session),
-      playerCount: String(hand.playerCount || ''),
-      hasStraddle: getEffectiveHasStraddle(hand, session),
+      stakeLevel: recordedContext.stakeLevel,
+      playerCount: recordedContext.tableSize ? String(recordedContext.tableSize) : '',
+      hasStraddle: recordedContext.hasStraddle,
       heroPosition: hand.heroPosition || '',
       villainPosition: hand.villainPosition || '',
       villainType: hand.villainType || hand.opponentType || '',
@@ -460,8 +461,8 @@ Page({
       effectiveStack: String(hand.effectiveStack || ''),
       potSize: String(hand.potSize || ''),
       currentProfit: String(hand.currentProfit || 0),
-      isAllIn: !!(hand.isAllIn || hand.allInEvEligible || (hand.allInStreet && String(hand.allInStreet).toLowerCase() !== 'river')),
-      allInEv: hand.allInEv === 0 ? '' : String(hand.allInEv || hand.allInEvProfit || ''),
+      isAllIn: normalizedDetailForm.isAllIn,
+      allInEv: normalizedDetailForm.isAllIn && normalizedDetailForm.allInEv !== '' ? String(normalizedDetailForm.allInEv) : '',
       opponentName: hand.opponentName || '',
       opponentCards: hand.opponentCards || '',
       opponentCardsSource: hand.opponentCardsSource || '',

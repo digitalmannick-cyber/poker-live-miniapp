@@ -85,15 +85,29 @@
 
     <view wx:if="{{battleHands.length}}" class="battle-list">
       <view wx:for="{{battleHands}}" wx:key="handId" class="battle-card">
-        <view class="battle-top">
-          <view class="cards-inline tight">
-            <view wx:for="{{item.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
-              <text class="mini-card-rank">{{card.rank}}</text>
-              <text class="mini-card-suit">{{card.suitSymbol}}</text>
+        <view class="battle-vs-row">
+          <view class="battle-vs-side battle-vs-hero">
+            <view class="cards-inline tight battle-vs-cards">
+              <view wx:for="{{item.versusSummary.heroCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                <text class="mini-card-rank">{{card.rank}}</text>
+                <text class="mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
             </view>
+            <view wx:if="{{item.versusSummary.heroPosition}}" class="battle-position">{{item.versusSummary.heroPosition}}</view>
           </view>
-          <view wx:if="{{item.heroPosition}}" class="battle-position">{{item.heroPosition}}</view>
-          <view class="battle-profit {{item.currentProfit >= 0 ? 'positive' : 'negative'}}">{{item.currentProfitDisplay}}</view>
+          <view class="battle-vs-center">
+            <view class="battle-vs-label">VS</view>
+            <view class="battle-profit {{item.versusSummary.profitTone}}">{{item.versusSummary.currentProfitDisplay}}</view>
+          </view>
+          <view class="battle-vs-side battle-vs-opponent">
+            <view wx:if="{{item.versusSummary.hasOpponentCards}}" class="cards-inline tight battle-vs-cards">
+              <view wx:for="{{item.versusSummary.opponentCardsVisual}}" wx:for-item="card" wx:key="index" class="mini-card mini-card-{{card.suitClass}}">
+                <text class="mini-card-rank">{{card.rank}}</text>
+                <text class="mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
+            </view>
+            <view wx:if="{{item.versusSummary.opponentPosition}}" class="battle-position opponent">{{item.versusSummary.opponentPosition}}</view>
+          </view>
         </view>
         <view class="battle-board">
           <block wx:for="{{item.boardStreetVisual}}" wx:for-item="street" wx:key="street">

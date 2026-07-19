@@ -99,7 +99,9 @@ $uploadSourceBytes = (Get-ChildItem -LiteralPath $uploadRoot -Recurse -File | Me
 $uploadSourceKb = [math]::Round($uploadSourceBytes / 1KB, 1)
 Write-Host "Upload workspace $uploadRoot"
 Write-Host "Upload source size ${uploadSourceKb}KB"
-if ($uploadSourceBytes -gt (1900 * 1KB)) {
+# Keep a buffer below WeChat's 2 MB source limit without rejecting the same
+# clean runtime package that has already passed auto-preview compilation.
+if ($uploadSourceBytes -gt (1980 * 1KB)) {
   $largestFiles = Get-ChildItem -LiteralPath $uploadRoot -Recurse -File |
     Sort-Object Length -Descending |
     Select-Object -First 20 @{ Name = "KB"; Expression = { [math]::Round($_.Length / 1KB, 1) } }, FullName |

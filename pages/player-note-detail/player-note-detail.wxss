@@ -406,6 +406,44 @@
   border: 1rpx solid rgba(255,255,255,0.10);
 }
 
+.battle-vs-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118rpx minmax(0, 1fr);
+  align-items: center;
+  gap: 12rpx;
+  min-height: 72rpx;
+}
+
+.battle-vs-side {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.battle-vs-opponent {
+  justify-content: flex-end;
+}
+
+.battle-vs-cards {
+  flex: 0 0 auto;
+}
+
+.battle-vs-center {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 4rpx;
+}
+
+.battle-vs-label {
+  color: rgba(255,255,255,0.76);
+  font-size: 20rpx;
+  line-height: 1;
+  font-weight: 1000;
+  letter-spacing: 0;
+}
+
 .battle-position {
   padding: 7rpx 14rpx;
   border-radius: 999rpx;
@@ -416,9 +454,11 @@
 }
 
 .battle-profit {
-  margin-left: auto;
-  font-size: 28rpx;
+  font-size: 25rpx;
   font-weight: 1000;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .battle-board {

@@ -30,6 +30,8 @@ function normalizeAllInStreet(value) {
 
 function isPreRiverAllIn(merged) {
   const source = merged || {}
+  const status = String(source.allInEvStatus || '').trim().toLowerCase()
+  if (status === 'all_in_not_terminal' || status === 'hero_not_all_in' || status === 'not_all_in') return false
   const street = normalizeAllInStreet(source.allInStreet || source.allInRound || source.allInStage || source.allInEvStreet)
   if (street === 'river') return false
   return !!source.isAllIn || !!source.allInEvEligible || !!street

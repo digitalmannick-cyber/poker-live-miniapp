@@ -67,6 +67,18 @@ function installMocks() {
     if (request.endsWith('../../services/data-service')) {
       return {
         async getSessionById(id) {
+          if (id === 'session-after-table-change') {
+            return {
+              _id: id,
+              smallBlind: 500,
+              bigBlind: 1000,
+              tableSize: 9,
+              hasStraddle: true,
+              buyIn: 100000,
+              currentProfit: 0,
+              date: '2026-07-11'
+            }
+          }
           return {
             _id: id || 'session-test',
             smallBlind: 200,
@@ -79,6 +91,21 @@ function installMocks() {
           }
         },
         async getSessionDetailData(id) {
+          if (id === 'session-after-table-change') {
+            return {
+              session: {
+                _id: id,
+                smallBlind: 500,
+                bigBlind: 1000,
+                tableSize: 9,
+                hasStraddle: true,
+                buyIn: 100000,
+                currentProfit: 0,
+                date: '2026-07-11'
+              },
+              hands: []
+            }
+          }
           if (id === 'session-stack-snapshot') {
             return {
               session: {
@@ -135,6 +162,18 @@ function installMocks() {
           }
         },
         async getHandById(id) {
+          if (id === 'hand-before-table-change') {
+            return {
+              _id: id,
+              sessionId: 'session-after-table-change',
+              heroCardsInput: '9hJh',
+              currentProfit: 21000,
+              stakeLevel: '200/400',
+              playerCount: 8,
+              hasStraddle: false,
+              playedDate: '2026-07-11 19:37'
+            }
+          }
           if (id === 'hand-stack-after-win') {
             return {
               _id: id,
@@ -142,6 +181,15 @@ function installMocks() {
               heroCardsInput: 'AdKd',
               currentProfit: 49000,
               createdAtMs: 2000
+            }
+          }
+          if (id === 'hand-with-inherited-position') {
+            return {
+              _id: id,
+              sessionId: 'session-test',
+              heroCardsInput: 'QsQd',
+              heroPosition: 'BTN',
+              currentProfit: -1200
             }
           }
           if (id === 'hand-ledger-edit') {
@@ -219,6 +267,9 @@ function installMocks() {
               _id: 'note-fish-1',
               name: '阿鱼',
               alias: ['fish'],
+              avatarUrl: 'cloud://player-avatar-fish',
+              avatarFileId: 'cloud://player-avatar-fish',
+              avatarText: 'F',
               type: '鱼',
               leakTags: ['不弃顶对'],
               note: '翻前跟太宽'
@@ -387,6 +438,26 @@ async function testSessionEditReturnAndHistoricalPlayedTime() {
   restoreMocks()
 }
 
+async function testInheritedHeroCardsSkipPickerStep() {
+  const page = await createPage({ handId: 'hand-with-inherited-cards' })
+  assert.strictEqual(page.data.heroCardsInput, 'KhQh')
+  page.nextSetup()
+  page.nextSetup()
+  assert.strictEqual(page.data.phase, 'play', 'existing hero cards should advance directly into action entry')
+  assert.strictEqual(page.data.cardPickerVisible, false, 'existing hero cards should not reopen the hero picker')
+  assert.strictEqual(page.data.heroCardsInput, 'KhQh', 'skipping the picker should preserve inherited cards')
+  restoreMocks()
+}
+
+async function testQuickRecordedPositionSeedsFullEntryHeroSeat() {
+  const page = await createPage({ handId: 'hand-with-inherited-position' })
+  assert.strictEqual(page.data.heroCardsInput, 'QsQd')
+  assert.strictEqual(page.data.heroPosition, 'BTN', 'full entry should inherit the quick-recorded Hero position')
+  assert.strictEqual(page.data.heroSlot, page.slotForPosition('BTN'), 'the inherited position should move Hero to the matching seat')
+  assert.strictEqual(page.data.players[page.data.heroSlot].stack, page.data.defaultStack)
+  restoreMocks()
+}
+
 async function testSitHereMovesHeroDuringSetup() {
   const page = await createPage()
   assert.strictEqual(page.data.phase, 'setup')
@@ -449,7 +520,7 @@ async function testStackSheetUsesSingleEffectiveStackAndBulkExcludesHero() {
   tapSeat(page, 'CO')
   page.pickSeatMenu(event({ action: 'stack' }))
   assert.strictEqual(page.data.stackSheetVisible, true)
-  assert.strictEqual(page.data.stackEffectiveInput, '40000')
+  assert.strictEqual(page.data.stackEffectiveInput, '0')
   page.onStackInput(event({ key: 'stackEffectiveInput' }, '50000'))
   page.saveStackSheet()
   assert.strictEqual(page.data.players.CO.initialStack, 50000)
@@ -465,6 +536,43 @@ async function testStackSheetUsesSingleEffectiveStackAndBulkExcludesHero() {
   assert.strictEqual(page.data.players[heroSlot].stack, page.data.defaultStack, 'bulk stack setting should not overwrite Hero')
   assert.strictEqual(page.data.players.BTN.stack, 60000)
   assert.strictEqual(page.data.players.CO.stack, 60000)
+  restoreMocks()
+}
+
+async function testStackSheetStartsAtZeroAndKeepsBbPresets() {
+  const page = await createPage()
+  page.setData({ levelText: '300/600' })
+  page.openSeatMenu('CO')
+  page.pickSeatMenu(event({ action: 'stack' }))
+
+  assert.strictEqual(page.data.stackEffectiveInput, '0', 'stack entry should start at zero for immediate custom input')
+  assert.deepStrictEqual(
+    page.data.stackPresets.map(item => item.value),
+    [60000, 120000, 180000],
+    'stack sheet should expose 100bb, 200bb and 300bb shortcuts'
+  )
+
+  page.confirmStackAmount({ detail: { value: 90000 } })
+  assert.strictEqual(page.data.players.CO.initialStack, 90000)
+  assert.strictEqual(page.data.players.CO.stackCustomized, true)
+
+  page.openSeatMenu('CO')
+  page.pickSeatMenu(event({ action: 'stack' }))
+  assert.strictEqual(page.data.stackEffectiveInput, '0', 'reopening stack entry should still start at zero like Bet/Raise')
+  restoreMocks()
+}
+
+async function testStackSecondaryActionSyncsOpponentsWithoutOverwritingHero() {
+  const page = await createPage()
+  const heroSlot = page.data.heroSlot
+  const heroBefore = page.data.players[heroSlot].stack
+  page.setData({ seatMenuSlot: 'CO', stackSheetVisible: true })
+  page.syncStackAmount({ detail: { value: 80000 } })
+
+  assert.strictEqual(page.data.players[heroSlot].stack, heroBefore, 'bulk stack setting must not overwrite Hero')
+  assert.strictEqual(page.data.players.BTN.stack, 80000)
+  assert.strictEqual(page.data.players.CO.stack, 80000)
+  assert.strictEqual(page.data.players.BTN.stackCustomized, true)
   restoreMocks()
 }
 
@@ -487,11 +595,17 @@ async function testPlayerSheetCanBindExistingPlayerNote() {
   page.savePlayerSheet()
 
   assert.strictEqual(page.data.players[slot].playerNoteId, 'note-fish-1')
+  assert.strictEqual(page.data.players[slot].playerAvatarUrl, 'cloud://player-avatar-fish')
+  assert.strictEqual(page.data.players[slot].playerAvatarFileId, 'cloud://player-avatar-fish')
+  assert.strictEqual(page.data.players[slot].playerAvatarDisplayUrl, 'cloud://player-avatar-fish')
   assert.strictEqual(page.data.players[slot].playerName, '阿鱼')
   assert.strictEqual(page.data.players[slot].playerType, '鱼')
   const payload = page.buildSavePayload()
   const snapshot = payload.playerSnapshots.find(item => item.slot === slot)
   assert.strictEqual(snapshot.playerNoteId, 'note-fish-1', 'saved hand should keep player note id for later battle-hand linking')
+  assert.strictEqual(snapshot.avatarUrl, 'cloud://player-avatar-fish')
+  assert.strictEqual(snapshot.avatarFileId, 'cloud://player-avatar-fish')
+  assert.strictEqual(snapshot.avatarDisplayUrl, 'cloud://player-avatar-fish')
   assert.strictEqual(snapshot.playerType, '鱼')
   await page.syncPlayerNoteBattleHands('hand-created')
   assert.deepStrictEqual(linkedBattleHands, [{ noteId: 'note-fish-1', handId: 'hand-created' }])
@@ -722,6 +836,68 @@ async function testJumpingActionNodeReopensEditableActionState() {
   restoreMocks()
 }
 
+async function testJumpingShowdownNodeKeepsShowdownChoices() {
+  const page = await createPage()
+  enterHeroCards(page, ['As', 'Kh'])
+  const bbSlot = page.slotForPosition('BB')
+  page.setData({
+    phase: 'play',
+    street: 'River',
+    activeSlot: bbSlot,
+    saved: true,
+    showdownMode: false,
+    actions: [
+      { street: 'River', pos: bbSlot, position: 'BB', action: 'Show', cards: 'ThTd' }
+    ],
+    timelineActions: null
+  })
+  page.updateAll()
+  const showIndex = page.data.trail.findIndex(item => item.sub === 'BB' && item.main === 'Show')
+  assert(showIndex >= 0, 'show node should exist in timeline')
+
+  page.jumpToAction(event({ index: showIndex }))
+
+  assert.strictEqual(page.data.activeSlot, bbSlot, 'selected showdown actor should remain active')
+  assert.strictEqual(page.data.showdownMode, true, 'selecting a Show node must restore showdown mode')
+  assert.deepStrictEqual(page.data.actionOptions.map(item => item.action), ['MUCK', 'SHOW'])
+  restoreMocks()
+}
+
+async function testNextNodeMovesToFollowingRecordedTimelineNode() {
+  const page = await createPage()
+  enterHeroCards(page)
+  const btnSlot = page.slotForPosition('BTN')
+  tapSeat(page, btnSlot)
+  amountAction(page, 'R', 1000)
+  action(page, 'C')
+  const raiseIndex = page.data.trail.findIndex(item => item.sub === 'BTN' && item.main.indexOf('Raise') > -1)
+  assert(raiseIndex >= 0, 'button raise node should exist before forward navigation')
+  page.jumpToAction(event({ index: raiseIndex }))
+  const nextNode = page.data.trail[raiseIndex + 1]
+  assert(nextNode, 'a following recorded action should remain visible')
+  page.goToNextNode()
+  assert.strictEqual(page.data.selectedTrailIndex, raiseIndex + 1, 'next node should select the following recorded timeline node')
+  assert.strictEqual(page.data.activeSlot, page.slotForPosition(nextNode.sub), 'following recorded actor should become editable')
+  assert.strictEqual(page.data.street, 'Pre', 'next node must not force the next street')
+  restoreMocks()
+}
+
+async function testNextNodeAtTimelineEndDoesNotSkipActionOrStreet() {
+  const page = await createPage()
+  enterHeroCards(page)
+  tapSeat(page, page.slotForPosition('BTN'))
+  amountAction(page, 'R', 1000)
+  const streetBefore = page.data.street
+  const actorBefore = page.data.activeSlot
+  const actionsBefore = page.data.actions.length
+  page.goToNextNode()
+  assert.strictEqual(page.data.street, streetBefore, 'last node navigation must not force the next street')
+  assert.strictEqual(page.data.activeSlot, actorBefore, 'last node navigation must not skip the player whose action is pending')
+  assert.strictEqual(page.data.actions.length, actionsBefore, 'last node navigation must not invent a poker action')
+  assert(lastToast && lastToast.title.indexOf('最后节点') > -1, 'last node navigation should explain why it cannot move forward')
+  restoreMocks()
+}
+
 async function testJumpingLaterRaiseNodeUsesSelectedActorNotPreviousActor() {
   const page = await createPage()
   tapSeat(page, 'BB')
@@ -840,6 +1016,41 @@ async function testAllInSettlementUsesEffectiveStack() {
   restoreMocks()
 }
 
+async function testMultiwayHeroFoldLosesEveryContribution() {
+  const page = await createPage()
+  const actions = [
+    { action: 'Post', amount: 300, pos: 'SB', street: 'Pre' },
+    { action: 'Post', amount: 600, pos: 'BB', street: 'Pre' },
+    { action: 'Raise', amount: 1500, pos: 'UTG1', street: 'Pre' },
+    { action: 'Raise', amount: 5000, pos: 'MP', street: 'Pre' },
+    { action: 'Call', amount: 5000, pos: 'CO', street: 'Pre' },
+    { action: 'All-in', amount: 57000, pos: 'BTN', street: 'Pre' },
+    { action: 'Call', amount: 56700, pos: 'SB', street: 'Pre' },
+    { action: 'Call', amount: 52000, pos: 'MP', street: 'Pre' },
+    { action: 'Call', amount: 52000, pos: 'CO', street: 'Pre' },
+    { action: 'Start', pos: 'Flop', street: 'Flop' },
+    { action: 'Start', pos: 'Turn', street: 'Turn' },
+    { action: 'Bet', amount: 5000, pos: 'SB', street: 'Turn' },
+    { action: 'Call', amount: 5000, pos: 'MP', street: 'Turn' },
+    { action: 'Call', amount: 5000, pos: 'CO', street: 'Turn' },
+    { action: 'Start', pos: 'River', street: 'River' },
+    { action: 'Bet', amount: 40000, pos: 'CO', street: 'River' },
+    { action: 'Fold', pos: 'SB', street: 'River' },
+    { action: 'Fold', pos: 'MP', street: 'River' },
+    { action: 'Show', cards: 'AdKc', pos: 'BTN', street: 'River' }
+  ]
+  page.setData({
+    heroSlot: 'MP',
+    heroCardsInput: '',
+    villainCards: 'AdKc',
+    actions
+  })
+  const result = page.calculateAutoProfit('Show', actions)
+  assert.strictEqual(result.winner, 'villain', 'Hero cannot win or tie after folding in a multiway pot')
+  assert.strictEqual(result.currentProfit, -62000, 'Hero loss must include preflop and turn contributions')
+  restoreMocks()
+}
+
 async function testShowdownShowCalculatesWinnerFromCards() {
   const page = await createPage()
   tapSeat(page, 'BTN')
@@ -864,6 +1075,31 @@ async function testShowdownShowCalculatesWinnerFromCards() {
   assert(savedPayload, 'save payload should be created')
   assert(savedPayload.currentProfit > 0, 'hero aces should beat villain kings on this board')
   assert.strictEqual(savedPayload.showdownReason, 'hero')
+  restoreMocks()
+}
+
+async function testShowUsesCardsAlreadySetOnActivePlayer() {
+  const page = await createPage()
+  enterHeroCards(page, ['Kh', 'Kc'])
+  const villainSlot = page.slotForPosition('BTN')
+  const players = Object.assign({}, page.data.players)
+  players[villainSlot] = Object.assign({}, players[villainSlot], {
+    live: true,
+    cards: 'AhAd'
+  })
+  page.setData({
+    players,
+    activeSlot: villainSlot,
+    showdownMode: true,
+    street: 'River',
+    board: { flop: '2h3d4c', turn: '5s', river: '9h' },
+    villainCards: ''
+  })
+  await action(page, 'SHOW')
+  assert.strictEqual(page.data.cardPickerVisible, false, 'Show should not reopen the picker when that player already has cards')
+  assert.strictEqual(page.data.villainCards, 'AhAd', 'preset player cards should become the showdown cards')
+  assert(savedPayload, 'preset player cards should allow immediate showdown save')
+  assert(savedPayload.streetSummary.includes('BTN show AA'), 'saved action line should include the preset shown cards')
   restoreMocks()
 }
 
@@ -909,6 +1145,54 @@ async function testPreflopAllInCallMovesDirectlyToShowdown() {
   assert.strictEqual(page.data.street, 'Pre', 'preflop all-in call should not advance to flop action')
   assert.strictEqual(page.data.showdownMode, true)
   assert.deepStrictEqual(page.data.actionOptions.map(item => item.action), ['MUCK', 'SHOW'])
+  restoreMocks()
+}
+
+async function testShortAllInBelowRaiseTargetSettlesAsCall() {
+  const page = await createPage()
+  enterHeroCards(page, ['Kh', 'Kc'])
+  const heroSlot = page.slotForPosition('UTG')
+  const villainSlot = page.slotForPosition('BB')
+  const players = Object.assign({}, page.data.players)
+  Object.keys(players).forEach(slot => {
+    players[slot] = Object.assign({}, players[slot], { live: slot === heroSlot || slot === villainSlot })
+  })
+  players[heroSlot] = Object.assign({}, players[heroSlot], {
+    live: true,
+    initialStack: 117500,
+    stack: 95500,
+    paid: 22000,
+    allIn: false
+  })
+  players[villainSlot] = Object.assign({}, players[villainSlot], {
+    live: true,
+    initialStack: 109000,
+    stack: 106500,
+    paid: 2500,
+    allIn: false
+  })
+  page.setData({
+    heroSlot,
+    players,
+    activeSlot: heroSlot,
+    street: 'Pre',
+    phase: 'play',
+    pot: 24500,
+    lastRaise: 22000,
+    actions: []
+  })
+
+  amountAction(page, 'R', 110000)
+  assert.strictEqual(page.data.activeSlot, villainSlot, 'short stack should act after the 110k raise')
+  action(page, 'AI')
+
+  assert.strictEqual(page.data.showdownMode, true, 'short all-in below the raise target should settle heads-up action immediately')
+  assert.strictEqual(page.data.street, 'Pre', 'settled preflop all-in should remain on preflop for board runout')
+  assert.strictEqual(page.data.players[heroSlot].paid, 109000, 'uncalled 1k should be returned to the covering player')
+  assert.strictEqual(page.data.players[heroSlot].stack, 8500, 'covering player should retain chips beyond the effective all-in')
+  assert.strictEqual(page.data.players[villainSlot].paid, 109000)
+  assert.strictEqual(page.data.players[villainSlot].stack, 0)
+  assert.strictEqual(page.data.pot, 218000, 'heads-up pot should use the 109k effective contribution from both players')
   restoreMocks()
 }
 
@@ -1004,10 +1288,9 @@ async function testPreflopAllInUsesEffectiveStackAndPositiveEvAfterPriorRaise() 
   assert.strictEqual(replay.players[hjSlot].stack, 0, 'timeline replay should keep the short all-in caller at zero behind')
   assert.strictEqual(replay.pot, 100200, 'timeline replay pot should use effective all-in chips')
   action(page, 'SHOW')
-  board(page, ['8h', '9c', '6s', '3h', '2d'])
-  page.setData({ pickedTokens: ['Jh', 'Jc'] })
+  page.setData({ pickedTokens: ['8h', '9c', '6s', '3h', '2d'] })
   await page.doneCards()
-  assert.strictEqual(page.data.players[hjSlot].cards, 'JhJc', 'selecting Show cards should immediately display villain cards on the table seat')
+  assert.strictEqual(page.data.players[hjSlot].cards, 'JhJc', 'preset Show cards should remain visible on the table seat')
   assert(savedPayload, 'save payload should be created')
   assert(lastLoading, 'selecting Show should immediately surface a saving loading state')
   assert(lastLoading && lastLoading.title === '保存中', 'selecting Show should immediately surface a saving loading state')
@@ -1113,9 +1396,9 @@ async function testPreflopAllInWithDeadMoneyUsesEffectivePotForEvAndAdvice() {
   assert.strictEqual(page.data.players[hjSlot].stack, 0)
   assert.strictEqual(page.data.pot, 101800, 'visible all-in pot should include effective heads-up stacks plus SB/BTN dead money')
   action(page, 'SHOW')
-  board(page, ['8c', '9c', '6s', '3h', '2h'])
-  page.setData({ pickedTokens: ['Jh', 'Jc'] })
+  page.setData({ pickedTokens: ['8c', '9c', '6s', '3h', '2h'] })
   await page.doneCards()
+  await flushAsyncWork()
   assert(savedPayload, 'save payload should be created')
   assert.strictEqual(savedPayload.effectiveStack, 50000)
   assert.strictEqual(savedPayload.potSize, 101800)
@@ -1131,6 +1414,59 @@ async function testPreflopAllInWithDeadMoneyUsesEffectivePotForEvAndAdvice() {
   assert(aiAdvicePayload.question.includes('结构化行动线'), 'AI question should include ledger actions in the main prompt text')
   assert(aiAdvicePayload.question.includes('All-in EV'), 'AI question should include all-in EV context in the main prompt text')
   assert(aiAdvicePayload.question.includes('不要给 flop/turn/river 后续行动建议'), 'AI question should constrain advice to the preflop all-in decision')
+  restoreMocks()
+}
+
+async function testOpponentShortStackAllInDoesNotCreateHeroAllInEv() {
+  const page = await createPage()
+  enterHeroCards(page, ['As', 'Kh'])
+  const heroSlot = page.data.heroSlot
+  const btnSlot = page.slotForPosition('BTN')
+  const players = Object.assign({}, page.data.players)
+  players[heroSlot] = Object.assign({}, players[heroSlot], { initialStack: 100000, stack: 38000, cards: 'AsKh' })
+  players[btnSlot] = Object.assign({}, players[btnSlot], { initialStack: 57000, stack: 0, cards: 'AdKc' })
+  page.setData({
+    players,
+    heroCardsInput: 'AsKh',
+    villainCards: 'AdKc',
+    board: { flop: 'QhJd4c', turn: '9c', river: '8s' },
+    actions: [
+      { street: 'Pre', pos: heroSlot, action: 'Raise', amount: 5000 },
+      { street: 'Pre', pos: btnSlot, action: 'All-in', amount: 57000 },
+      { street: 'Pre', pos: 'SB', action: 'Call', amount: 56700 },
+      { street: 'Pre', pos: heroSlot, action: 'Call', amount: 52000 },
+      { street: 'Pre', pos: 'CO', action: 'Call', amount: 52000 },
+      { street: 'Flop', action: 'Start' },
+      { street: 'Flop', pos: 'SB', action: 'Check' },
+      { street: 'Flop', pos: heroSlot, action: 'Check' },
+      { street: 'Flop', pos: 'CO', action: 'Check' },
+      { street: 'Turn', action: 'Start' },
+      { street: 'Turn', pos: 'SB', action: 'Bet', amount: 5000 },
+      { street: 'Turn', pos: heroSlot, action: 'Call', amount: 5000 },
+      { street: 'Turn', pos: 'CO', action: 'Call', amount: 5000 },
+      { street: 'River', action: 'Start' },
+      { street: 'River', pos: 'SB', action: 'Check' },
+      { street: 'River', pos: heroSlot, action: 'Check' },
+      { street: 'River', pos: 'CO', action: 'Bet', amount: 40000 },
+      { street: 'River', pos: 'SB', action: 'Fold' },
+      { street: 'River', pos: heroSlot, action: 'Fold' },
+      { street: 'River', pos: btnSlot, action: 'Show' }
+    ],
+    autoProfit: -62000
+  })
+
+  const payload = page.buildSavePayload()
+
+  assert.strictEqual(payload.isAllIn, false, 'a non-terminal short-stack all-in must not mark Hero as all-in')
+  assert.strictEqual(payload.allInStreet, '')
+  assert.strictEqual(payload.allInEvEligible, false)
+  assert.strictEqual(payload.allInEvStatus, 'all_in_not_terminal')
+  assert.strictEqual(payload.allInEv, '')
+  assert.strictEqual(payload.allInEvProfit, '')
+  assert.strictEqual(payload.heroEquityPct, '')
+  assert.strictEqual(payload.terminalStreet, 'river')
+  assert.strictEqual(payload.postAllInRunoutOnly, false)
+  assert.strictEqual(payload.analysisFocus, '')
   restoreMocks()
 }
 
@@ -1382,23 +1718,73 @@ function testTimelineIsSharedAbovePhaseDocks() {
   assert(/\.timeline-zone\s*\{[^}]*overflow:\s*hidden/.test(wxss), 'timeline zone should clip native scrollbar artifacts without clipping nodes')
 }
 
-function testCardsStayOutsideSeatHitAreas() {
+function testCardsRenderInsideStableSeatUnits() {
   const wxml = fs.readFileSync(wxmlPath, 'utf8')
   const wxss = fs.readFileSync(path.resolve(__dirname, '../pages/hand-ledger-input/hand-ledger-input.wxss'), 'utf8')
-  assert(wxml.includes('class="seat-cards seat-cards-{{item.cardPlacement}}"'), 'opponent cards should expose orientation-aware placement classes')
-  assert(wxml.includes('class="hero-cards hero-cards-{{heroCardPlacement}}"'), 'hero cards should expose orientation-aware placement classes')
-  assert(/\.seat\s*\{[^}]*z-index:\s*1[12]/.test(wxss), 'seat hit area should remain above transparent card layout regions')
-  assert(/\.hero-cards,\s*\.seat-cards\s*\{[^}]*width:\s*max-content/.test(wxss), 'card tap boxes should hug the visible cards only')
+  assert(wxml.includes('class="seat-unit seat-unit-{{item.sizeClass}}'), 'each player should render as a stable seat unit')
+  assert(wxml.includes('class="seat-cards-inline"'), 'known cards should render inside the seat unit')
+  assert(wxml.includes('class="seat-avatar-img"'), 'linked player avatars should render inside the seat unit')
+  assert(wxml.includes('avatar-badge'), 'avatar seats should keep the position visible as an in-seat badge')
+  assert.strictEqual(wxml.includes('class="seat-cards seat-cards-'), false, 'opponent cards should not use a floating table layer')
+  assert.strictEqual(wxml.includes('class="hero-cards hero-cards-'), false, 'Hero cards should not use a floating table layer')
+  assert(/\.seat-player-name\s*\{[^}]*text-overflow:\s*ellipsis/.test(wxss), 'long player names should stay inside the fixed seat width')
+  assert(/\.seat-avatar-wrap\s*\{[^}]*border-radius:\s*50%/.test(wxss), 'player avatars should be clipped to the circular seat')
+  assert(/\.seat-position\.avatar-badge\s*\{/.test(wxss), 'avatar seats should have a dedicated position badge style')
+}
+
+function testIntegratedSeatsPreserveCenterAndBetSafety() {
+  const wxml = fs.readFileSync(wxmlPath, 'utf8')
+  const wxss = fs.readFileSync(path.resolve(__dirname, '../pages/hand-ledger-input/hand-ledger-input.wxss'), 'utf8')
+  assert(wxml.includes('catchtap="openHeroPicker"'), 'Hero cards should remain directly editable inside the Hero seat')
+  assert(/\.center\s*\{[^}]*z-index:\s*5/.test(wxss), 'center pot and board content should keep an explicit layer')
+  assert(/\.bet\s*\{[^}]*max-width:\s*(?:1[7-9][0-9]|200)rpx/.test(wxss), 'bet labels should keep a stable but readable width bound')
+  assert.strictEqual(/\.bet\s*\{[^}]*text-overflow:\s*ellipsis/.test(wxss), false, 'bet amounts should never be truncated')
+  assert(/\.table\s*\{[^}]*overflow:\s*hidden/.test(wxss), 'seat metadata must not create a table scrollbar')
+}
+
+function testLedgerUsesSharedAmountSheetsAndExpandedActiveSeatLayout() {
+  const wxml = fs.readFileSync(wxmlPath, 'utf8')
+  const wxss = fs.readFileSync(path.resolve(__dirname, '../pages/hand-ledger-input/hand-ledger-input.wxss'), 'utf8')
+  assert.strictEqual((wxml.match(/<numeric-amount-sheet/g) || []).length, 2, 'stack and action amounts should share one reusable component')
+  assert.strictEqual(wxml.includes('class="amount-keypad"'), false, 'page should not keep a duplicate inline keypad')
+  assert.strictEqual(wxml.includes('class="turn-flow"'), false, 'current action should highlight the seat instead of using a floating dot')
+  assert(/\.page\s*\{[^}]*padding:[^;}]*calc\((?:2[4-9][0-9]|3[0-1][0-9])rpx\s*\+\s*env\(safe-area-inset-bottom\)\)/.test(wxss), 'page should reserve only the actual play dock height')
+  assert(/\.ring\s*\{[^}]*height:\s*calc\(100%\s*-\s*(?:[0-9]|1[0-2])rpx\)/.test(wxss), 'table ring should use the newly available vertical space')
+  assert(/\.seat-unit-large\s*\{[^}]*width:\s*1(?:2[8-9]|[3-9][0-9])rpx/.test(wxss), 'large seats should be visibly larger')
+  assert(/\.seat-unit-large\s*\{[^}]*width:\s*1(?:4[0-9]|[5-9][0-9])rpx/.test(wxss), 'large seats should use more of the available table edge')
+  assert(/\.seat-unit-large\s+\.seat-card\s*\{[^}]*width:\s*(?:5[0-9]|[6-9][0-9])rpx/.test(wxss), 'cards inside large seats should scale with the enlarged seat')
+  assert(/\.seat-unit\.current\s+\.seat-body::before\s*\{/.test(wxss), 'current seat should have a stable inner cyan-green lock ring')
+  assert(/\.seat-unit\.current\s+\.seat-body::after\s*\{/.test(wxss), 'current action seat should own an independent outer highlight ring')
+  assert(/@keyframes\s+activeSeatPulse/.test(wxss), 'current action highlight should animate without moving the seat')
+  assert(/@keyframes\s+activeSeatRipple/.test(wxss), 'current action seat should have a separate expanding ripple')
+}
+
+function testLedgerViewportAndTimelineDoNotExposeScrollbars() {
+  const wxml = fs.readFileSync(wxmlPath, 'utf8')
+  const wxss = fs.readFileSync(path.resolve(__dirname, '../pages/hand-ledger-input/hand-ledger-input.wxss'), 'utf8')
+  assert(wxml.includes('scroll-into-view="{{trailIntoView}}"'), 'timeline should keep the selected node fully in view')
+  assert(/page\s*\{[^}]*height:\s*100%[^}]*overflow:\s*hidden/.test(wxss), 'miniapp page should not expose a vertical scrollbar')
+  assert(/\.page\s*\{[^}]*height:\s*100vh[^}]*display:\s*flex[^}]*overflow:\s*hidden/.test(wxss), 'ledger should fit table, streets, and timeline into one viewport')
+  assert(/\.table\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0/.test(wxss), 'table should consume remaining viewport height instead of forcing page scroll')
 }
 
 function testPlayDockUsesCompactNodeNavigationAndNoActionSubLabels() {
   const wxml = fs.readFileSync(wxmlPath, 'utf8')
   const wxss = fs.readFileSync(path.resolve(__dirname, '../pages/hand-ledger-input/hand-ledger-input.wxss'), 'utf8')
   assert.strictEqual(wxml.includes('class="action-sub"'), false, 'action buttons should not repeat the active position label')
+  assert(wxml.includes('bindtap="goToNextNode"'), 'forward navigation should follow recorded nodes rather than force the next street')
+  assert.strictEqual(wxml.includes('bindtap="manualNextStreet"'), false, 'next node control must not keep the old force-street binding')
+  assert(wxml.includes('class="prompt-live-dot"'), 'current actor prompt should include a visible live-state marker')
+  assert(wxml.includes('class="small-btn" bindtap="closeCardPicker">←</view>'), 'card picker back control should use a plain left arrow')
   assert(wxml.includes('←上一节点'), 'back navigation should use compact left-arrow copy')
   assert(wxml.includes('下一节点→'), 'forward navigation should use compact right-arrow copy')
   assert(/\.prompt\s*\{[^}]*grid-template-columns:\s*150rpx\s+1fr\s+150rpx/.test(wxss), 'back and next node buttons should use matching widths')
   assert(/\.prompt-text\s*\{[^}]*text-align:\s*center/.test(wxss), 'current actor label should be centered')
+  assert(/\.prompt-text\.live\s*\{[^}]*border:\s*none/.test(wxss), 'current actor prompt should not render an outer green frame')
+  assert(/\.prompt-text\.live\s*\{[^}]*background:\s*transparent/.test(wxss), 'current actor prompt should keep only its live dot and text')
+  assert(/\.prompt-text\.live\s*\{[^}]*color:\s*#fff(?:fff)?/.test(wxss), 'current actor prompt text should be white')
+  assert(/\.prompt-live-dot\s*\{[^}]*animation:\s*activePromptPulse/.test(wxss), 'current actor prompt should pulse without moving its label')
+  assert(/\.trail-card\.active\s*\{[^}]*height:\s*(?:7[4-9]|[8-9][0-9])rpx/.test(wxss), 'selected timeline node should be visibly taller')
 }
 
 function testCompactLedgerHeaderIsRemovedForTableSpace() {
@@ -1422,9 +1808,36 @@ function testPlayerLibraryEntryBelongsToPlayerSheet() {
   assert(libraryIndex > stackSheetIndex, 'player library entry should not be inside the stack sheet')
 }
 
+function testPlayerLibraryUsesReadableAvatarRows() {
+  const wxml = fs.readFileSync(wxmlPath, 'utf8')
+  const wxss = fs.readFileSync(path.resolve(__dirname, '../pages/hand-ledger-input/hand-ledger-input.wxss'), 'utf8')
+  assert(wxml.includes('class="player-library-scroll"'), 'player search results should keep a bounded scroll container')
+  assert(wxml.includes('scroll-y="true"'), 'player search results should scroll vertically')
+  assert(wxml.includes('show-scrollbar="{{false}}"'), 'player search results should hide the native scrollbar')
+  assert.strictEqual(wxml.includes('class="player-library-scroll" scroll-x="true"'), false, 'player results should not use truncated horizontal chips')
+  assert(wxml.includes('class="player-library-avatar-img"'), 'player result should render the saved avatar')
+  assert(wxml.includes('class="player-library-avatar-text"'), 'player result should keep a readable avatar fallback')
+  assert(wxml.includes('class="player-library-selected"'), 'selected player result should have an explicit indicator')
+  assert(/\.player-library-scroll\s*\{[^}]*max-height:\s*(?:3[0-9]{2}|4[0-4][0-9])rpx/.test(wxss), 'player result list should be tall enough for multiple identifiable rows')
+  assert(/\.player-library-name\s*\{[^}]*white-space:\s*normal/.test(wxss), 'full player names should wrap instead of ellipsizing horizontally')
+  assert(/\.player-library-name\s*\{[^}]*-webkit-line-clamp:\s*2/.test(wxss), 'long player names should use two readable lines')
+}
+
 function percentFromStyle(style, key) {
   const match = String(style || '').match(new RegExp(key + ':([0-9.]+)%'))
   return match ? Number(match[1]) : 0
+}
+
+function pointDistanceFromStyles(leftStyle, rightStyle) {
+  const dx = percentFromStyle(leftStyle, 'left') - percentFromStyle(rightStyle, 'left')
+  const dy = percentFromStyle(leftStyle, 'top') - percentFromStyle(rightStyle, 'top')
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+function distanceFromTableCenter(style) {
+  const dx = percentFromStyle(style, 'left') - 50
+  const dy = percentFromStyle(style, 'top') - 50
+  return Math.sqrt(dx * dx + dy * dy)
 }
 
 async function testTableLayoutUsesEdgeSeatsAndSeparatedBetLane() {
@@ -1434,25 +1847,93 @@ async function testTableLayoutUsesEdgeSeatsAndSeparatedBetLane() {
   const sb = activeSeats.find(seat => seat.slot === 'SB')
   const bb = activeSeats.find(seat => seat.slot === 'BB')
   assert(co && sb && bb, 'layout test needs representative edge seats')
-  assert(percentFromStyle(co.seatStyle, 'top') < 10, 'top seat should sit on the table edge, not deep inside the felt')
+  assert(percentFromStyle(co.seatStyle, 'top') <= 10, 'top seat should sit on the table edge with status-bar clearance')
   assert(percentFromStyle(sb.seatStyle, 'left') > 88, 'right seat should sit near the table edge')
-  assert(Math.abs(percentFromStyle(bb.cardsStyle, 'top') - percentFromStyle(bb.seatStyle, 'top')) >= 9, 'bottom-side cards should clear the seat hit area vertically')
-  assert(percentFromStyle(bb.cardsStyle, 'top') < percentFromStyle(bb.seatStyle, 'top'), 'bottom-side cards should stay above the bottom seat to avoid covering street tabs')
-  assert(percentFromStyle(bb.cardsStyle, 'top') <= 86, 'bottom-side cards should stay inside the table area above street tabs')
   assert(percentFromStyle(sb.betStyle, 'left') < percentFromStyle(sb.seatStyle, 'left'), 'bet labels should stay on the inner betting lane')
   assert(percentFromStyle(co.betStyle, 'top') > percentFromStyle(co.seatStyle, 'top'), 'top bet labels should stay below the top seat and away from the status bar')
+  activeSeats.forEach(seat => {
+    assert(pointDistanceFromStyles(seat.seatStyle, seat.betStyle) >= 12, seat.slot + ' bet should stay on a separate inner lane')
+    assert(distanceFromTableCenter(seat.betStyle) < distanceFromTableCenter(seat.seatStyle), seat.slot + ' bet should stay closer to the table center than its seat')
+  })
+  restoreMocks()
+}
+
+async function testBetAnchorsAvoidAvatarAndCardSeats() {
+  const page = await createPage()
+  const players = Object.assign({}, page.data.players, {
+    SB: Object.assign({}, page.data.players.SB, {
+      paid: 300,
+      playerName: 'mgm wg 大鱼',
+      playerAvatarUrl: 'cloud://avatar-sb'
+    }),
+    BB: Object.assign({}, page.data.players.BB, {
+      paid: 600,
+      cards: '5s5c',
+      playerName: 'Hero'
+    })
+  })
+  page.setData({ players })
+  page.updateAll()
+  const smallBlind = page.data.seats.find(seat => seat.slot === 'SB')
+  const bigBlind = page.data.seats.find(seat => seat.slot === 'BB')
+  assert.strictEqual(smallBlind.betPlacement, 'seat-right', 'SB amount should attach to the left of its right-edge avatar')
+  assert.strictEqual(bigBlind.betPlacement, 'seat-right', 'BB amount should attach to the left of its right-edge cards')
+  assert(pointDistanceFromStyles(smallBlind.seatStyle, smallBlind.betStyle) >= 17, 'avatar amount should clear the circular seat and name')
+  assert(pointDistanceFromStyles(bigBlind.seatStyle, bigBlind.betStyle) >= 17, 'card amount should clear the circular seat and cards')
+  restoreMocks()
+}
+
+async function testSeatViewOwnsCardsAndUsesIndependentBetAnchor() {
+  const page = await createPage()
+  const heroSlot = page.data.heroSlot
+  const players = Object.assign({}, page.data.players, {
+    BTN: Object.assign({}, page.data.players.BTN, {
+      cards: 'QsQd',
+      playerName: 'Long Player Name'
+    })
+  })
+  page.setData({ heroCardsInput: 'AhKd', players })
+  page.updateAll()
+  const hero = page.data.seats.find(item => item.slot === heroSlot)
+  const button = page.data.seats.find(item => item.slot === 'BTN')
+  assert.strictEqual(hero.cardsVisual.length, 2, 'Hero cards should belong to the Hero seat view')
+  assert.strictEqual(button.cardsVisual.length, 2, 'opponent cards should belong to the opponent seat view')
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(button, 'cardsStyle'), false, 'seat cards should not own an independent table coordinate')
+  assert.notStrictEqual(button.seatStyle, button.betStyle, 'bet anchor should stay separate from the seat component')
+  restoreMocks()
+}
+
+async function testSeatCardPickerUsesReadableTitle() {
+  const page = await createPage()
+  page.openSeatCardsPicker('SB')
+  assert.strictEqual(page.data.cardPickerTitle, 'SB 手牌', 'seat card picker title should not contain mojibake')
+  restoreMocks()
+}
+
+async function testExistingHandKeepsItsRecordedTableContextAfterSessionTableChange() {
+  const page = await createPage({ handId: 'hand-before-table-change' })
+  assert.strictEqual(page.data.levelText, '200/400', 'full entry should inherit the hand stake snapshot, not the session final stake')
+  assert.strictEqual(page.data.tableMax, '8', 'full entry should inherit the hand table size snapshot')
+  assert.strictEqual(page.data.hasStraddle, false, 'an explicit hand-level false must not be overwritten by the session current straddle')
   restoreMocks()
 }
 
 async function run() {
   const tests = [
+    testExistingHandKeepsItsRecordedTableContextAfterSessionTableChange,
+    testSeatViewOwnsCardsAndUsesIndependentBetAnchor,
+    testSeatCardPickerUsesReadableTitle,
     testButtonKeepsHeroSeatAndSeatOrder,
     testSessionEditReturnAndHistoricalPlayedTime,
+    testInheritedHeroCardsSkipPickerStep,
+    testQuickRecordedPositionSeedsFullEntryHeroSeat,
     testSitHereMovesHeroDuringSetup,
     testSeatMenuHidesInvalidActionsForHeroSeat,
     testLedgerInheritsSessionStackSnapshotNotFinalCashout,
     testLedgerEditUsesHeroStackBeforeSelectedHandResult,
     testStackSheetUsesSingleEffectiveStackAndBulkExcludesHero,
+    testStackSheetStartsAtZeroAndKeepsBbPresets,
+    testStackSecondaryActionSyncsOpponentsWithoutOverwritingHero,
     testPlayerSheetCanBindExistingPlayerNote,
     testPlayerSheetSearchesPlayerLibraryByName,
     testPlayerSheetCanCreateAndBindPlayerNote,
@@ -1465,18 +1946,25 @@ async function run() {
     testJumpingTrailStreetUpdatesVisibleBoard,
     testJumpingTrailReplaysPotAndBetsToSelectedNode,
     testJumpingActionNodeReopensEditableActionState,
+    testJumpingShowdownNodeKeepsShowdownChoices,
+    testNextNodeMovesToFollowingRecordedTimelineNode,
+    testNextNodeAtTimelineEndDoesNotSkipActionOrStreet,
     testJumpingLaterRaiseNodeUsesSelectedActorNotPreviousActor,
     testCompleteBetCallMuckSaveFlow,
     testAllInSettlementUsesEffectiveStack,
+    testMultiwayHeroFoldLosesEveryContribution,
     testShowdownShowCalculatesWinnerFromCards,
+    testShowUsesCardsAlreadySetOnActivePlayer,
     testStraddleInitialState,
     testHeadsUpAllInMovesToShowdownChoices,
     testPreflopAllInCallMovesDirectlyToShowdown,
+    testShortAllInBelowRaiseTargetSettlesAsCall,
     testPreflopAllInRequiresFullBoardBeforeShowdownSave,
     testPreflopAllInSaveIncludesDerivedDetailFields,
     testPreflopAllInUsesEffectiveStackAndPositiveEvAfterPriorRaise,
     testRepeatedShowdownSaveReplacesExistingShowNode,
     testPreflopAllInWithDeadMoneyUsesEffectivePotForEvAndAdvice,
+    testOpponentShortStackAllInDoesNotCreateHeroAllInEv,
     testLedgerEditRestoresSavedReplayState,
     testPreflopAllInAfterSeatJumpMovesDirectlyToShowdown,
     testStraddleBigBlindCallCompletesPreflopAndOpensFlopPicker,
@@ -1489,12 +1977,17 @@ async function run() {
     testStreetAdvanceCreatesCollectionAndDealAnimations,
     testActionFlowAndTimelineFollowCurrentNode,
     testTimelineIsSharedAbovePhaseDocks,
-    testCardsStayOutsideSeatHitAreas,
+    testCardsRenderInsideStableSeatUnits,
+    testIntegratedSeatsPreserveCenterAndBetSafety,
+    testLedgerUsesSharedAmountSheetsAndExpandedActiveSeatLayout,
+    testLedgerViewportAndTimelineDoNotExposeScrollbars,
     testPlayDockUsesCompactNodeNavigationAndNoActionSubLabels,
     testCompactLedgerHeaderIsRemovedForTableSpace,
     testSavingStateHasVisibleOverlay,
     testPlayerLibraryEntryBelongsToPlayerSheet,
-    testTableLayoutUsesEdgeSeatsAndSeparatedBetLane
+    testPlayerLibraryUsesReadableAvatarRows,
+    testTableLayoutUsesEdgeSeatsAndSeparatedBetLane,
+    testBetAnchorsAvoidAvatarAndCardSeats
   ]
   for (const test of tests) {
     try {

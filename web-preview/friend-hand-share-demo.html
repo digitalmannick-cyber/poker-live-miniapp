@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>发布手牌｜范围选择 Demo</title>
+  <style>
+    :root{--red:#e60012;--cyan:#2ad8f6;--bg:#08090d;--panel:#161920;--line:rgba(255,255,255,.12);--muted:rgba(255,255,255,.52)}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 18% 3%,rgba(230,0,18,.17),transparent 28%),radial-gradient(circle at 84% 24%,rgba(42,216,246,.08),transparent 24%),var(--bg);color:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}.page{max-width:930px;margin:auto;padding:35px 20px 60px}.intro{max-width:650px}.eyebrow{color:#ff4053;font-size:11px;font-weight:950;letter-spacing:3px}.intro h1{margin:8px 0;font-size:29px}.intro p{margin:0;color:#9197a3;font-size:13px;line-height:1.7}.stage{display:grid;grid-template-columns:390px minmax(260px,360px);justify-content:center;align-items:start;gap:38px;margin-top:28px}.phone{position:relative;width:390px;height:844px;overflow:hidden;border:1px solid #383c47;border-radius:30px;background:#0b0c11;box-shadow:0 25px 70px rgba(0,0,0,.52)}.status{height:30px;padding:9px 17px 0;display:flex;justify-content:space-between;font-size:10px;font-weight:900}.top{height:52px;display:grid;grid-template-columns:38px 1fr 38px;align-items:center;padding:0 13px;border-bottom:1px solid rgba(255,255,255,.07)}.back{width:33px;height:33px;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;background:rgba(255,255,255,.06);font-size:22px}.top b{text-align:center;font-size:17px}.screen{height:calc(100% - 82px);overflow-y:auto;padding:13px 14px 94px;scrollbar-width:none}.screen::-webkit-scrollbar{display:none}.hand-card,.range-card,.friend-picker,.public-note{border:1px solid var(--line);border-radius:17px;background:rgba(255,255,255,.055)}.hand-card{padding:14px}.hand-head{display:flex;align-items:center;justify-content:space-between}.hand-head b{font-size:13px}.privacy{display:flex;gap:5px}.privacy span{padding:5px 7px;border-radius:999px;background:rgba(42,216,246,.09);color:#9cefff;font-size:8px;font-weight:900}.hand-main{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-top:15px}.side:last-child{text-align:right}.side small{display:block;margin-bottom:6px;color:#7f8793;font-size:8px}.cards{display:flex;gap:4px}.side:last-child .cards{justify-content:flex-end}.card{width:29px;height:39px;display:grid;place-items:center;border-radius:6px;background:#f3f2f5;color:#15161b;font-size:12px;font-weight:1000}.vs{text-align:center;color:#6f7783;font-size:9px;font-weight:1000}.pot{margin-top:3px;color:var(--cyan);font-size:12px}.board{display:flex;justify-content:center;gap:4px;margin-top:13px}.board .card{width:26px;height:35px;font-size:10px}.action-line{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);color:#aeb4bd;font-size:9px;line-height:1.55}.section-title{display:flex;align-items:end;justify-content:space-between;margin:16px 2px 9px}.section-title b{font-size:15px}.section-title small{color:#727a86;font-size:8px}.range-card{padding:6px}.scope-option{position:relative;width:100%;display:grid;grid-template-columns:39px 1fr 20px;gap:10px;align-items:center;min-height:69px;padding:10px;border:0;border-bottom:1px solid rgba(255,255,255,.07);color:#fff;background:transparent;text-align:left;font:inherit;cursor:pointer}.scope-option:last-child{border-bottom:0}.scope-mark{width:36px;height:36px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.14);border-radius:11px;background:rgba(255,255,255,.065);color:#939aa6;font-size:9px;font-weight:1000}.scope-copy b{display:block;font-size:12px}.scope-copy small{display:block;margin-top:4px;color:#747c88;font-size:8px;line-height:1.45}.radio{width:17px;height:17px;border:2px solid #555c68;border-radius:50%}.scope-option.selected{border-radius:12px;background:linear-gradient(90deg,rgba(230,0,18,.14),rgba(230,0,18,.025))}.scope-option.selected:before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--red)}.scope-option.selected .scope-mark{border-color:rgba(255,72,88,.5);background:rgba(230,0,18,.18);color:#fff}.scope-option.selected .radio{border:5px solid var(--red);background:#fff}.public-note{display:none;margin-top:9px;padding:11px 12px;border-color:rgba(255,185,62,.24);background:rgba(255,185,62,.06);color:#c8b993;font-size:9px;line-height:1.55}.public-note.show{display:block;animation:reveal .22s ease-out}.friend-picker{display:none;margin-top:9px;padding:12px}.friend-picker.show{display:block;animation:reveal .22s ease-out}.picker-head{display:flex;justify-content:space-between;align-items:center}.picker-head b{font-size:11px}.picker-head span{color:var(--cyan);font-size:9px;font-weight:900}.friends{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:12px}.friend{border:0;background:transparent;color:#8c939e;font:inherit;text-align:center;cursor:pointer}.friend-avatar{position:relative;width:44px;height:44px;margin:auto;display:grid;place-items:center;border:1px solid rgba(255,255,255,.14);border-radius:13px;background:#252a33;color:#fff;font-size:11px;font-weight:1000}.friend span{display:block;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px}.friend.selected{color:#fff}.friend.selected .friend-avatar{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(42,216,246,.1)}.friend.selected .friend-avatar:after{content:"✓";position:absolute;right:-4px;bottom:-4px;width:17px;height:17px;display:grid;place-items:center;border:2px solid #151820;border-radius:50%;background:var(--cyan);color:#071015;font-size:9px;font-weight:1000}.bottom-action{position:absolute;left:10px;right:10px;bottom:10px;padding:10px;border:1px solid #343844;border-radius:18px;background:rgba(20,22,29,.97);backdrop-filter:blur(10px)}.publish{width:100%;height:47px;border:0;border-radius:13px;background:var(--red);color:#fff;font-size:14px;font-weight:1000;cursor:pointer}.publish:disabled{background:#353943;color:#777f8b}.toast{position:absolute;left:50%;bottom:83px;z-index:3;transform:translate(-50%,12px);padding:10px 14px;border:1px solid rgba(42,216,246,.25);border-radius:999px;background:#171b23;color:#d7f9ff;font-size:10px;font-weight:900;opacity:0;pointer-events:none;transition:.22s}.toast.show{opacity:1;transform:translate(-50%,0)}.notes{padding-top:18px}.notes h2{margin:0 0 13px;font-size:18px}.decision{margin-bottom:10px;padding:13px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.045)}.decision b{display:block;font-size:12px}.decision p{margin:6px 0 0;color:#858c98;font-size:10px;line-height:1.6}.decision.default{border-color:rgba(230,0,18,.3);background:rgba(230,0,18,.07)}@keyframes reveal{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}@media(max-width:800px){.stage{grid-template-columns:390px}.notes{padding-top:0}}@media(max-width:430px){.page{padding:18px 8px 45px}.phone{width:min(390px,calc(100vw - 16px))}.stage{grid-template-columns:minmax(0,390px)}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <main class="page"><header class="intro"><div class="eyebrow">HAND SHARE · DEMO</div><h1>发布手牌范围选择</h1><p>所有范围均使用同一份 BB 化、匿名化分享快照。默认发布给全部好友，也可以公开到广场或选择一个及以上好友。</p></header>
+    <div class="stage"><section class="phone"><div class="status"><span>00:26</span><span>5G ▮▮▮</span></div><div class="top"><span class="back">‹</span><b>发布手牌</b><span></span></div><div class="screen">
+      <div class="hand-card"><div class="hand-head"><b>分享预览</b><div class="privacy"><span>所有筹码已转换为 BB</span><span>其他玩家已匿名</span></div></div><div class="hand-main"><div class="side"><small>Hero · BTN</small><div class="cards"><span class="card">A♠</span><span class="card">Q♠</span></div></div><div class="vs">最终底池<div class="pot">76.5BB</div></div><div class="side"><small>夜鸦 · BB</small><div class="cards"><span class="card">K♥</span><span class="card">K♣</span></div></div></div><div class="board"><span class="card">Q♦</span><span class="card">7♣</span><span class="card">3♠</span><span class="card">8♥</span><span class="card">2♠</span></div><div class="action-line">翻前 Hero 加注至 2.5BB，夜鸦跟注 · 翻牌下注 3.2BB · 转牌过牌 · 河牌跟注 18BB</div></div>
+      <div class="section-title"><b>发布范围</b><small>三种范围只能选择一个</small></div>
+      <div class="range-card">
+        <button class="scope-option" data-scope="square" onclick="selectScope(this)"><span class="scope-mark">广场</span><span class="scope-copy"><b>发布到广场</b><small>所有已登录用户均可浏览、点赞和评论</small></span><i class="radio"></i></button>
+        <button class="scope-option selected" data-scope="all" onclick="selectScope(this)"><span class="scope-mark">好友</span><span class="scope-copy"><b>全部好友</b><small>当前 18 位好友可见 · 默认范围</small></span><i class="radio"></i></button>
+        <button class="scope-option" data-scope="selected" onclick="selectScope(this)"><span class="scope-mark">指定</span><span class="scope-copy"><b>指定好友</b><small>选择一个或多个好友单独发布</small></span><i class="radio"></i></button>
+      </div>
+      <div class="public-note" id="publicNote">公开发布后，非好友也可以浏览、点赞和评论。真实金额、场次地点和玩家姓名不会进入分享快照。</div>
+      <div class="friend-picker" id="friendPicker"><div class="picker-head"><b>选择好友</b><span id="selectedCount">请选择至少 1 位</span></div><div class="friends">
+        <button class="friend" onclick="toggleFriend(this)"><i class="friend-avatar">银狼</i><span>银狼</span></button><button class="friend" onclick="toggleFriend(this)"><i class="friend-avatar">赤狐</i><span>赤狐</span></button><button class="friend" onclick="toggleFriend(this)"><i class="friend-avatar">黑猫</i><span>黑猫</span></button><button class="friend" onclick="toggleFriend(this)"><i class="friend-avatar">老陈</i><span>老陈</span></button><button class="friend" onclick="toggleFriend(this)"><i class="friend-avatar">幻蝶</i><span>幻蝶</span></button><button class="friend" onclick="toggleFriend(this)"><i class="friend-avatar">灰隼</i><span>灰隼</span></button><button class="friend" onclick="toggleFriend(this)"><i class="friend-avatar">白鲸</i><span>白鲸</span></button><button class="friend" onclick="toggleFriend(this)"><i class="friend-avatar">K</i><span>K 先生</span></button>
+      </div></div>
+    </div><div class="toast" id="toast">已发布给全部好友</div><div class="bottom-action"><button class="publish" id="publishButton" onclick="confirmPublish()">确认发布 · 全部好友</button></div></section>
+      <aside class="notes"><h2>交互说明</h2><div class="decision default"><b>默认：全部好友</b><p>沿用已经确认的默认范围，减少每次发布的操作成本。</p></div><div class="decision"><b>广场：明确公开提示</b><p>不增加内容检测或举报流程，但必须明确告知非好友也能浏览、点赞和评论。</p></div><div class="decision"><b>指定好友：支持多选</b><p>至少选择一位好友后才能发布；选择数量同步显示在主按钮上。</p></div><div class="decision"><b>分享内容：固定脱敏</b><p>发布范围只控制谁能访问，不改变 BB 化、匿名化和禁止盈亏字段的规则。</p></div></aside>
+    </div>
+  </main>
+  <script>
+    let currentScope = 'all'
+    function selectScope(button) {
+      currentScope = button.dataset.scope
+      document.querySelectorAll('.scope-option').forEach(item => item.classList.toggle('selected', item === button))
+      document.getElementById('publicNote').classList.toggle('show', currentScope === 'square')
+      document.getElementById('friendPicker').classList.toggle('show', currentScope === 'selected')
+      updatePublishButton()
+    }
+    function toggleFriend(button) {
+      button.classList.toggle('selected')
+      updatePublishButton()
+    }
+    function updatePublishButton() {
+      const button = document.getElementById('publishButton')
+      const selected = document.querySelectorAll('.friend.selected').length
+      const labels = { square: '确认发布 · 广场', all: '确认发布 · 全部好友' }
+      if (currentScope === 'selected') {
+        button.disabled = selected === 0
+        button.textContent = selected ? `确认发布 · ${selected} 位好友` : '请先选择好友'
+        document.getElementById('selectedCount').textContent = selected ? `已选择 ${selected} 位` : '请选择至少 1 位'
+      } else {
+        button.disabled = false
+        button.textContent = labels[currentScope]
+      }
+    }
+    function confirmPublish() {
+      const toast = document.getElementById('toast')
+      const selected = document.querySelectorAll('.friend.selected').length
+      toast.textContent = currentScope === 'square' ? '已发布到广场' : currentScope === 'all' ? '已发布给全部好友' : `已发布给 ${selected} 位好友`
+      toast.classList.add('show')
+      window.clearTimeout(window.toastTimer)
+      window.toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1800)
+    }
+  </script>
+</body>
+</html>

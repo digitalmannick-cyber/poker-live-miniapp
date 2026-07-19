@@ -81,6 +81,8 @@ function normalizeAllInStreet(value) {
 
 function isPreRiverAllIn(source) {
   const hand = source || {}
+  const status = String(hand.allInEvStatus || '').trim().toLowerCase()
+  if (status === 'all_in_not_terminal' || status === 'hero_not_all_in' || status === 'not_all_in') return false
   const street = normalizeAllInStreet(hand.allInStreet || hand.allInRound || hand.allInStage || hand.allInEvStreet)
   if (street === 'river') return false
   return !!hand.isAllIn || !!hand.allInEvEligible || !!street
@@ -958,6 +960,7 @@ async function exportBackupPage(event, ownerOpenId) {
     sessions: COLLECTIONS.sessions,
     hands: COLLECTIONS.hands,
     handActions: COLLECTIONS.handActions,
+    playerNotes: COLLECTIONS.playerNotes,
     bankrollLogs: COLLECTIONS.bankrollLogs
   }
 

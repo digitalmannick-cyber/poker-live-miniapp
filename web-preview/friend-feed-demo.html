@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>统一动态信息流 Demo</title>
+    <style>
+      :root {
+        --red: #e60012;
+        --cyan: #2ad8f6;
+        --bg: #08090d;
+        --panel: #161920;
+        --line: rgba(255, 255, 255, 0.11);
+        --muted: rgba(255, 255, 255, 0.5);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(
+            circle at 14% 4%,
+            rgba(230, 0, 18, 0.16),
+            transparent 27%
+          ),
+          radial-gradient(
+            circle at 86% 18%,
+            rgba(42, 216, 246, 0.08),
+            transparent 24%
+          ),
+          var(--bg);
+        color: #fff;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
+          sans-serif;
+      }
+      .page {
+        max-width: 930px;
+        margin: auto;
+        padding: 34px 20px 60px;
+      }
+      .eyebrow {
+        color: #ff4053;
+        font-size: 11px;
+        font-weight: 950;
+        letter-spacing: 3px;
+      }
+      .intro h1 {
+        margin: 8px 0;
+        font-size: 29px;
+      }
+      .intro p {
+        max-width: 680px;
+        margin: 0;
+        color: #9197a3;
+        font-size: 13px;
+        line-height: 1.7;
+      }
+      .stage {
+        display: grid;
+        grid-template-columns: 390px minmax(260px, 350px);
+        justify-content: center;
+        gap: 38px;
+        margin-top: 27px;
+      }
+      .phone {
+        position: relative;
+        width: 390px;
+        height: 844px;
+        overflow: hidden;
+        border: 1px solid #373b46;
+        border-radius: 30px;
+        background: #0b0c11;
+        box-shadow: 0 25px 70px rgba(0, 0, 0, 0.52);
+      }
+      .status {
+        height: 29px;
+        padding: 9px 17px 0;
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        font-weight: 900;
+      }
+      .top {
+        height: 51px;
+        display: grid;
+        grid-template-columns: 42px 1fr 42px;
+        align-items: center;
+        padding: 0 12px;
+      }
+      .top b {
+        text-align: center;
+        font-size: 17px;
+      }
+      .message {
+        position: relative;
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: rgba(255, 255, 255, 0.06);
+        font-size: 8px;
+        font-weight: 950;
+      }
+      .message i {
+        position: absolute;
+        right: -2px;
+        top: -3px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 4px;
+        display: grid;
+        place-items: center;
+        border: 2px solid #0b0c11;
+        border-radius: 999px;
+        background: var(--red);
+        color: #fff;
+        font-style: normal;
+        font-size: 7px;
+      }
+      .screen {
+        height: calc(100% - 80px);
+        overflow-y: auto;
+        padding: 0 13px 78px;
+        scrollbar-width: none;
+      }
+      .screen::-webkit-scrollbar {
+        display: none;
+      }
+      .outer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        padding: 4px;
+        border: 1px solid #292d36;
+        border-radius: 13px;
+        background: #101119;
+      }
+      .outer span {
+        padding: 7px;
+        text-align: center;
+        border-radius: 9px;
+        color: #858b98;
+        font-size: 10px;
+        font-weight: 950;
+      }
+      .outer .on {
+        background: #20232c;
+        color: var(--cyan);
+      }
+      .page-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        margin: 13px 1px 8px;
+      }
+      .page-head small {
+        color: #858d99;
+        font-size: 8px;
+        letter-spacing: 2px;
+        font-weight: 950;
+      }
+      .page-head h2 {
+        margin: 2px 0 0;
+        font-size: 25px;
+      }
+      .refresh {
+        color: #777f8b;
+        font-size: 8px;
+      }
+      .inner {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-bottom: 1px solid #292d36;
+      }
+      .inner span {
+        position: relative;
+        padding: 8px;
+        text-align: center;
+        color: #858b98;
+        font-size: 10px;
+        font-weight: 950;
+      }
+      .inner .on {
+        color: #fff;
+      }
+      .inner .on:after {
+        content: "";
+        position: absolute;
+        left: 30%;
+        right: 30%;
+        bottom: -1px;
+        height: 3px;
+        border-radius: 3px;
+        background: var(--cyan);
+      }
+      .feed-panel {
+        display: none;
+      }
+      .feed-panel.show {
+        display: grid;
+        gap: 10px;
+        animation: feedIn 0.25s ease-out;
+      }
+      .post {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.052);
+      }
+      .author {
+        display: grid;
+        grid-template-columns: 39px 1fr auto;
+        gap: 9px;
+        align-items: center;
+      }
+      .avatar {
+        width: 39px;
+        height: 39px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        background: #272c35;
+        font-size: 10px;
+        font-weight: 1000;
+      }
+      .author-main b {
+        display: block;
+        font-size: 11px;
+      }
+      .author-main small {
+        display: block;
+        margin-top: 3px;
+        color: #747c87;
+        font-size: 8px;
+      }
+      .scope {
+        padding: 5px 7px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #9aa1ac;
+        font-size: 7px;
+        font-weight: 900;
+      }
+      .scope.square {
+        background: rgba(255, 184, 62, 0.09);
+        color: #d7b66f;
+      }
+      .hand {
+        margin-top: 11px;
+        padding: 11px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.2);
+      }
+      .hand-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .cards {
+        display: flex;
+        gap: 4px;
+      }
+      .card {
+        width: 27px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        border-radius: 5px;
+        background: #f3f2f5;
+        color: #14151a;
+        font-size: 10px;
+        font-weight: 1000;
+      }
+      .pot {
+        text-align: right;
+      }
+      .pot b {
+        display: block;
+        color: var(--cyan);
+        font-size: 13px;
+      }
+      .pot small {
+        color: #747c87;
+        font-size: 7px;
+      }
+      .board {
+        display: flex;
+        justify-content: center;
+        gap: 4px;
+        margin-top: 10px;
+      }
+      .board .card {
+        width: 24px;
+        height: 32px;
+        font-size: 9px;
+      }
+      .line {
+        margin-top: 9px;
+        color: #9ba2ad;
+        font-size: 8px;
+        line-height: 1.5;
+      }
+      .alias {
+        color: #d5d9de;
+        font-weight: 900;
+      }
+      .post-actions {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 2px;
+        margin-top: 5px;
+      }
+      .post-actions button {
+        min-width: 36px;
+        height: 36px;
+        padding: 0 7px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: #8d949f;
+        font-size: 8px;
+        font-weight: 800;
+        cursor: pointer;
+        transition: color 0.18s ease;
+      }
+      .post-actions button.liked {
+        color: #ff6674;
+      }
+      .action-icon {
+        width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 18px;
+        font-size: 17px;
+        line-height: 1;
+      }
+      .like-action.liked .like-icon {
+        animation: likePop 0.24s ease-out;
+      }
+      .comment-icon img {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+        opacity: 0.64;
+        filter: grayscale(1) brightness(1.75);
+      }
+      .action-count {
+        min-width: 9px;
+        text-align: left;
+      }
+      .comments-preview {
+        margin-top: 8px;
+        padding: 8px 9px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.035);
+        font-size: 8px;
+        line-height: 1.55;
+      }
+      .comments-preview b {
+        color: #cdd1d7;
+      }
+      .comments-preview span {
+        color: #8d949e;
+      }
+      .empty-note {
+        padding: 9px;
+        text-align: center;
+        color: #737b87;
+        font-size: 8px;
+      }
+      .bottom {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        height: 54px;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        align-items: center;
+        border: 1px solid #343844;
+        border-radius: 18px;
+        background: rgba(20, 22, 29, 0.98);
+        color: #7e8490;
+        text-align: center;
+        font-size: 8px;
+      }
+      .bottom b {
+        display: block;
+        margin-top: 2px;
+        font-size: 9px;
+      }
+      .bottom .active {
+        height: 40px;
+        margin: 0 3px;
+        padding-top: 7px;
+        border-radius: 12px;
+        background: #242832;
+        color: #fff;
+      }
+      .bottom em {
+        color: var(--cyan);
+        font-style: normal;
+      }
+      .sheet {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        display: none;
+      }
+      .sheet.show {
+        display: block;
+      }
+      .mask {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.65);
+        backdrop-filter: blur(4px);
+      }
+      .sheet-panel {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        max-height: 72%;
+        padding: 11px 13px 17px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 24px 24px 0 0;
+        background: #11141b;
+        animation: sheetUp 0.25s ease-out;
+      }
+      .handle {
+        width: 55px;
+        height: 4px;
+        margin: 0 auto 10px;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .sheet-head b {
+        font-size: 14px;
+      }
+      .close {
+        border: 0;
+        background: transparent;
+        color: #8c939e;
+        font-size: 10px;
+      }
+      .comment-list {
+        display: grid;
+        gap: 10px;
+        max-height: 245px;
+        margin: 13px 0;
+        overflow-y: auto;
+      }
+      .comment {
+        display: grid;
+        grid-template-columns: 30px 1fr;
+        gap: 8px;
+      }
+      .comment .avatar {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        font-size: 8px;
+      }
+      .comment-body {
+        padding: 8px 9px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 9px;
+        line-height: 1.45;
+      }
+      .comment-body b {
+        display: block;
+        margin-bottom: 3px;
+      }
+      .comment-body span {
+        color: #b6bbc3;
+      }
+      .reply {
+        margin-top: 5px;
+        color: #717986;
+        font-size: 8px;
+      }
+      .composer {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 6px;
+      }
+      .composer input {
+        min-width: 0;
+        height: 39px;
+        padding: 0 11px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        outline: 0;
+        background: rgba(0, 0, 0, 0.22);
+        color: #fff;
+        font-size: 10px;
+      }
+      .sticker,
+      .send {
+        height: 39px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 11px;
+        font-size: 9px;
+        font-weight: 950;
+      }
+      .sticker {
+        background: rgba(255, 255, 255, 0.08);
+        color: #aeb4bd;
+      }
+      .send {
+        background: var(--red);
+        color: #fff;
+      }
+      .notes {
+        padding-top: 16px;
+      }
+      .notes h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      .note {
+        margin-bottom: 10px;
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.045);
+      }
+      .note b {
+        display: block;
+        font-size: 12px;
+      }
+      .note p {
+        margin: 6px 0 0;
+        color: #858c98;
+        font-size: 10px;
+        line-height: 1.6;
+      }
+      @keyframes feedIn {
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes sheetUp {
+        from {
+          transform: translateY(20px);
+          opacity: 0;
+        }
+        to {
+          transform: none;
+          opacity: 1;
+        }
+      }
+      @keyframes likePop {
+        0% {
+          transform: scale(0.78);
+        }
+        65% {
+          transform: scale(1.24);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      @media (max-width: 800px) {
+        .stage {
+          grid-template-columns: 390px;
+        }
+        .notes {
+          padding-top: 0;
+        }
+      }
+      @media (max-width: 430px) {
+        .page {
+          padding: 18px 8px 45px;
+        }
+        .phone {
+          width: min(390px, calc(100vw - 16px));
+        }
+        .stage {
+          grid-template-columns: minmax(0, 390px);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *:before,
+        *:after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="intro">
+        <div class="eyebrow">SOCIAL FEED · DEMO</div>
+        <h1>统一动态信息流</h1>
+        <p>
+          广场、全部好友和指定好友只决定谁可以阅读，不拆分阅读页面。当前用户有权看到的内容统一按发布时间展示，并用范围标签区分。
+        </p>
+      </header>
+      <div class="stage">
+        <section class="phone">
+          <div class="status"><span>00:26</span><span>5G ▮▮▮</span></div>
+          <div class="top">
+            <span></span><b>玩家</b><span class="message">消息<i>3</i></span>
+          </div>
+          <div class="screen">
+            <div class="outer">
+              <span class="on">好友</span><span>玩家库</span>
+            </div>
+            <div class="page-head">
+              <div>
+                <small>FRIEND ACTIVITY</small>
+                <h2>动态</h2>
+              </div>
+              <span class="refresh">刚刚更新</span>
+            </div>
+            <div class="inner">
+              <span class="on">动态</span><span>好友</span><span>排行榜</span>
+            </div>
+            <div class="feed-panel show" id="activityFeed">
+              <article class="post">
+                <div class="author">
+                  <span class="avatar">老王</span
+                  ><span class="author-main"
+                    ><b>老王 · 深夜局</b><small>3 分钟前</small></span
+                  ><span class="scope">全部好友</span>
+                </div>
+                <div class="hand">
+                  <div class="hand-top">
+                    <div class="cards">
+                      <span class="card">A♠</span><span class="card">Q♠</span>
+                    </div>
+                    <div class="pot"><b>76.5BB</b><small>最终底池</small></div>
+                  </div>
+                  <div class="board">
+                    <span class="card">Q♦</span><span class="card">7♣</span
+                    ><span class="card">3♠</span><span class="card">8♥</span
+                    ><span class="card">2♠</span>
+                  </div>
+                  <div class="line">
+                    Hero 河牌面对 <span class="alias">夜鸦</span> 的 18BB
+                    下注选择跟注
+                  </div>
+                </div>
+                <div class="post-actions">
+                  <button
+                    class="like-action"
+                    aria-label="点赞"
+                    onclick="toggleLike(this)"
+                    data-count="8"
+                  >
+                    <span class="action-icon like-icon" aria-hidden="true"
+                      >♡</span
+                    ><span class="action-count">8</span></button
+                  ><button
+                    class="comment-action"
+                    aria-label="查看评论"
+                    onclick="openComments('老王的手牌')"
+                  >
+                    <span class="action-icon comment-icon" aria-hidden="true"
+                      ><img
+                        src="../assets/review-icons/comment-bubble-v263.png"
+                        alt="" /></span
+                    ><span class="action-count">3</span>
+                  </button>
+                </div>
+                <div class="comments-preview">
+                  <b>银狼：</b><span>转牌这里我会主动下注，河牌更好处理。</span>
+                </div>
+              </article>
+              <article class="post">
+                <div class="author">
+                  <span class="avatar">银狼</span
+                  ><span class="author-main"
+                    ><b>银狼</b><small>12 分钟前</small></span
+                  ><span class="scope">指定好友</span>
+                </div>
+                <div class="hand">
+                  <div class="hand-top">
+                    <div class="cards">
+                      <span class="card">J♥</span><span class="card">J♣</span>
+                    </div>
+                    <div class="pot"><b>41BB</b><small>最终底池</small></div>
+                  </div>
+                  <div class="board">
+                    <span class="card">J♠</span><span class="card">9♣</span
+                    ><span class="card">4♥</span><span class="card">3♦</span
+                    ><span class="card">8♣</span>
+                  </div>
+                  <div class="line">
+                    Hero 翻牌面对 <span class="alias">赤狐</span> 加注后继续游戏
+                  </div>
+                </div>
+                <div class="post-actions">
+                  <button
+                    class="like-action"
+                    aria-label="点赞"
+                    onclick="toggleLike(this)"
+                    data-count="4"
+                  >
+                    <span class="action-icon like-icon" aria-hidden="true"
+                      >♡</span
+                    ><span class="action-count">4</span></button
+                  ><button
+                    class="comment-action"
+                    aria-label="查看评论"
+                    onclick="openComments('银狼的手牌')"
+                  >
+                    <span class="action-icon comment-icon" aria-hidden="true"
+                      ><img
+                        src="../assets/review-icons/comment-bubble-v263.png"
+                        alt="" /></span
+                    ><span class="action-count">1</span>
+                  </button>
+                </div>
+              </article>
+              <article class="post">
+                <div class="author">
+                  <span class="avatar">K</span
+                  ><span class="author-main"
+                    ><b>K 先生</b><small>28 分钟前</small></span
+                  ><span class="scope square">广场</span>
+                </div>
+                <div class="hand">
+                  <div class="hand-top">
+                    <div class="cards">
+                      <span class="card">K♠</span><span class="card">Q♠</span>
+                    </div>
+                    <div class="pot"><b>112BB</b><small>最终底池</small></div>
+                  </div>
+                  <div class="board">
+                    <span class="card">A♠</span><span class="card">J♦</span
+                    ><span class="card">8♠</span><span class="card">4♣</span
+                    ><span class="card">T♠</span>
+                  </div>
+                  <div class="line">
+                    Hero 河牌完成同花，面对
+                    <span class="alias">灰隼</span> 的全下
+                  </div>
+                </div>
+                <div class="post-actions">
+                  <button
+                    class="like-action"
+                    aria-label="点赞"
+                    onclick="toggleLike(this)"
+                    data-count="26"
+                  >
+                    <span class="action-icon like-icon" aria-hidden="true"
+                      >♡</span
+                    ><span class="action-count">26</span></button
+                  ><button
+                    class="comment-action"
+                    aria-label="查看评论"
+                    onclick="openComments('K 先生的广场手牌')"
+                  >
+                    <span class="action-icon comment-icon" aria-hidden="true"
+                      ><img
+                        src="../assets/review-icons/comment-bubble-v263.png"
+                        alt="" /></span
+                    ><span class="action-count">12</span>
+                  </button>
+                </div>
+                <div class="comments-preview">
+                  <b>黑猫：</b><span>这个河牌太精彩了 🔥</span>
+                </div>
+              </article>
+              <article class="post">
+                <div class="author">
+                  <span class="avatar">幻</span
+                  ><span class="author-main"
+                    ><b>幻蝶</b><small>昨天 23:18</small></span
+                  ><span class="scope square">广场</span>
+                </div>
+                <div class="hand">
+                  <div class="hand-top">
+                    <div class="cards">
+                      <span class="card">9♥</span><span class="card">9♦</span>
+                    </div>
+                    <div class="pot"><b>58BB</b><small>最终底池</small></div>
+                  </div>
+                  <div class="board">
+                    <span class="card">T♣</span><span class="card">6♣</span
+                    ><span class="card">2♦</span><span class="card">6♥</span
+                    ><span class="card">3♠</span>
+                  </div>
+                  <div class="line">
+                    Hero 转牌跟注
+                    <span class="alias">白鲸</span> 9BB，河牌双方过牌
+                  </div>
+                </div>
+                <div class="post-actions">
+                  <button
+                    class="like-action"
+                    aria-label="点赞"
+                    onclick="toggleLike(this)"
+                    data-count="11"
+                  >
+                    <span class="action-icon like-icon" aria-hidden="true"
+                      >♡</span
+                    ><span class="action-count">11</span></button
+                  ><button
+                    class="comment-action"
+                    aria-label="查看评论"
+                    onclick="openComments('幻蝶的广场手牌')"
+                  >
+                    <span class="action-icon comment-icon" aria-hidden="true"
+                      ><img
+                        src="../assets/review-icons/comment-bubble-v263.png"
+                        alt="" /></span
+                    ><span class="action-count">5</span>
+                  </button>
+                </div>
+              </article>
+            </div>
+          </div>
+          <div class="bottom">
+            <span>SESS<b>场次</b></span
+            ><span>HANDS<b>手牌</b></span
+            ><span class="active"><em>PLAYER</em><b>玩家</b></span
+            ><span>STATS<b>统计</b></span
+            ><span>ME<b>我的</b></span>
+          </div>
+          <div class="sheet" id="commentSheet">
+            <div class="mask" onclick="closeComments()"></div>
+            <div class="sheet-panel">
+              <div class="handle"></div>
+              <div class="sheet-head">
+                <b id="commentTitle">手牌评论</b
+                ><button class="close" onclick="closeComments()">关闭</button>
+              </div>
+              <div class="comment-list" id="commentList">
+                <div class="comment">
+                  <span class="avatar">银</span>
+                  <div>
+                    <div class="comment-body">
+                      <b>银狼</b><span>转牌下注会不会更容易拿到价值？</span>
+                    </div>
+                    <div class="reply">老王回复：我当时担心被加注。</div>
+                  </div>
+                </div>
+                <div class="comment">
+                  <span class="avatar">赤</span>
+                  <div class="comment-body">
+                    <b>赤狐</b><span>河牌这个跟注很接近。</span>
+                  </div>
+                </div>
+              </div>
+              <div class="composer">
+                <input
+                  id="commentInput"
+                  maxlength="300"
+                  placeholder="写下你的看法…"
+                /><button class="sticker" onclick="sendSticker()">
+                  扑克贴纸</button
+                ><button class="send" onclick="sendComment()">发送</button>
+              </div>
+            </div>
+          </div>
+        </section>
+        <aside class="notes">
+          <h2>页面规则</h2>
+          <div class="note">
+            <b>统一动态页面</b>
+            <p>好友动态与广场内容按发布时间混合展示，不增加二级阅读入口。</p>
+          </div>
+          <div class="note">
+            <b>范围标签</b>
+            <p>
+              “广场 / 全部好友 /
+              指定好友”只表示可见对象；当前用户有权限即可在此阅读和互动。
+            </p>
+          </div>
+          <div class="note">
+            <b>手牌统一脱敏</b>
+            <p>只展示 BB、Hero、公共牌和匿名玩家代号，不展示盈亏与真实金额。</p>
+          </div>
+          <div class="note">
+            <b>评论抽屉</b>
+            <p>
+              支持文字、Emoji、内置扑克贴纸和一层回复；发布者不能删除他人评论。
+            </p>
+          </div>
+        </aside>
+      </div>
+    </main>
+    <script>
+      function toggleLike(button) {
+        const liked = button.classList.toggle("liked");
+        const base = Number(button.dataset.count);
+        button.querySelector(".action-count").textContent =
+          base + (liked ? 1 : 0);
+        button.querySelector(".like-icon").textContent = liked ? "♥" : "♡";
+        button.setAttribute("aria-label", liked ? "取消点赞" : "点赞");
+      }
+      function openComments(title) {
+        document.getElementById("commentTitle").textContent = title;
+        document.getElementById("commentSheet").classList.add("show");
+      }
+      function closeComments() {
+        document.getElementById("commentSheet").classList.remove("show");
+      }
+      function appendComment(text, sticker) {
+        const row = document.createElement("div");
+        row.className = "comment";
+        const avatar = document.createElement("span");
+        avatar.className = "avatar";
+        avatar.textContent = "我";
+        const body = document.createElement("div");
+        body.className = "comment-body";
+        const name = document.createElement("b");
+        name.textContent = "我";
+        const content = document.createElement("span");
+        content.textContent = sticker ? "ALL IN · 内置扑克贴纸" : text;
+        body.append(name, content);
+        row.append(avatar, body);
+        document.getElementById("commentList").appendChild(row);
+        row.scrollIntoView({ block: "nearest" });
+      }
+      function sendComment() {
+        const input = document.getElementById("commentInput");
+        const text = input.value.trim();
+        if (!text) return;
+        appendComment(text, false);
+        input.value = "";
+      }
+      function sendSticker() {
+        appendComment("", true);
+      }
+    </script>
+  </body>
+</html>

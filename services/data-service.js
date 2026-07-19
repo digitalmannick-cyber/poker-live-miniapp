@@ -12,10 +12,12 @@ const cloudDataApi = require('./cloud-data-api')
 const { AUTO_CLOUD_BOOTSTRAP, AI_REMINDER_SUBSCRIBE_TEMPLATE_ID } = require('../config/cloud')
 
 let bootstrapPromise = null
+let cloudBootstrapScheduleTimer = null
 let businessSyncPromise = Promise.resolve()
 let cloudBootstrapComplete = false
 const CLOUD_TIMEOUT_MS = 1500
 const CLOUD_BOOTSTRAP_TIMEOUT_MS = 5000
+const CLOUD_BOOTSTRAP_DEFER_MS = 1200
 const CLOUD_STATS_FUNCTION_TIMEOUT_MS = 15000
 const HAND_CLOUD_SYNC_CONFIRM_TIMEOUT_MS = 5000
 const CLOUD_RETRY_COOLDOWN_MS = 30000
@@ -531,9 +533,30 @@ function scheduleCloudBootstrap(forceRefresh) {
   if (!AUTO_CLOUD_BOOTSTRAP && !forceRefresh) return
   if (cloudBootstrapComplete && !forceRefresh) return
   if (!canStartCloudTask()) return
-  bootstrapCloudSync(forceRefresh, { waitForCloud: false }).catch(error => {
-    logCloudBackgroundFailure('schedule cloud bootstrap failed', error)
-  })
+
+  const start = () => {
+    if (cloudBootstrapScheduleTimer) clearTimeout(cloudBootstrapScheduleTimer)
+    cloudBootstrapScheduleTimer = null
+    if (cloudBootstrapComplete && !forceRefresh) return
+    if (!canStartCloudTask()) return
+    bootstrapCloudSync(forceRefresh, { waitForCloud: false }).catch(error => {
+      logCloudBackgroundFailure('schedule cloud bootstrap failed', error)
+    })
+  }
+
+  if (forceRefresh) {
+    start()
+    return
+  }
+  if (cloudBootstrapScheduleTimer) return
+  cloudBootstrapScheduleTimer = setTimeout(start, CLOUD_BOOTSTRAP_DEFER_MS)
+}
+
+function resetCloudBootstrapState() {
+  if (cloudBootstrapScheduleTimer) clearTimeout(cloudBootstrapScheduleTimer)
+  cloudBootstrapScheduleTimer = null
+  cloudBootstrapComplete = false
+  bootstrapPromise = null
 }
 
 function scheduleBusinessDataSync(label) {
@@ -1348,8 +1371,7 @@ async function switchToTestAccount() {
     createdAt: Date.now()
   })
   wx.removeStorageSync(ACCOUNT_LOGGED_OUT_KEY)
-  cloudBootstrapComplete = false
-  bootstrapPromise = null
+  resetCloudBootstrapState()
   clearStatsDataCache()
   return testBackup.profile
 }
@@ -1369,8 +1391,7 @@ async function exitTestAccount() {
   } else {
     await loginWechatAccount({ manual: true })
   }
-  cloudBootstrapComplete = false
-  bootstrapPromise = null
+  resetCloudBootstrapState()
   clearStatsDataCache()
   return store.getProfile()
 }
@@ -1394,8 +1415,7 @@ function updateProfile(patch) {
 async function logoutAccount() {
   const localBackup = store.exportBackup()
   wx.setStorageSync(ACCOUNT_LOGGED_OUT_KEY, true)
-  cloudBootstrapComplete = false
-  bootstrapPromise = null
+  resetCloudBootstrapState()
   clearStatsDataCache()
   if (localBackupHasBusinessData(localBackup)) {
     scheduleBusinessDataSync('sync before account logout failed')
@@ -1841,10 +1861,10 @@ async function finishSession(sessionId, endingChips) {
 function requestAiReminderSubscribePermission(templateId) {
   const tmplId = String(templateId || '').trim()
   if (!tmplId) {
-    return Promise.resolve({ accepted: false, status: 'skipped', message: 'missing template id' })
+    return Promise.resolve({ accepted: false, status: 'skipped', message: 'missing template id', templateId: tmplId })
   }
   if (typeof wx === 'undefined' || typeof wx.requestSubscribeMessage !== 'function') {
-    return Promise.resolve({ accepted: false, status: 'skipped', message: 'requestSubscribeMessage unavailable' })
+    return Promise.resolve({ accepted: false, status: 'skipped', message: 'requestSubscribeMessage unavailable', templateId: tmplId })
   }
   return new Promise(resolve => {
     wx.requestSubscribeMessage({
@@ -1856,14 +1876,19 @@ function requestAiReminderSubscribePermission(templateId) {
         resolve({
           accepted: res && res[tmplId] === 'accept',
           status: res && res[tmplId] === 'accept' ? 'accepted' : 'rejected',
-          message: res && res[tmplId] || 'unknown'
+          message: res && res[tmplId] || 'unknown',
+          templateId: tmplId,
+          raw: res || null
         })
       },
       fail(error) {
         resolve({
           accepted: false,
           status: 'failed',
-          message: error && (error.errMsg || error.message) || 'requestSubscribeMessage failed'
+          errCode: error && (error.errCode || error.errcode || error.code),
+          message: error && (error.errMsg || error.message) || 'requestSubscribeMessage failed',
+          templateId: tmplId,
+          raw: error || null
         })
       }
     })
