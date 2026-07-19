@@ -99,6 +99,8 @@ git commit -m "feat: add restricted player card sharing"
 **Interfaces:**
 - Consumes: `socialService.listFriends()`、`socialService.sharePlayerCard({ playerNoteId, targetUserId, clientMutationId })`。
 - Produces a single selected `targetUserId`。
+- 入口只显示在已保存的玩家库记录详情；好友私人资料、新建未保存和编辑状态不显示分享入口。
+- 好友选择必须支持分页或加载全部 accepted 好友，不能只展示第一页；打开面板时不默认选择任何人。
 
 - [ ] **Step 1: 写单选和预览字段失败测试**
 
@@ -137,7 +139,7 @@ async confirmSharePlayerCard() {
 }
 ```
 
-底部面板展示将被分享的五类内容，不默认选择好友，不提供“全部好友”或多选入口。
+底部面板展示当前已保存名片的五类内容，不默认选择好友，不提供“全部好友”或多选入口。好友列表加载、分享提交和页面卸载必须有旧请求防回写；提交中的重复点击复用同一个 `clientMutationId`，避免“服务端成功、客户端超时”后生成重复分享。
 
 - [ ] **Step 4: 运行详情与分享 UI 回归**
 
