@@ -252,7 +252,7 @@ git commit -m "feat: import shared player cards safely"
 - Produces actions: `list_notifications`、`mark_notification_read`、`mark_all_notifications_read`、`get_unread_count`。
 - Notification kinds: `friend_request`、`friend_accepted`、`selected_hand`、`comment`、`reply`、`like_aggregate`、`player_card`。
 
-- [ ] **Step 1: 写游标、聚合与重鉴权测试**
+- [x] **Step 1: 写游标、聚合与重鉴权测试**
 
 ```js
 const key = notification.getLikeAggregateKey('recipient_1', 'share_1', 600_000)
@@ -263,13 +263,13 @@ assert.ok(page.nextCursor.createdAt)
 assert.equal(Object.hasOwn(page.items[0], 'ownerOpenId'), false)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-notifications.test.js`
 
 Expected: FAIL because notification module is missing。
 
-- [ ] **Step 3: 实现消息写入和十分钟点赞聚合**
+- [x] **Step 3: 实现消息写入和十分钟点赞聚合**
 
 ```js
 function getLikeAggregateKey(recipientId, shareId, nowMs) {
@@ -289,13 +289,13 @@ function toNotificationDto(row) {
 
 好友申请、接受和玩家名片分享在同一业务事务后写消息。通知 DTO 不携带访问令牌或权限结果，目标页面打开时调用目标读取 action。
 
-- [ ] **Step 4: 运行消息和前序业务测试**
+- [x] **Step 4: 运行消息和前序业务测试**
 
 Run: `node --test tests/social-notifications.test.js tests/social-friendship.test.js tests/social-player-card.test.js`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交通知模型**
+- [x] **Step 5: 提交通知模型**
 
 ```powershell
 git add cloudfunctions/poker_social/lib/notification.js cloudfunctions/poker_social/app.js cloudfunctions/poker_social/lib/friendship.js cloudfunctions/poker_social/lib/player-card.js services/social-api.js services/social-service.js tests/social-notifications.test.js
