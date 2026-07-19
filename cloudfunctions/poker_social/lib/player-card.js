@@ -12,6 +12,10 @@ function normalizeText(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength)
 }
 
+function normalizePlayerId(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
 function normalizeStringList(value) {
   const seen = new Set()
   const result = []
@@ -139,14 +143,14 @@ function createPlayerCardHandlers(repository, options) {
 
       const result = await runIdempotent(repository, sender._id, 'share_player_card', event, async store => {
         await requireAcceptedFriendship(store, sender._id, targetUserId)
-        const source = await store.find(PLAYER_NOTE_COLLECTION, {
-          _id: playerNoteId,
-          ownerOpenId: actor.ownerOpenId,
-          playerId: sender.privatePlayerId,
-          sourceKind: 'library',
-          archived: false
-        })
-        if (!source) throw socialError('PLAYER_CARD_SOURCE_NOT_FOUND', 'player card source not found')
+        const source = await store.get(PLAYER_NOTE_COLLECTION, playerNoteId)
+        const sourceKind = String(source && source.sourceKind || '').trim()
+        const validSource = source &&
+          source.ownerOpenId === actor.ownerOpenId &&
+          normalizePlayerId(source.playerId) === normalizePlayerId(sender.privatePlayerId) &&
+          source.archived !== true &&
+          (!sourceKind || sourceKind === 'library')
+        if (!validSource) throw socialError('PLAYER_CARD_SOURCE_NOT_FOUND', 'player card source not found')
         const at = now()
         const share = {
           _id: 'pcs_' + crypto.randomBytes(16).toString('hex'),
@@ -222,6 +226,7 @@ module.exports = {
   CARD_SHARE_COLLECTION,
   CARD_SHARE_TTL_MS,
   normalizeStringList,
+  normalizePlayerId,
   buildSnapshot,
   validateTarget,
   validateTargets,

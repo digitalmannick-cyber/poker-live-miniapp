@@ -98,7 +98,8 @@ test('source note access enforces owner player note and library-only boundaries'
     { playerId: 'PLAYER-OTHER' },
     { _id: 'other-note' },
     { archived: true },
-    { sourceKind: 'friend' }
+    { sourceKind: 'friend' },
+    { sourceKind: 'unknown' }
   ]
   for (const patch of cases) {
     const repository = createRepository({
@@ -111,6 +112,47 @@ test('source note access enforces owner player note and library-only boundaries'
       error => error.code === 'PLAYER_CARD_SOURCE_NOT_FOUND'
     )
   }
+})
+
+test('card creation uses document reads inside transactions and does not require transactional where/find support', async () => {
+  const nowRef = { value: 1_000 }
+  const repository = createRepository()
+  const transactionStore = {
+    get: repository.get,
+    set: repository.set
+  }
+  repository.runTransaction = callback => callback(transactionStore)
+
+  const shared = await createHandlers(repository, nowRef).share_player_card({
+    playerNoteId: 'note-a', targetUserId: 'su_b', clientMutationId: 'document-only-transaction'
+  }, { ownerOpenId: 'openid-a' })
+
+  assert.equal(shared.card.name, '老张')
+  assert.equal(repository.where('social_player_card_shares', () => true).length, 1)
+})
+
+test('real app accepts a legacy library note without sourceKind or archived after normalized private scope checks', async () => {
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const repository = createRepository({
+    player_notes: [{
+      _id: 'legacy-note', ownerOpenId: 'openid-a', playerId: ' player-a ',
+      name: 'Legacy', type: '稳健', leakTags: [], note: 'legacy note'
+    }]
+  })
+  const app = createSocialApp({
+    repository,
+    identity: { resolve: openId => ({ ownerOpenId: openId }) },
+    requestId: () => 'legacy-card-route',
+    playerCard: { now: () => 1_000 }
+  })
+
+  const response = await app.handle({
+    action: 'share_player_card', playerNoteId: 'legacy-note', targetUserId: 'su_b', clientMutationId: 'legacy-share'
+  }, { openId: 'openid-a' })
+
+  assert.equal(response.code, 0)
+  assert.equal(response.data.card.name, 'Legacy')
+  assert.equal(response.data.expiresAt, 1_000 + 7 * 24 * 60 * 60 * 1000)
 })
 
 test('only an accepted single target may receive, read, or confirm a card and relationship changes revoke access', async () => {
