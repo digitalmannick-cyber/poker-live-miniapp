@@ -4,14 +4,14 @@
 
 **Goal:** 实现云端 BB 化匿名手牌快照、三种发布范围、统一动态、评论回复、贴纸、点赞、撤回和完整发布验收。
 
-**Architecture:** 客户端只提交源 `handId` 和范围；云端读取本人私有手牌并从允许字段白名单构造不可变快照。所有读取与互动复用单一可见性策略，消息与计数通过幂等事务维护。
+**Architecture:** 客户端只提交 action 所需 ID、服务端 `previewHash`、范围参数和写操作 mutation ID；云端读取本人私有手牌并从允许字段白名单构造不可变快照。所有读取与互动复用单一可见性策略；唯一 active、rolling 限流、input fingerprint 与 selected 通知意图均在服务端事务边界维护。
 
 **Tech Stack:** 原生小程序、独立 `poker_social` 云函数、现有手牌数据模型、Node.js 测试、微信开发者工具预览。
 
 ## Global Constraints
 
 - 第一版分享手牌只显示 BB，不提供真实金额切换。
-- Hero 固定显示 `Hero`；其他玩家按稳定座位顺序使用夜鸦、赤狐、黑猫、银狼、幻蝶、灰隼、绯蛇、白鲸。
+- Hero 固定显示 `Hero`；其他玩家按稳定数值座位顺序使用夜鸦、赤狐、黑猫、银狼、幻蝶、灰隼、绿蛇、白鲸。
 - 快照不包含盈亏、买入、带走、资金曲线、地点、场次名、玩家库字段、AI 私人分析和未摊牌底牌。
 - 范围只允许 `square`、`friends`、`selected`，一次只能选择一个。
 - 广场允许所有已登录用户浏览、评论和点赞；好友范围实时依赖当前好友关系。
@@ -24,80 +24,89 @@
 
 **Files:**
 - Create: `cloudfunctions/poker_social/lib/hand-snapshot.js`
-- Modify: `cloudfunctions/poker_social/lib/social-error.js`
+- Modify: `cloudfunctions/poker_social/app.js`
 - Test: `tests/social-hand-snapshot.test.js`
 - Test: `tests/social-hand-snapshot-security.test.js`
 
 **Interfaces:**
-- Produces: `buildHandSnapshot({ hand, actions, session }) -> HandSnapshot`。
+- Produces: `buildHandSnapshot({ hand, actions, session }) -> HandSnapshotV1`。
 - Produces: `resolveBigBlind(hand, session)`、`toBb(value, bigBlind)`、`assignAliases(seats)`。
+- Inputs use the real persisted `hands`、`hand_actions`、`sessions` and `playerSnapshots` shapes; no `hand.players` or text-action fallback exists。
 
-- [ ] **Step 1: 写 BB、匿名和白名单失败测试**
+**Approved contract:**
 
-```js
-const snapshot = handSnapshot.buildHandSnapshot({
-  hand: {
-    heroPosition: 'BTN', heroCardsInput: 'AsKs', currentProfit: 5000,
-    pot: 5000, players: [{ seat: 'BTN', name: 'Hero' }, { seat: 'SB', name: '老张' }, { seat: 'BB', name: '李总' }],
-    board: { flop: 'Ah9s4d', turn: 'Kc', river: '2h' }
-  },
-  actions: [
-    { street: 'preflop', seat: 'BTN', actionType: 'raise', amount: 1200 },
-    { street: 'preflop', seat: 'SB', actionType: 'call', amount: 1200 }
-  ],
-  session: { bigBlind: 400, venue: '澳门私人局', title: '深夜局' }
-})
-assert.equal(snapshot.hero.label, 'Hero')
-assert.equal(snapshot.potBb, 12.5)
-assert.deepEqual(snapshot.players.map(item => item.label), ['Hero', '夜鸦', '赤狐'])
-const text = JSON.stringify(snapshot)
-;['profit', 'currentProfit', 'venue', 'title', '老张', 'avatar', 'leakTags', 'note'].forEach(field => assert.equal(text.includes(field), false))
-```
-
-- [ ] **Step 2: 运行测试确认 RED**
-
-Run: `node --test tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js`
-
-Expected: FAIL because hand-snapshot module is missing。
-
-- [ ] **Step 3: 实现从零构造的白名单快照**
+- Construct `HandSnapshotV1` from zero. Never clone a database row and delete fields, and never pass unknown nested values through.
+- Allowed sources are exact: hand `_id/sessionId/updatedAt/stakeLevel/bigBlind/playerCount/heroSeat/heroPosition/heroCardsInput/board.flop/board.turn/board.river/effectiveStack/potSize/allInPot/opponentCards/opponentCardsSource/villainPosition/playerSnapshots`; actions `_id/updatedAt/street/actorSeat/actorLabel/actionType/amount/sequence`; session `_id/bigBlind`; snapshot `slot/position/stack/initialStack/cards`. “Allowed to read” never means pass through.
+- `hero`、`players`、`board`、`actions`、`showdown` always exist; `players` excludes Hero. Public optional numeric fields are only `effectiveStackBb`、`potBb`、`allInPotBb`、seat `stackBb` and action `amountBb`.
 
 ```js
-const ALIASES = ['夜鸦', '赤狐', '黑猫', '银狼', '幻蝶', '灰隼', '绯蛇', '白鲸']
-
-function toBb(value, bigBlind) {
-  if (!(Number(bigBlind) > 0)) throw socialError('BLIND_REQUIRED')
-  return Number((Number(value || 0) / Number(bigBlind)).toFixed(2))
-}
-
-function buildHandSnapshot(input) {
-  const bigBlind = resolveBigBlind(input.hand, input.session)
-  const seats = normalizeSeats(input.hand, input.actions)
-  const aliasBySeat = assignAliases(seats)
-  return {
-    version: 1,
-    hero: buildHero(input.hand),
-    players: buildAnonymousPlayers(seats, aliasBySeat, input.hand),
-    board: buildBoard(input.hand.board),
-    actions: buildBbActions(input.actions, aliasBySeat, bigBlind),
-    potBb: toBb(resolvePot(input.hand, input.actions), bigBlind),
-    showdown: buildExplicitShowdown(input.hand, aliasBySeat)
-  }
+{
+  version: 1,
+  hero: { label: 'Hero', seat: 6, position: 'BTN', cards: ['As', 'Ks'], stackBb: 100 },
+  players: [{ seat: 1, position: 'SB', label: '夜鸦', stackBb: 80 }],
+  board: { flop: [], turn: [], river: [] },
+  actions: [{ street: 'preflop', actor: 'Hero', type: 'raise', amountBb: 3 }],
+  effectiveStackBb: 100,
+  potBb: 12.5,
+  allInPotBb: 0,
+  showdown: [{ actor: '夜鸦', cards: ['Qh', 'Qs'] }]
 }
 ```
+- The only action source is ordered `hand_actions` with `{ street, actorSeat, actorLabel, actionType, amount, sequence }`. Missing actions returns `HAND_ACTIONS_REQUIRED`; unknown street/action/seat returns `INVALID_HAND_SNAPSHOT`. Do not read `potAfter` or reconstruct per-action pots.
+- Big blind resolution is strictly `session.bigBlind` then `hand.bigBlind` then the right side of a strict numeric `smallBlind / bigBlind` `stakeLevel`. Missing/invalid blind returns `BLIND_REQUIRED`. `toBb` accepts only finite non-negative values, rounds to at most two decimals and normalizes negative zero.
+- Hero has exactly two canonical `[2-9TJQKA][shdc]` cards. Board is empty or legal 3/1/1 in street order. Illegal, skipped or duplicate cards fail closed.
+- For full-ledger rows, map `playerSnapshots[].slot` through the exact `ACTIVE_SLOTS` tables for 6/8/9 handed play, require a complete unique slot set, and cross-check hero/action seat and normalized position. For legacy quick-record rows without snapshots, require `playerCount` 2–9 and construct only legal seats seen in Hero/actions; never invent inactive players or stacks.
 
-禁止用 `Object.assign({}, hand)` 再删除字段。`buildExplicitShowdown` 只接受原记录明确的摊牌标记；推测或未摊牌底牌返回空数组。
+```js
+const ACTIVE_SLOTS = {
+  6: ['BTN', 'SB', 'BB', 'UTG', 'HJ', 'CO'],
+  8: ['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'HJ', 'CO'],
+  9: ['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'LJ', 'HJ', 'CO']
+}
+```
+- Non-Hero aliases are exactly `夜鸦、赤狐、黑猫、银狼、幻蝶、灰隼、绿蛇、白鲸`, assigned by numeric seat ascending and reused across streets.
+- Showdown requires structured `actionType === 'show'`. Resolve each showing seat to its same-seat snapshot cards; legacy `opponentCards` is allowed only for one uniquely mapped non-Hero show actor. Muck, river call, free text and guessed cards are never evidence.
+- Source construction may read only the approved hand/action/session/snapshot fields. Recursive output scans must reject at least `ownerOpenId/_openid/privatePlayerId/sessionId/sourceHandId/playerId/playerNoteId/playerName/linkedFriendUserId/avatarFileId/avatarUrl/venue/title/notes/note/mindJourney/leakTags/tags/battleHandIds/profit/currentProfit/resultBB/allInEv/allInEvProfit/allInEvAdjustedProfit/buyIn/cashOut/voiceNote/voiceExtract/aiReview/ledgerState/streetInputs/streetSummary`, both as keys and canary values.
+- Add public fixed messages for `BLIND_REQUIRED`、`INVALID_HAND_SNAPSHOT` and `HAND_ACTIONS_REQUIRED`; these codes must not collapse to `SOCIAL_ERROR`.
 
-- [ ] **Step 4: 运行快照测试**
+- [ ] **Step 1: Write real-schema, BB, seat, cards, showdown and recursive-canary tests**
 
-Run: `node --test tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js`
+Cover 6/8/9 `ACTIVE_SLOTS`, legacy quick-record, every allowed BB field, strict blind parsing, invalid numbers, unknown actions, invalid seats, missing actions, card count/order/duplicates, multi-show and every prohibited key/value. Tests must use real persisted field names, not invented `players` arrays.
 
-Expected: PASS；缺失大盲时返回 `BLIND_REQUIRED`，同一座位跨街代号稳定。
-
-- [ ] **Step 5: 提交快照生成器**
+- [ ] **Step 2: Run the Task 1 gate and confirm RED**
 
 ```powershell
-git add cloudfunctions/poker_social/lib/hand-snapshot.js cloudfunctions/poker_social/lib/social-error.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js
+node --test tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js
+```
+
+Expected: FAIL for missing `hand-snapshot` behavior, not fixture/import mistakes.
+
+- [ ] **Step 3: Implement exact whitelist DTO, BB conversion and deterministic seat mapping**
+
+Implement the smallest pure builder that satisfies the approved contract. Do not add repository reads, client payload support, text parsing or result fields to the snapshot module.
+
+- [ ] **Step 4: Implement strict cards/actions/showdown validation and public typed errors**
+
+Keep every invalid/ambiguous source path fail closed. Public messages are fixed and contain no hand ID, owner/player or raw exception content.
+
+- [ ] **Step 5: Run focused, social/hand regressions and static checks**
+
+```powershell
+node --test tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+$socialTests = Get-ChildItem tests -Filter 'social-*.test.js' | ForEach-Object { $_.FullName }
+node --test $socialTests
+node --check cloudfunctions/poker_social/lib/hand-snapshot.js
+node --check cloudfunctions/poker_social/app.js
+git diff --check <task-base>..<task-head>
+```
+
+Expected: all commands exit `0`; any pre-existing baseline failure is listed explicitly.
+
+- [ ] **Step 6: Submit Task 1 for specification review, then code review, then commit**
+
+```powershell
+git add cloudfunctions/poker_social/lib/hand-snapshot.js cloudfunctions/poker_social/app.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js
 git commit -m "feat: build privacy-safe bb hand snapshots"
 ```
 
@@ -106,65 +115,95 @@ git commit -m "feat: build privacy-safe bb hand snapshots"
 **Files:**
 - Create: `cloudfunctions/poker_social/lib/hand-share.js`
 - Modify: `cloudfunctions/poker_social/lib/visibility.js`
+- Modify: `cloudfunctions/poker_social/lib/idempotency.js`
 - Modify: `cloudfunctions/poker_social/lib/notification.js`
+- Modify: `cloudfunctions/poker_social/lib/repository.js`
 - Modify: `cloudfunctions/poker_social/app.js`
+- Modify: `cloudfunctions/poker_social/database-indexes.md`
 - Modify: `services/social-api.js`
 - Modify: `services/social-service.js`
+- Modify: `tests/helpers/social-fixture.js`
 - Test: `tests/social-hand-share-policy.test.js`
+- Test: `tests/social-notifications.test.js`
 
 **Interfaces:**
 - Produces actions: `preview_hand_share`、`publish_hand`、`update_hand_share_scope`、`withdraw_hand_share`、`withdraw_shares_by_source_hand`。
-- Write payload: `{ handId, scope, targetUserIds, clientMutationId }`。
+- `preview_hand_share({ handId }) -> { previewHash, snapshot, defaultShareScope }` is read-only and needs no mutation ID。
+- `publish_hand({ handId, previewHash, scope, targetUserIds, publicShareConfirmed, clientMutationId }) -> { shareId, status: 'active', scope }`。
+- Scope update, withdraw and source-hand withdraw accept only their identifier, normalized scope fields where applicable, and `clientMutationId`; clients never submit a snapshot, hand/session/actions, playerId or BB values。
 
-- [ ] **Step 1: 写三范围权限矩阵失败测试**
+**Approved contract:**
 
-```js
-const rows = [
-  { label: 'publisher', viewerId: 'su_a', share: { publisherId: 'su_a', status: 'active', scope: 'selected', targetUserIds: [] }, friendship: null, expected: true },
-  { label: 'square stranger', viewerId: 'su_c', share: { publisherId: 'su_a', status: 'active', scope: 'square', targetUserIds: [] }, friendship: null, expected: true },
-  { label: 'friend scope stranger', viewerId: 'su_c', share: { publisherId: 'su_a', status: 'active', scope: 'friends', targetUserIds: [] }, friendship: null, expected: false },
-  { label: 'selected friend', viewerId: 'su_b', share: { publisherId: 'su_a', status: 'active', scope: 'selected', targetUserIds: ['su_b'] }, friendship: { status: 'accepted' }, expected: true }
-]
-for (const row of rows) {
-  assert.equal(visibility.canReadShare(row.viewerId, row.share, row.friendship), row.expected, row.label)
-}
-assert.throws(
-  () => handShare.validatePublishInput({ scope: 'selected', targetUserIds: [] }),
-  error => error.code === 'INVALID_SHARE_SCOPE'
-)
+- `loadOwnedHandBundle` resolves the current `social_users` by OpenID, then point-reads `hands` and `sessions` and queries `hand_actions` under the exact same `ownerOpenId + privatePlayerId + handId`, ordered by `sequence ASC, _id ASC`; cross-owner/player/missing ownership returns `FORBIDDEN` without existence disclosure.
+- Preview and publish call the same bundle loader and Task 1 builder. SHA-256 stable serialization of `{ version: 1, handId, handUpdatedAt: Number(hand.updatedAt) || 0, actionRevision: actions.map(a => [a._id, a.sequence, a.updatedAt || 0]), snapshot }`. Publish must supply the server preview hash, rebuild everything, and return `HAND_PREVIEW_STALE` with zero writes on any difference.
+- Scope is exactly `square | friends | selected`. `square` and `friends` require an empty target array; square requires explicit public confirmation. Friends publish requires at least one accepted friend. Selected accepts a deduplicated 1–50 string IDs and point-reads every deterministic friendship again inside the write transaction; any invalid target aborts the whole write.
+- Extend `runIdempotent` with an optional SHA-256 of stable serialization over `{ action, handId, shareId, previewHash, scope, targetUserIds: sortedUniqueTargets, publicShareConfirmed: scope === 'square' && confirmed }`. Same actor/action/mutation/fingerprint restores; a different action or fingerprint returns `MUTATION_CONFLICT` before callback. Existing callers without fingerprints retain their behavior.
+- Enforce one active share with `social_hand_share_slots`, ID `shs_ + sha256(JSON.stringify([publisherId, handId]))`. The transaction repairs stale pointers, increments generation, creates a new random share ID and stores an immutable snapshot. Withdraw soft-deletes and clears the slot only if it still points to that share. Republish never reuses a share ID; scope update never changes snapshot, creation time or ID.
+- Enforce a rolling `(nowMs - 3_600_000, nowMs]` maximum of 20 successful creates with deterministic rate ID `rl_ + sha256(JSON.stringify([publisherId, 'publish_hand']))` and a sorted `publishedAt` array capped at 20. Drop timestamps on the left boundary; the 20th succeeds and 21st fails `RATE_LIMITED`. Only a newly committed share appends. Restore, preview, failures, scope changes and withdrawals do not count. Rate/share/slot/outbox commit together.
+- Selected notifications use the existing canonical `selected_hand + hand_share` writer through a single transaction outbox, never 50 notification/state pairs in the publish transaction. Publish and newly added selected targets write one outbox with ID `no_ + sha256(JSON.stringify(['selected_hand', shareId, sortedNewTargetIds]))`, minimal publisher display snapshot, sorted targets, delivery/skipped state and no OpenID/playerId/handId/full snapshot. Post-commit delivery uses one idempotent transaction per target and stable `sourceEventId = selected_hand:${shareId}:${targetUserId}`.
+- Initial publish/update and mutation restore drain at most 10 targets. `list_notifications` and `get_unread_count` compensate at most 5 recipient outboxes with 10 targets each. Delivery rechecks active share, current selected membership and accepted friendship; invalid targets are skipped, removal/re-add never duplicates, and publisher is never a target.
+- Add `social_hand_shares`、`social_hand_share_slots`、`social_rate_limits`、`social_notification_outbox` to repository constants, deployment/account-clear scope and denied client permissions. Production cannot fall back to full scans. Declare and shape-test:
+
+```text
+social_hand_shares: status ASC, scope ASC, createdAt DESC, _id DESC
+social_hand_shares: publisherId ASC, status ASC, createdAt DESC, _id DESC
+social_hand_shares: targetUserIds ARRAY, status ASC, createdAt DESC, _id DESC
+social_hand_share_slots: point-read only by deterministic _id
+social_rate_limits: point-read only by deterministic _id
+social_notification_outbox: status ASC, targetUserIds ARRAY, createdAt ASC, _id ASC
 ```
+- Use one `canReadShare(viewerId, share, friendship)` for detail/feed/interaction policy: publisher reads active own shares; square is public to initialized users; friends/selected additionally require a current accepted friendship and selected membership. Withdrawn, unauthorized and source-deleted reads return `CONTENT_UNAVAILABLE`.
+- Visibility never replaces source existence. Detail and future interaction must point-read the share's exact private source tuple first. Task 2 data/index design must support Task 4's four-stream `(createdAt DESC, _id DESC)` keyset merge and authoritative source filtering without offset or private DTO fields.
+- Task 1–3 do not implement feed/cache, but their DTOs must support a later first-page-only five-minute cache keyed by public `socialUserId`, shown only on network failure with `readOnly: true`; no OpenID, private player/source field, raw hand/session/action row or writable permission result may be cached.
+- Add fixed public messages and preserve `error.code` end-to-end for `HAND_PREVIEW_STALE`、`HAND_ALREADY_SHARED`、`INVALID_SHARE_SCOPE`、`RATE_LIMITED`、`CONTENT_UNAVAILABLE`, plus all Task 1 codes. Public errors expose no source identifiers or raw database details.
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [ ] **Step 1: Write ownership, preview hash, scope, slot, limiter, fingerprint, outbox, visibility and leak tests**
 
-Run: `node --test tests/social-hand-share-policy.test.js`
+Include 1/50/51 selected boundaries, transaction-time friendship changes, stale preview zero writes, concurrent unique-active publish, stale slot repair, generation/republish, exact rolling boundaries and concurrent 20/21, rollback, mutation conflicts, 50-target single-outbox, partial delivery compensation, relationship removal skip, repository/index shape and recursive public-response scans.
 
-Expected: FAIL because hand-share module and actions are missing。
-
-- [ ] **Step 3: 实现服务端源读取、范围事务和定向通知**
-
-```js
-function validatePublishInput(input) {
-  const scope = String(input.scope || '')
-  if (!['square', 'friends', 'selected'].includes(scope)) throw socialError('INVALID_SHARE_SCOPE')
-  const targets = Array.from(new Set(input.targetUserIds || []))
-  if (scope === 'selected' && (targets.length < 1 || targets.length > 50)) throw socialError('INVALID_SHARE_SCOPE')
-  if (scope !== 'selected' && targets.length) throw socialError('INVALID_SHARE_SCOPE')
-  return { scope, targetUserIds: targets }
-}
-```
-
-`publish_hand` 通过当前 OpenID 与 `playerId` 读取源手牌、行动和场次，调用 Task 1 生成快照。`friends` 读取时实时校验关系，不固化好友数组。改为 `square` 时要求 payload `publicShareConfirmed: true`。撤回使用软状态并使评论、点赞入口同时失效。
-
-- [ ] **Step 4: 运行范围和幂等测试**
-
-Run: `node --test tests/social-hand-share-policy.test.js tests/social-hand-snapshot.test.js tests/social-notifications.test.js`
-
-Expected: PASS；伪造 publisher、源快照和非好友 target 均被拒绝。
-
-- [ ] **Step 5: 提交分享 API**
+- [ ] **Step 2: Run the Task 2 gate and confirm RED**
 
 ```powershell
-git add cloudfunctions/poker_social/lib/hand-share.js cloudfunctions/poker_social/lib/visibility.js cloudfunctions/poker_social/lib/notification.js cloudfunctions/poker_social/app.js services/social-api.js services/social-service.js tests/social-hand-share-policy.test.js
+node --test tests/social-hand-share-policy.test.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js tests/social-notifications.test.js
+```
+
+Expected: FAIL for missing hand-share contracts, not fixture/import mistakes.
+
+- [ ] **Step 3: Implement authoritative bundle loading, preview hash and typed routes/services**
+
+Do not accept client playerId/snapshot fields. Preview and publish must share the exact loader/builder/hash functions, and every typed error must survive the app/service boundary.
+
+- [ ] **Step 4: Implement scope validation, fingerprint idempotency, active slot and rolling limiter**
+
+All selected relationship checks and share/slot/rate/outbox mutations belong to the same business transaction. Do not implement query-then-insert uniqueness or an out-of-transaction limiter.
+
+- [ ] **Step 5: Implement deterministic outbox delivery, visibility/source checks and repository/index declarations**
+
+Inject the single existing `notificationWriter` from `app.js`. Keep delivery bounded and compensatable; never write a 50-recipient notification batch inside the publish transaction.
+
+- [ ] **Step 6: Run focused, complete social regressions and static checks**
+
+```powershell
+node --test tests/social-hand-share-policy.test.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js tests/social-notifications.test.js
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+$socialTests = Get-ChildItem tests -Filter 'social-*.test.js' | ForEach-Object { $_.FullName }
+node --test $socialTests
+node --check cloudfunctions/poker_social/lib/hand-share.js
+node --check cloudfunctions/poker_social/lib/idempotency.js
+node --check cloudfunctions/poker_social/lib/notification.js
+node --check cloudfunctions/poker_social/lib/repository.js
+node --check cloudfunctions/poker_social/app.js
+node --check services/social-api.js
+node --check services/social-service.js
+git diff --check <task-base>..<task-head>
+```
+
+Expected: all commands exit `0`; responses contain no OpenID, private player/source fields, original amounts or profit/EV.
+
+- [ ] **Step 7: Submit Task 2 for specification review, then code review, then commit**
+
+```powershell
+git add cloudfunctions/poker_social/lib/hand-share.js cloudfunctions/poker_social/lib/visibility.js cloudfunctions/poker_social/lib/idempotency.js cloudfunctions/poker_social/lib/notification.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/app.js cloudfunctions/poker_social/database-indexes.md services/social-api.js services/social-service.js tests/helpers/social-fixture.js tests/social-hand-share-policy.test.js tests/social-notifications.test.js
 git commit -m "feat: publish social hands to three scopes"
 ```
 
@@ -186,56 +225,57 @@ git commit -m "feat: publish social hands to three scopes"
 - Consumes: `previewHandShare(handId)` and `publishHand(input)`。
 - Route: `/pages/social-hand-publish/social-hand-publish?handId=<encodedId>`。
 
-- [ ] **Step 1: 写入口、三范围和公开确认失败测试**
+**Approved contract:**
 
-```js
-assert.match(handDetailWxml, /发布手牌/)
-assert.match(publishWxml, /广场/)
-assert.match(publishWxml, /全部好友/)
-assert.match(publishWxml, /指定好友/)
-assert.match(publishWxml, /统一转换为 BB/)
-assert.match(publishJs, /publicShareConfirmed/)
-assert.doesNotMatch(publishWxml, /显示金额|真实金额/)
+- Hand detail passes only an encoded `handId`. `onLoad` immediately calls the server preview action; the page never loads a local hand, accepts a snapshot in route parameters, converts BB or anonymizes players.
+- Render only the returned `HandSnapshotV1` and retain its `previewHash`. Publish sends the same hash. `HAND_PREVIEW_STALE` clears the hash, reloads preview and requires a new user confirmation; it must not auto-publish the new snapshot.
+- Initialize the mutually exclusive scope from `defaultShareScope`, falling back to `friends` only when the server value is absent/invalid.
+- Selected uses a paginated, deduplicated friend picker and enforces 1–50 IDs. Leaving selected immediately clears selections. Friends/square always submit `targetUserIds: []`.
+- Every transition into square requires a fresh public confirmation at publish time. Cancel does not set confirmation. Changing hand, refreshing preview, leaving the page or switching away invalidates it.
+- Only one publish call may be in flight. A failed retry with unchanged hand/hash/scope/targets reuses the same mutation ID; any such input change creates a new mutation ID.
+- Page decisions use `error.code`, never message text. Stale triggers re-preview; validation errors remain actionable; unavailable/network errors do not fabricate success.
+- Unload, hand change and preview retry invalidate old preview/publish completions. Stale requests cannot call `setData` or navigate. Success navigation uses only server `shareId`.
+- WXML states clearly that values are uniformly BB, offers exactly `广场 / 全部好友 / 指定好友`, includes the public-sharing warning, and contains no real-money/profit/EV toggle or output.
+
+- [ ] **Step 1: Write route, server-preview, scope, confirmation, mutation and stale-lifecycle tests**
+
+Tests must prove the page consumes only `handId`, all rendered poker data comes from snapshot DTO, selected pagination/1–50 behavior, non-selected empty targets, public confirmation invalidation, previewHash submission, stale re-preview, double-tap single flight, mutation reuse/change and unload/hand-change stale suppression.
+
+- [ ] **Step 2: Run the Task 3 gate and confirm RED**
+
+```powershell
+node --test tests/social-hand-publish-page.test.js tests/hand-detail-export-entry.test.js tests/social-hand-share-policy.test.js
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+Expected: FAIL because the page/entry and approved lifecycle behavior are missing.
 
-Run: `node --test tests/social-hand-publish-page.test.js`
+- [ ] **Step 3: Implement the hand-detail entry and server-owned preview state**
 
-Expected: FAIL because publish page is missing。
+Register the route exactly once. Do not send a local hand, snapshot, playerId, amount or private metadata through navigation or service payloads.
 
-- [ ] **Step 3: 实现服务端预览和互斥范围选择**
+- [ ] **Step 4: Implement mutually exclusive scopes, selected pagination and fresh square confirmation**
 
-```js
-async confirmPublish() {
-  if (this.data.scope === 'selected' && !this.data.selectedFriendIds.length) {
-    wx.showToast({ title: '请至少选择一位好友', icon: 'none' })
-    return
-  }
-  if (this.data.scope === 'square' && !this.data.publicShareConfirmed) {
-    const result = await showPublicConfirmModal()
-    if (!result.confirm) return
-    this.setData({ publicShareConfirmed: true })
-  }
-  await socialService.publishHand({
-    handId: this.data.handId,
-    scope: this.data.scope,
-    targetUserIds: this.data.scope === 'selected' ? this.data.selectedFriendIds : [],
-    publicShareConfirmed: this.data.publicShareConfirmed,
-    clientMutationId: this.data.mutationId
-  })
-}
+All scope transitions normalize outgoing payloads. Selected 1–50 validation occurs before publish; public confirmation is never reused across a changed preview/hand/page lifetime.
+
+- [ ] **Step 5: Implement previewHash, stable mutation retry and async invalidation**
+
+Use request sequence/unload guards for preview and publish. A stale hash always returns to preview/confirmation; no client-side continuation is permitted.
+
+- [ ] **Step 6: Run focused, social regressions and static checks**
+
+```powershell
+node --test tests/social-hand-publish-page.test.js tests/hand-detail-export-entry.test.js tests/social-hand-share-policy.test.js
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+$socialTests = Get-ChildItem tests -Filter 'social-*.test.js' | ForEach-Object { $_.FullName }
+node --test $socialTests
+node --check pages/social-hand-publish/social-hand-publish.js
+node --check pages/hand-detail/hand-detail.js
+git diff --check <task-base>..<task-head>
 ```
 
-默认范围读取本人社交设置，初始为 `friends`。预览展示的所有数值来自云端快照 DTO；客户端不自行 BB 换算或匿名化。
+Expected: all commands exit `0`; templates contain no real-money, profit or EV controls and no private source fields.
 
-- [ ] **Step 4: 运行发布与手牌详情回归**
-
-Run: `node --test tests/social-hand-publish-page.test.js tests/hand-detail-export-entry.test.js tests/social-hand-share-policy.test.js`
-
-Expected: PASS。
-
-- [ ] **Step 5: 提交发布页面**
+- [ ] **Step 7: Submit Task 3 for specification review, then code review, then commit**
 
 ```powershell
 git add pages/social-hand-publish pages/hand-detail app.json tests/social-hand-publish-page.test.js tests/hand-detail-export-entry.test.js
