@@ -3220,6 +3220,11 @@
   margin-left: auto;
 }
 
+.profile-command-page .customer-feedback-desc {
+  white-space: nowrap;
+  font-size: 23rpx;
+}
+
 .profile-command-page .segment-hit {
   flex: 1;
   min-width: 0;

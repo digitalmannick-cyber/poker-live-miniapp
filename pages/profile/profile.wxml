@@ -256,7 +256,7 @@
         <view class="setting-main">
           <view>
             <view class="setting-title">反馈与建议</view>
-            <view class="small muted">反馈问题、Bug 或功能建议</view>
+            <view class="small muted customer-feedback-desc">反馈问题、Bug 或功能建议</view>
           </view>
         </view>
         <view class="setting-arrow">›</view>

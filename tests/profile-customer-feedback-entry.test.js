@@ -44,10 +44,18 @@ test('native customer feedback matches the command-row flex layout', () => {
   assert.match(button, /gap:\s*20rpx/)
   assert.match(button, /border:\s*0/)
   assert.match(button, /background:\s*transparent/)
-  assert.doesNotMatch(button, /white-space:\s*nowrap/)
   assert.match(arrow, /margin-left:\s*auto/)
   assert.match(cssBlock('.setting-arrow'), /flex-shrink:\s*0/)
   assert.match(wxss, /\.customer-feedback-button::after\s*\{[\s\S]*?border:\s*none;/)
+})
+
+test('customer feedback description stays on one line at narrow phone widths', () => {
+  const markup = helpAndFeedbackMarkup()
+  const description = cssBlock('.profile-command-page .customer-feedback-desc')
+
+  assert.match(markup, /class="small muted customer-feedback-desc">反馈问题、Bug 或功能建议<\/view>/)
+  assert.match(description, /white-space:\s*nowrap/)
+  assert.match(description, /font-size:\s*23rpx/)
 })
 
 test('native customer feedback does not add a standalone page route', () => {
