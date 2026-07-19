@@ -444,6 +444,10 @@ function normalizePlayerNote(input) {
   const source = input || {}
   const name = String(source.name || '').trim()
   const type = String(source.type || '').trim() || '未分类'
+  const sourceKind = source.sourceKind === 'friend' ? 'friend' : 'library'
+  const linkedFriendUserId = sourceKind === 'friend'
+    ? String(source.linkedFriendUserId || '').trim()
+    : ''
   const timestamp = Number(source.updatedAt || source.createdAt) || now()
   const battleHandIds = normalizeStringList(
     source.battleHandIds || source.linkedHandIds || [],
@@ -452,6 +456,8 @@ function normalizePlayerNote(input) {
   return {
     _id: String(source._id || '').trim(),
     playerId: String(source.playerId || '').trim(),
+    sourceKind,
+    linkedFriendUserId,
     name,
     alias: normalizeStringList(source.alias, []),
     avatarUrl: String(source.avatarUrl || '').trim(),
@@ -472,9 +478,23 @@ function normalizePlayerNote(input) {
 }
 
 function normalizePlayerNotes(list) {
-  return (Array.isArray(list) ? list : [])
+  const normalized = (Array.isArray(list) ? list : [])
     .map(normalizePlayerNote)
     .filter(item => item._id && item.name)
+  const newestFriendNotes = {}
+  normalized.forEach(item => {
+    if (item.sourceKind !== 'friend' || !item.linkedFriendUserId) return
+    const current = newestFriendNotes[item.linkedFriendUserId]
+    const currentUpdatedAt = Number(current && (current.updatedAt || current.createdAt)) || 0
+    const itemUpdatedAt = Number(item.updatedAt || item.createdAt) || 0
+    if (!current || itemUpdatedAt >= currentUpdatedAt) {
+      newestFriendNotes[item.linkedFriendUserId] = item
+    }
+  })
+  return normalized.filter(item => {
+    if (item.sourceKind !== 'friend' || !item.linkedFriendUserId) return true
+    return newestFriendNotes[item.linkedFriendUserId]._id === item._id
+  })
 }
 
 function comparePlayerNoteDesc(a, b) {
@@ -1266,8 +1286,10 @@ function getPlayerNotes(filters) {
   const config = filters || {}
   const q = String(config.query || '').trim().toLowerCase()
   const type = String(config.type || '').trim()
+  const sourceKind = config.sourceKind === 'friend' ? 'friend' : 'library'
   return readStore().playerNotes
     .filter(item => config.includeArchived || !item.archived)
+    .filter(item => item.sourceKind === sourceKind)
     .filter(item => !type || type === '全部' || item.type === type)
     .filter(item => {
       if (!q) return true
@@ -1286,6 +1308,19 @@ function getPlayerNoteById(id) {
   return readStore().playerNotes.find(item => item._id === noteId) || null
 }
 
+function findFriendPlayerNote(friendUserId) {
+  const target = String(friendUserId || '').trim()
+  if (!target) return null
+  return readStore().playerNotes.find(item => {
+    return item.sourceKind === 'friend' && item.linkedFriendUserId === target
+  }) || null
+}
+
+function getFriendPlayerNote(friendUserId) {
+  const note = findFriendPlayerNote(friendUserId)
+  return note && !note.archived ? note : null
+}
+
 function createPlayerNote(payload) {
   const data = readStore()
   const timestamp = now()
@@ -1300,6 +1335,36 @@ function createPlayerNote(payload) {
   data.playerNotes.unshift(candidate)
   writeStore(data)
   return candidate
+}
+
+function ensureFriendPlayerNote(snapshot) {
+  const source = snapshot || {}
+  const friendUserId = String(source.socialUserId || source.friendUserId || '').trim()
+  if (!friendUserId) throw new Error('FRIEND_USER_ID_REQUIRED')
+  const existing = findFriendPlayerNote(friendUserId)
+  if (existing && !existing.archived) return existing
+  if (existing) return updatePlayerNote(existing._id, { archived: false })
+  return createPlayerNote({
+    sourceKind: 'friend',
+    linkedFriendUserId: friendUserId,
+    name: String(source.nickname || source.name || '').trim() || '好友',
+    avatarUrl: String(source.avatarUrl || '').trim(),
+    avatarFileId: String(source.avatarFileId || '').trim(),
+    avatarText: String(source.avatarText || '').trim(),
+    type: '未分类',
+    leakTags: [],
+    note: '',
+    battleHandIds: []
+  })
+}
+
+function detachFriendPlayerNote(friendUserId) {
+  const note = findFriendPlayerNote(friendUserId)
+  if (!note) return null
+  return updatePlayerNote(note._id, {
+    sourceKind: 'library',
+    linkedFriendUserId: ''
+  })
 }
 
 function updatePlayerNote(id, patch) {
@@ -1623,7 +1688,10 @@ module.exports = {
   getReviewHands,
   getPlayerNotes,
   getPlayerNoteById,
+  getFriendPlayerNote,
   createPlayerNote,
+  ensureFriendPlayerNote,
+  detachFriendPlayerNote,
   updatePlayerNote,
   deletePlayerNote,
   addPlayerNoteBattleHand,

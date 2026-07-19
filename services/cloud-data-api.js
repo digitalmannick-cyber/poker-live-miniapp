@@ -183,12 +183,31 @@ function listPlayerNotes(options) {
   })
 }
 
+function buildPlayerNotePayload(input) {
+  const source = input || {}
+  const payload = {}
+  const has = key => Object.prototype.hasOwnProperty.call(source, key)
+  const stringKeys = ['_id', 'linkedFriendUserId', 'name', 'avatarUrl', 'avatarFileId', 'avatarText', 'type', 'note', 'lastVenue', 'lastStake']
+  stringKeys.forEach(key => {
+    if (has(key)) payload[key] = String(source[key] || '').trim()
+  })
+  if (has('sourceKind')) payload.sourceKind = source.sourceKind === 'friend' ? 'friend' : 'library'
+  ;['alias', 'leakTags', 'battleHandIds'].forEach(key => {
+    if (has(key)) payload[key] = Array.isArray(source[key]) ? source[key] : []
+  })
+  ;['lastSeenAt', 'createdAt', 'updatedAt'].forEach(key => {
+    if (has(key)) payload[key] = Number(source[key]) || 0
+  })
+  if (has('archived')) payload.archived = source.archived === true
+  return payload
+}
+
 function createPlayerNote(options) {
   const config = options || {}
   return callDataFunction('create_player_note', {
     playerId: normalizePlayerId(config.playerId),
     clientMutationId: config.clientMutationId || '',
-    payload: config.payload || {}
+    payload: buildPlayerNotePayload(config.payload)
   })
 }
 
@@ -198,7 +217,7 @@ function updatePlayerNote(options) {
     playerId: normalizePlayerId(config.playerId),
     clientMutationId: config.clientMutationId || '',
     noteId: config.noteId || '',
-    patch: config.patch || {}
+    patch: buildPlayerNotePayload(config.patch)
   })
 }
 
@@ -253,6 +272,7 @@ module.exports = {
   backfillSessionDurations,
   sendAiReminderSubscribeMessage,
   __test: {
-    normalizePlayerId
+    normalizePlayerId,
+    buildPlayerNotePayload
   }
 }

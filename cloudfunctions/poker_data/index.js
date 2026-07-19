@@ -1352,8 +1352,14 @@ function buildPlayerNoteDoc(base, patch) {
   const merged = Object.assign({}, base || {}, patch || {})
   const name = String(merged.name || '').trim()
   const type = String(merged.type || '未分类').trim() || '未分类'
-  return stripUndefined(Object.assign({}, merged, {
+  const sourceKind = merged.sourceKind === 'friend' ? 'friend' : 'library'
+  const linkedFriendUserId = sourceKind === 'friend'
+    ? String(merged.linkedFriendUserId || '').trim()
+    : ''
+  return stripUndefined({
+    _id: String(merged._id || '').trim(),
     name,
+    alias: normalizePlayerNoteStringList(merged.alias),
     avatarUrl: String(merged.avatarUrl || '').trim(),
     avatarFileId: String(merged.avatarFileId || '').trim(),
     avatarText: String(merged.avatarText || name.slice(0, 1) || '玩').trim(),
@@ -1361,11 +1367,16 @@ function buildPlayerNoteDoc(base, patch) {
     typeColor: getPlayerTypeColor(type),
     leakTags: normalizePlayerNoteStringList(merged.leakTags),
     note: String(merged.note || '').trim(),
+    lastSeenAt: Number(merged.lastSeenAt) || 0,
+    lastVenue: String(merged.lastVenue || '').trim(),
+    lastStake: String(merged.lastStake || '').trim(),
     battleHandIds: normalizePlayerNoteStringList(merged.battleHandIds || merged.linkedHandIds),
+    sourceKind,
+    linkedFriendUserId,
     archived: !!merged.archived,
     createdAt: Number(merged.createdAt) || now(),
     updatedAt: now()
-  }))
+  })
 }
 
 async function listPlayerNotesAction(event, ownerOpenId) {
@@ -1391,6 +1402,13 @@ async function createPlayerNoteAction(event, ownerOpenId) {
     const doc = buildPlayerNoteDoc(null, event.payload || {})
     if (!doc.name) {
       return { playerNote: null, rejected: true, reason: 'MISSING_NAME' }
+    }
+    if (doc.sourceKind === 'friend' && doc.linkedFriendUserId) {
+      const existingFriendNote = (await fetchWhere(COLLECTIONS.playerNotes, { playerId, ownerOpenId }))
+        .find(item => item && item.sourceKind === 'friend' && item.linkedFriendUserId === doc.linkedFriendUserId)
+      if (existingFriendNote) {
+        return { playerNote: cleanCloudDoc(existingFriendNote) }
+      }
     }
     const id = doc._id || createId('player_note')
     const next = withOwnerScope(Object.assign({}, doc, { _id: id }), playerId, ownerOpenId)
