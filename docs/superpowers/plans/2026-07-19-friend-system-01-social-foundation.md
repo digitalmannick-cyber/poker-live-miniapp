@@ -369,7 +369,7 @@ git commit -m "feat: add in-app friend invitation flow"
 **Interfaces:**
 - Verifies all interfaces produced by Tasks 1-4。
 
-- [ ] **Step 1: 写跨账号安全测试**
+- [x] **Step 1: 写跨账号安全测试**
 
 ```js
 test('social responses exclude server identity fields', async () => {
@@ -384,7 +384,7 @@ test('social responses exclude server identity fields', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行全部第一计划测试**
+- [x] **Step 2: 运行全部第一计划测试**
 
 Run: `Get-ChildItem tests\social-*.test.js | Where-Object Name -Match 'api|cloud-routing|profile|friendship|invite|foundation' | ForEach-Object { node --test $_.FullName; if ($LASTEXITCODE) { exit $LASTEXITCODE } }`
 
@@ -396,13 +396,13 @@ Expected: every test exits `0`。
 部署 cloudfunctions/poker_social 到测试环境；将 social_users、social_invites、social_friendships、social_mutations 的客户端权限设为禁止读写。使用两个真实微信账号完成邀请、申请、接受、解除和 7 天冷却显示。
 ```
 
-- [ ] **Step 4: 运行真实工作区 auto-preview**
+- [x] **Step 4: 运行真实工作区 auto-preview**
 
 Run: 使用仓库既有 `skills/wechat-miniapp-auto-preview/SKILL.md` 流程，对 `D:\TRAE\xuan\poker-live-miniapp` 执行预览。
 
 Expected: 编译与预览成功；不上传开发版。
 
-- [ ] **Step 5: 提交验收测试**
+- [x] **Step 5: 提交验收测试**
 
 ```powershell
 git add tests/social-foundation-security.test.js cloudfunctions/poker_social/app.js
