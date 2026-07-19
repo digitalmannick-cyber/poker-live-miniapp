@@ -37,12 +37,17 @@ function createMemorySocialRepository(seed) {
   }
 
   const repository = createStore(tables)
-  repository.runTransaction = async callback => {
-    const draft = JSON.parse(JSON.stringify(tables))
-    const result = await callback(createStore(draft))
-    for (const key of Object.keys(tables)) delete tables[key]
-    for (const [key, value] of Object.entries(draft)) tables[key] = value
-    return result
+  let transactionTail = Promise.resolve()
+  repository.runTransaction = callback => {
+    const transaction = transactionTail.then(async () => {
+      const draft = JSON.parse(JSON.stringify(tables))
+      const result = await callback(createStore(draft))
+      for (const key of Object.keys(tables)) delete tables[key]
+      for (const [key, value] of Object.entries(draft)) tables[key] = value
+      return result
+    })
+    transactionTail = transaction.then(() => undefined, () => undefined)
+    return transaction
   }
   return repository
 }

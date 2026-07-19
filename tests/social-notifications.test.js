@@ -29,6 +29,10 @@ function actorSnapshot(id, nickname) {
   return { socialUserId: id, nickname, avatarFileId: 'cloud://' + id, avatarText: nickname.slice(0, 1) }
 }
 
+function rawCursor(payload) {
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
+}
+
 test('notification ids hash canonical tuples and cursors validate a versioned stable tuple', () => {
   assert.notEqual(stableDocumentId('sn', ['a_b', 'c']), stableDocumentId('sn', ['a', 'b_c']))
   assert.match(stableDocumentId('sn', ['recipient/unsafe', 'target']), /^sn_[a-f0-9]{64}$/)
@@ -37,6 +41,31 @@ test('notification ids hash canonical tuples and cursors validate a versioned st
   for (const invalid of ['', 'not-base64-json', Buffer.from(JSON.stringify({ v: 2, createdAt: 1, id: 'x' })).toString('base64url')]) {
     assert.throws(() => decodeCursor(invalid), error => error.code === 'INVALID_PAGINATION')
   }
+})
+
+test('cursor decoding rejects coercible and non-canonical raw JSON field types', () => {
+  const invalidPayloads = [
+    { v: '1', createdAt: 1, id: 'sn_1' },
+    { v: null, createdAt: 1, id: 'sn_1' },
+    { v: 1, createdAt: '1', id: 'sn_1' },
+    { v: 1, createdAt: null, id: 'sn_1' },
+    { v: 1, createdAt: true, id: 'sn_1' },
+    { v: 1, createdAt: false, id: 'sn_1' },
+    { v: 1, createdAt: 1.5, id: 'sn_1' },
+    { v: 1, createdAt: Number.MAX_SAFE_INTEGER + 1, id: 'sn_1' },
+    { v: 1, createdAt: 1, id: 123 },
+    { v: 1, createdAt: 1, id: null },
+    { v: 1, createdAt: 1, id: {} },
+    { v: 1, createdAt: 1, id: '   ' },
+    { v: 1, createdAt: 1, id: ' sn_1' },
+    { v: 1, createdAt: 1, id: 'sn_1 ' },
+    { v: 1, createdAt: 1, id: 'x'.repeat(257) },
+    { v: 1, createdAt: 1, id: 'sn_1', extra: true }
+  ]
+  for (const payload of invalidPayloads) {
+    assert.throws(() => decodeCursor(rawCursor(payload)), error => error.code === 'INVALID_PAGINATION', JSON.stringify(payload))
+  }
+  assert.throws(() => decodeCursor('x'.repeat(2049)), error => error.code === 'INVALID_PAGINATION')
 })
 
 test('notification DTO is a safe navigation hint and list uses stable cursor pagination', async () => {
@@ -144,6 +173,80 @@ test('like aggregation counts distinct actors for ten minutes, keeps createdAt s
     recipientId: 'su_b', shareId: 'share_2', actor: actorSnapshot('su_c', 'Carol'), sourceEventId: 'boundary_c', at: 1_000 + LIKE_WINDOW_MS
   }))
   assert.notEqual(newWindow._id, atBoundary._id)
+})
+
+test('memory transactions serialize concurrent standalone notifications without lost updates', async () => {
+  const repository = createMemorySocialRepository({ social_users: users() })
+  const writer = createNotificationWriter({ now: () => 1_000 })
+  await Promise.all([
+    repository.runTransaction(store => writer.write(store, {
+      recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
+      targetType: 'player_card', targetId: 'card_a', sourceEventId: 'concurrent_a'
+    })),
+    repository.runTransaction(store => writer.write(store, {
+      recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_c', 'Carol'),
+      targetType: 'player_card', targetId: 'card_c', sourceEventId: 'concurrent_c'
+    }))
+  ])
+  assert.equal(repository.where(COLLECTIONS.NOTIFICATIONS, () => true).length, 2)
+  assert.equal(repository.get(COLLECTIONS.STATE, stateDocumentId('su_b')).unreadCount, 2)
+})
+
+test('memory transactions serialize concurrent like actors into one exact aggregate', async () => {
+  const repository = createMemorySocialRepository({ social_users: users() })
+  const writer = createNotificationWriter()
+  const first = await repository.runTransaction(store => writer.writeLikeAggregate(store, {
+    recipientId: 'su_b', shareId: 'share_concurrent', actor: actorSnapshot('su_a', 'Alice'), sourceEventId: 'actor_a', at: 1_000
+  }))
+  await Promise.all([
+    repository.runTransaction(store => writer.writeLikeAggregate(store, {
+      recipientId: 'su_b', shareId: 'share_concurrent', actor: actorSnapshot('su_b_other', 'Bea'), sourceEventId: 'actor_b', at: 2_000
+    })),
+    repository.runTransaction(store => writer.writeLikeAggregate(store, {
+      recipientId: 'su_b', shareId: 'share_concurrent', actor: actorSnapshot('su_c', 'Carol'), sourceEventId: 'actor_c', at: 3_000
+    }))
+  ])
+  assert.equal(repository.get(COLLECTIONS.NOTIFICATIONS, first._id).aggregateCount, 3)
+  assert.equal(repository.where(COLLECTIONS.ACTORS, row => row.notificationId === first._id).length, 3)
+  assert.equal(repository.get(COLLECTIONS.STATE, stateDocumentId('su_b')).unreadCount, 1)
+})
+
+test('memory transaction invocation order precisely defines concurrent mark-all and insert', async () => {
+  async function scenario(insertFirst) {
+    const repository = createMemorySocialRepository({ social_users: users() })
+    const writer = createNotificationWriter({ now: () => 1_000 })
+    const old = await repository.runTransaction(store => writer.write(store, {
+      recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
+      targetType: 'player_card', targetId: 'old', sourceEventId: 'old'
+    }))
+    const handlers = createNotificationHandlers(repository, { now: () => 2_000 })
+    const insert = () => repository.runTransaction(store => writer.write(store, {
+      recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_c', 'Carol'),
+      targetType: 'player_card', targetId: 'new', sourceEventId: 'new', at: 3_000
+    }))
+    const markAll = () => handlers.mark_all_notifications_read({ clientMutationId: insertFirst ? 'all-after' : 'all-before' }, { ownerOpenId: 'openid-b' })
+    let results
+    if (insertFirst) {
+      results = await Promise.all([insert(), markAll()])
+    } else {
+      const markPromise = markAll()
+      await new Promise(resolve => setImmediate(resolve))
+      results = await Promise.all([markPromise, insert()])
+    }
+    const inserted = insertFirst ? results[0] : results[1]
+    const state = repository.get(COLLECTIONS.STATE, stateDocumentId('su_b'))
+    return { repository, old, inserted, state }
+  }
+
+  const markedThenInserted = await scenario(false)
+  assert.equal(markedThenInserted.state.unreadCount, 1)
+  assert.equal(isEffectivelyRead(markedThenInserted.old, markedThenInserted.state), true)
+  assert.equal(isEffectivelyRead(markedThenInserted.inserted, markedThenInserted.state), false)
+
+  const insertedThenMarked = await scenario(true)
+  assert.equal(insertedThenMarked.state.unreadCount, 0)
+  assert.equal(isEffectivelyRead(insertedThenMarked.old, insertedThenMarked.state), true)
+  assert.equal(isEffectivelyRead(insertedThenMarked.inserted, insertedThenMarked.state), true)
 })
 
 test('friend request, acceptance, rejection actionState, and card share notifications are atomic domain side effects', async () => {

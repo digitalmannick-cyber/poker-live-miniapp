@@ -67,10 +67,11 @@ function decodeCursor(value) {
     const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'))
     const keys = parsed && typeof parsed === 'object' ? Object.keys(parsed).sort() : []
     if (keys.join(',') !== 'createdAt,id,v' || parsed.v !== 1) throw paginationError()
-    const createdAt = Number(parsed.createdAt)
-    const id = String(parsed.id || '')
-    if (!Number.isFinite(createdAt) || createdAt < 0 || !id || id.length > 256) throw paginationError()
-    return { createdAt, id }
+    if (typeof parsed.createdAt !== 'number' || !Number.isFinite(parsed.createdAt) || !Number.isSafeInteger(parsed.createdAt) || parsed.createdAt < 0) {
+      throw paginationError()
+    }
+    if (typeof parsed.id !== 'string' || !parsed.id || parsed.id.length > 256 || parsed.id.trim() !== parsed.id) throw paginationError()
+    return { createdAt: parsed.createdAt, id: parsed.id }
   } catch (error) {
     if (error && error.code === 'INVALID_PAGINATION') throw error
     throw paginationError()
