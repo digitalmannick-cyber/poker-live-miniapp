@@ -1,5 +1,37 @@
 const { callSocialFunction } = require('./social-api')
 
+const SOCIAL_STATS_SYNC_INTERVAL_MS = 5 * 60 * 1000
+const socialStatsSyncPromises = Object.create(null)
+
+function normalizePlayerId(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function socialStatsStorageKey(playerId) {
+  return 'pokerSocialStatsSyncedAt_' + String(playerId || '').replace(/[^0-9A-Z_]/g, '_')
+}
+
+function scheduleMyStatsSync(playerId) {
+  const normalizedPlayerId = normalizePlayerId(playerId)
+  if (!normalizedPlayerId || typeof wx === 'undefined' || typeof wx.getStorageSync !== 'function' || typeof wx.setStorageSync !== 'function') {
+    return Promise.resolve({ skipped: true })
+  }
+  if (socialStatsSyncPromises[normalizedPlayerId]) return socialStatsSyncPromises[normalizedPlayerId]
+  const storageKey = socialStatsStorageKey(normalizedPlayerId)
+  const lastAt = Number(wx.getStorageSync(storageKey)) || 0
+  if (Date.now() - lastAt < SOCIAL_STATS_SYNC_INTERVAL_MS) return Promise.resolve({ skipped: true })
+  const task = callSocialFunction('sync_my_social_stats', { playerId: normalizedPlayerId })
+    .then(result => {
+      wx.setStorageSync(storageKey, Date.now())
+      return result
+    })
+    .finally(() => {
+      delete socialStatsSyncPromises[normalizedPlayerId]
+    })
+  socialStatsSyncPromises[normalizedPlayerId] = task
+  return task
+}
+
 function initializeSocialProfile(input) {
   return callSocialFunction('initialize_social_profile', input)
 }
@@ -52,5 +84,7 @@ module.exports = {
   rejectFriendRequest,
   removeFriend,
   listFriends,
-  getFriendDetail
+  getFriendDetail,
+  scheduleMyStatsSync,
+  __test: { normalizePlayerId, socialStatsStorageKey }
 }

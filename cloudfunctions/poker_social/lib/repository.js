@@ -2,8 +2,11 @@ const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_USERS: 'social_users',
   SOCIAL_FRIENDSHIPS: 'social_friendships',
   SOCIAL_INVITES: 'social_invites',
-  SOCIAL_MUTATIONS: 'social_mutations'
+  SOCIAL_MUTATIONS: 'social_mutations',
+  SOCIAL_DAILY_STATS: 'social_daily_stats'
 })
+
+const PRIVATE_PAGE_SIZE = 100
 
 function isDocumentNotFound(error) {
   const code = String(error && (error.errCode || error.code) || '')
@@ -38,6 +41,45 @@ function createCloudSocialRepository(database) {
       delete data._id
       await client.collection(collection).doc(id).set({ data })
       return record
+    },
+
+    async listPrivateOwned(collection, ownerOpenId, playerId) {
+      const rows = []
+      let offset = 0
+      while (true) {
+        let request = client.collection(collection).where({ ownerOpenId, playerId })
+        if (typeof request.skip === 'function') request = request.skip(offset)
+        if (typeof request.limit === 'function') request = request.limit(PRIVATE_PAGE_SIZE)
+        const response = await request.get()
+        const batch = Array.isArray(response && response.data) ? response.data : []
+        rows.push.apply(rows, batch)
+        if (batch.length < PRIVATE_PAGE_SIZE) return rows
+        offset += batch.length
+      }
+    },
+
+    async replaceDailyStats(socialUserId, buckets) {
+      const collection = client.collection(SOCIAL_COLLECTIONS.SOCIAL_DAILY_STATS)
+      while (true) {
+        const existing = await collection.where({ socialUserId }).limit(PRIVATE_PAGE_SIZE).get()
+        const oldRows = Array.isArray(existing && existing.data) ? existing.data : []
+        for (const row of oldRows) {
+          await collection.doc(row._id).remove()
+        }
+        if (oldRows.length < PRIVATE_PAGE_SIZE) break
+      }
+      const next = Array.isArray(buckets) ? buckets : []
+      for (const bucket of next) {
+        const dateKey = String(bucket && bucket.dateKey || '')
+        if (!/^\d{8}$/.test(dateKey)) continue
+        await this.set(SOCIAL_COLLECTIONS.SOCIAL_DAILY_STATS, 'sd_' + socialUserId + '_' + dateKey, {
+          socialUserId,
+          dateKey,
+          durationMinutes: Math.max(0, Math.floor(Number(bucket.durationMinutes) || 0)),
+          recordedHandCount: Math.max(0, Math.floor(Number(bucket.recordedHandCount) || 0)),
+          updatedAt: Date.now()
+        })
+      }
     },
 
     async listAcceptedFriendships(socialUserId, page) {

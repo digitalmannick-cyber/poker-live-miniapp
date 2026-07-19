@@ -1,5 +1,6 @@
 const { createProfileHandlers } = require('./lib/profile')
 const { createFriendshipHandlers } = require('./lib/friendship')
+const { createRankingHandlers } = require('./lib/ranking')
 
 function withoutPrivateIdentifiers(value) {
   if (typeof value === 'string' && value.includes('cloud://')) return null
@@ -49,7 +50,10 @@ function createSocialApp(deps) {
   const friendshipHandlers = config.repository
     ? createFriendshipHandlers(config.repository, Object.assign({}, config.friendship || {}, { avatarUrl: config.avatarUrl }))
     : {}
-  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, config.handlers || {})
+  const rankingHandlers = config.repository
+    ? createRankingHandlers(config.repository, config.ranking || {})
+    : {}
+  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()

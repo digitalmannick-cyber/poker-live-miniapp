@@ -9,6 +9,7 @@ const onboardingDemoData = require('../utils/onboarding-demo-data')
 const pbtNotesImport = require('../utils/pbt-notes-import')
 const pbtBankrollImport = require('../utils/pbt-bankroll-import')
 const cloudDataApi = require('./cloud-data-api')
+const socialService = require('./social-service')
 const { AUTO_CLOUD_BOOTSTRAP, AI_REMINDER_SUBSCRIBE_TEMPLATE_ID } = require('../config/cloud')
 
 let bootstrapPromise = null
@@ -1570,6 +1571,14 @@ async function getPlayerNoteById(noteId) {
   return getLocalAdapter().getPlayerNoteById(noteId)
 }
 
+function scheduleSocialStatsSyncAfterCloudWrite() {
+  const playerId = getCurrentPlayerId()
+  if (!playerId || !socialService || typeof socialService.scheduleMyStatsSync !== 'function') return
+  Promise.resolve()
+    .then(() => socialService.scheduleMyStatsSync(playerId))
+    .catch(error => logCloudBackgroundFailure('sync social stats failed', error))
+}
+
 async function getFriendPlayerNote(friendUserId) {
   scheduleCloudBootstrap()
   return getLocalAdapter().getFriendPlayerNote(friendUserId)
@@ -1875,6 +1884,7 @@ async function createSession(payload) {
   const session = response && response.session
   if (!session) throw new Error('create session failed')
   mergeRemoteBusinessPatch({ sessions: [session] })
+  scheduleSocialStatsSyncAfterCloudWrite()
   return session
 }
 
@@ -1892,6 +1902,7 @@ async function updateSession(sessionId, patch) {
   const session = response && response.session
   if (!session) throw new Error('update session failed')
   mergeRemoteBusinessPatch({ sessions: [session] })
+  scheduleSocialStatsSyncAfterCloudWrite()
   return session
 }
 
@@ -1915,6 +1926,7 @@ async function finishSession(sessionId, endingChips) {
     sessions: [session],
     bankrollLogs: response.bankrollLog ? [response.bankrollLog] : []
   })
+  scheduleSocialStatsSyncAfterCloudWrite()
   return session
 }
 
@@ -2040,6 +2052,7 @@ async function createHand(payload) {
   dispatchAiReminderSubscribeMessages(result).catch(error => {
     logCloudBackgroundFailure('dispatch ai reminder subscribe failed', error)
   })
+  scheduleSocialStatsSyncAfterCloudWrite()
   return result
 }
 
@@ -2062,6 +2075,7 @@ async function updateHandInternal(handId, patch, options) {
           hands: [syncResult.hand],
           handActions: syncResult.actions || []
         })
+        scheduleSocialStatsSyncAfterCloudWrite()
         return {
           hand: syncResult.hand,
           cloudSynced: true,
@@ -2083,6 +2097,7 @@ async function updateHandInternal(handId, patch, options) {
     hands: [result],
     handActions: response.actions || []
   })
+  scheduleSocialStatsSyncAfterCloudWrite()
   if (patch && Object.prototype.hasOwnProperty.call(patch, 'currentProfit')) {
     store.enqueueAiRemindersForHand(result._id, { includeTextReminders: false })
   }
@@ -2123,6 +2138,7 @@ async function deleteHand(handId) {
   if (response && response.deleted) {
     removeLocalBusinessDocs({ handId })
     if (response.session) mergeRemoteBusinessPatch({ sessions: [response.session] })
+    scheduleSocialStatsSyncAfterCloudWrite()
     return true
   }
   return false
@@ -2140,6 +2156,7 @@ async function deleteSession(sessionId) {
   }
   if (response && response.deleted) {
     removeLocalBusinessDocs({ sessionId, handIds: response.handIds || [] })
+    scheduleSocialStatsSyncAfterCloudWrite()
     return true
   }
   return false
