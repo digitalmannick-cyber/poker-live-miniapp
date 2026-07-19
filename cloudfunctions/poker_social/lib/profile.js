@@ -71,7 +71,7 @@ function createProfileHandlers(repository, options) {
 
     async get_my_social_profile(event, actor) {
       const record = await repository.find(PROFILE_COLLECTION, { ownerOpenId: actor.ownerOpenId })
-      if (!record) throw socialError('PROFILE_NOT_FOUND', 'social profile not found')
+      if (!record) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
       return getDto(record)
     }
   }

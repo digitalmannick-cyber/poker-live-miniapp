@@ -1,5 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const Module = require('node:module')
+const path = require('node:path')
 
 const profile = require('../cloudfunctions/poker_social/lib/profile')
 
@@ -169,4 +171,95 @@ test('CloudBase repository persists a profile and finds it by owner identity', a
   assert.deepEqual(await repository.find('social_users', { ownerOpenId: 'openid-private' }), {
     _id: 'su_1', ownerOpenId: 'openid-private', privatePlayerId: 'PLAYER-1'
   })
+})
+
+test('uninitialized profile returns the stable public initialization error', async () => {
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const app = createSocialApp({
+    repository: { find: async () => null },
+    identity: { resolve: () => ({ ownerOpenId: 'openid-private' }) },
+    requestId: () => 'profile-required-request'
+  })
+
+  const result = await app.handle({ action: 'get_my_social_profile' }, {})
+
+  assert.deepEqual(result, {
+    code: 'SOCIAL_PROFILE_REQUIRED',
+    data: null,
+    message: 'social profile required',
+    requestId: 'profile-required-request'
+  })
+  assert.doesNotMatch(JSON.stringify(result), /openid-private|ownerOpenId|privatePlayerId|avatarFileId/)
+})
+
+test('CloudBase entrypoint reads a profile after a cold-start reload', async () => {
+  const tables = {}
+  const database = {
+    collection(name) {
+      const records = tables[name] || (tables[name] = [])
+      return {
+        doc(id) {
+          return {
+            async get() {
+              return { data: records.find(row => row._id === id) || null }
+            },
+            async set(input) {
+              const record = Object.assign({}, input.data, { _id: id })
+              const index = records.findIndex(row => row._id === id)
+              if (index >= 0) records[index] = record
+              else records.push(record)
+            }
+          }
+        },
+        where(query) {
+          return {
+            limit() {
+              return {
+                async get() {
+                  return { data: records.filter(row => Object.keys(query).every(key => row[key] === query[key])) }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  const cloud = {
+    DYNAMIC_CURRENT_ENV: 'dynamic',
+    init() {},
+    database: () => database,
+    getWXContext: () => ({ OPENID: 'openid-persistent' }),
+    getTempFileURL: async ({ fileList }) => ({ fileList: [{ tempFileURL: 'https://temp/' + fileList[0] }] })
+  }
+  const entryPath = path.join(__dirname, '..', 'cloudfunctions', 'poker_social', 'index.js')
+  const originalLoad = Module._load
+  Module._load = function load(request, parent, isMain) {
+    if (request === 'wx-server-sdk') return cloud
+    return originalLoad.call(this, request, parent, isMain)
+  }
+
+  try {
+    delete require.cache[entryPath]
+    const firstEntry = require(entryPath)
+    const created = await firstEntry.main({
+      action: 'initialize_social_profile',
+      playerId: 'player-9',
+      nickname: '持久化玩家',
+      avatarMode: 'custom',
+      avatarFileId: 'avatar-9'
+    })
+
+    delete require.cache[entryPath]
+    const secondEntry = require(entryPath)
+    const read = await secondEntry.main({ action: 'get_my_social_profile' })
+
+    assert.equal(created.code, 0)
+    assert.deepEqual(read.data, created.data)
+    assert.match(read.data.socialUserId, /^su_[0-9a-f]{32}$/)
+    assert.equal(tables.social_users.length, 1)
+  } finally {
+    Module._load = originalLoad
+    delete require.cache[entryPath]
+  }
 })

@@ -14,7 +14,8 @@ function withoutPrivateIdentifiers(value) {
 
 const PUBLIC_ERROR_MESSAGES = Object.freeze({
   FORBIDDEN: 'not allowed',
-  UNAUTHENTICATED: 'identity unavailable'
+  UNAUTHENTICATED: 'identity unavailable',
+  SOCIAL_PROFILE_REQUIRED: 'social profile required'
 })
 
 function publicError(error) {
