@@ -6,8 +6,9 @@
       <view class="player-notes-title">玩家</view>
     </view>
     <view style="display: flex; align-items: center; gap: 12rpx;">
-      <view class="player-notes-message" bindtap="openMessages">
-        <text>◌</text>
+      <view class="player-notes-message" bindtap="openMessages" aria-label="{{socialUnread.hasUnread ? '消息，' + socialUnread.label + ' 条未读' : '消息'}}">
+        <image class="player-notes-message-icon" src="/assets/review-icons/comment-bubble-v263.png" mode="aspectFit"></image>
+        <view wx:if="{{socialUnread.hasUnread}}" class="player-notes-message-badge">{{socialUnread.label}}</view>
       </view>
       <view class="player-notes-add" bindtap="openInvite">
         <text class="player-notes-add-plus" style="margin-top: 0; font-size: 28rpx;">友</text>

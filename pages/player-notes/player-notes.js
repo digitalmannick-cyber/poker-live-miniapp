@@ -2,6 +2,11 @@ const dataService = require('../../services/data-service')
 const tabBar = require('../../utils/tab-bar')
 const avatarCache = require('../../utils/player-avatar-cache')
 const onboardingGuide = require('../../utils/onboarding-guide')
+const socialUnreadState = require('../../utils/social-unread-state')
+
+function getSocialAccountKey() {
+  return typeof dataService.getCurrentPlayerId === 'function' ? dataService.getCurrentPlayerId() : ''
+}
 
 function buildTypeFilters(settings, selectedType) {
   const types = ['全部'].concat(settings && settings.opponentTypes || [])
@@ -50,11 +55,14 @@ Page({
     emptyStateTitle: '还没有玩家 note',
     emptyStateText: '记录线下常遇到的玩家、leak 和你们打过的关键手牌。',
     isSearching: false,
+    socialUnread: { count: 0, label: '', hasUnread: false },
     onboardingGuideVisible: false,
     onboardingGuideStep: null
   },
 
   async onLoad() {
+    this.bindSocialUnread()
+    socialUnreadState.setAccountKey(getSocialAccountKey())
     if (this.data.playerSection === 'library') await this.refresh()
   },
 
@@ -63,12 +71,36 @@ Page({
   },
 
   async onShow() {
+    this.bindSocialUnread()
+    socialUnreadState.setAccountKey(getSocialAccountKey())
+    socialUnreadState.refresh().catch(() => {})
     tabBar.syncCustomTabBar('/pages/player-notes/player-notes')
     if (this.data.playerSection === 'library') await this.refresh()
     if (this.data.playerSection === 'friends' && this.data.friendSection === 'friends' && this.data.friendsLoaded) {
       await this.ensureFriendsLoaded(true)
     }
     this.syncOnboardingGuide()
+  },
+
+  onHide() {
+    this.unbindSocialUnread()
+  },
+
+  onUnload() {
+    this.unbindSocialUnread()
+  },
+
+  bindSocialUnread() {
+    if (this._unsubscribeSocialUnread) return
+    this._unsubscribeSocialUnread = socialUnreadState.subscribe(snapshot => {
+      this.setData({ socialUnread: snapshot })
+    })
+  },
+
+  unbindSocialUnread() {
+    if (!this._unsubscribeSocialUnread) return
+    this._unsubscribeSocialUnread()
+    this._unsubscribeSocialUnread = null
   },
 
   async ensureFriendsLoaded(force) {
@@ -176,6 +208,6 @@ Page({
   },
 
   openMessages() {
-    if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '消息中心即将开放', icon: 'none' })
+    if (typeof wx !== 'undefined' && wx.navigateTo) wx.navigateTo({ url: '/pages/social-messages/social-messages' })
   }
 })

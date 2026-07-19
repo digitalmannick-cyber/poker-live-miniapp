@@ -1,0 +1,53 @@
+<view class="app-bg"></view>
+<view class="container social-messages-shell">
+  <view class="social-messages-head">
+    <view>
+      <view class="social-messages-kicker">NOTIFICATIONS</view>
+      <view class="social-messages-title">消息</view>
+      <view class="social-messages-summary">{{unread.hasUnread ? '还有 ' + unread.label + ' 条未读' : '暂无未读消息'}}</view>
+    </view>
+    <button class="mark-all" bindtap="markAllRead" disabled="{{!unread.hasUnread || offline || markingAll}}" loading="{{markingAll}}">全部已读</button>
+  </view>
+
+  <view wx:if="{{offline}}" class="offline-banner">离线内容 · 仅可查看，恢复网络后刷新</view>
+
+  <view wx:if="{{loading && !hasLoaded}}" class="messages-state">正在加载消息…</view>
+  <view wx:elif="{{firstError}}" class="messages-state">
+    <view class="messages-state-title">{{firstError || '好友功能暂时不可用'}}</view>
+    <button class="state-action" bindtap="retryFirst">重试</button>
+  </view>
+  <view wx:elif="{{hasLoaded && !items.length}}" class="messages-state">
+    <view class="messages-state-title">还没有消息</view>
+    <view class="messages-state-text">好友申请、评论、点赞和分享都会出现在这里。</view>
+  </view>
+
+  <view wx:else class="message-list">
+    <view wx:for="{{items}}" wx:key="notificationId" class="message-card {{item.read ? 'is-read' : 'is-unread'}} {{item.unavailable ? 'is-unavailable' : ''}}" data-id="{{item.notificationId}}" bindtap="openNotification" aria-label="{{item.read ? item.title : '未读：' + item.title}}">
+      <view wx:if="{{!item.read}}" class="unread-marker"><text class="sr-only">未读</text></view>
+      <view class="message-avatar">
+        <image wx:if="{{item.actor.avatarUrl}}" src="{{item.actor.avatarUrl}}" mode="aspectFill"></image>
+        <text wx:else>{{item.actor.avatarText || '牌'}}</text>
+      </view>
+      <view class="message-main">
+        <view class="message-title-row">
+          <text class="message-title">{{item.title}}</text>
+          <text class="message-time">{{item.timeLabel}}</text>
+        </view>
+        <view class="message-summary">{{item.summary}}</view>
+        <view wx:if="{{item.unavailable || item.actionState === 'unavailable'}}" class="message-unavailable">内容已不可访问</view>
+        <view wx:elif="{{item.isFriendRequest && item.canAct}}" class="request-actions">
+          <button class="request-action reject" data-id="{{item.notificationId}}" data-decision="reject" catchtap="actOnFriendRequest" disabled="{{item.acting || offline}}">拒绝</button>
+          <button class="request-action accept" data-id="{{item.notificationId}}" data-decision="accept" catchtap="actOnFriendRequest" disabled="{{item.acting || offline}}" loading="{{item.acting}}">接受</button>
+        </view>
+        <view wx:elif="{{item.actionLabel}}" class="request-result">{{item.actionLabel}}</view>
+      </view>
+    </view>
+
+    <view class="load-more">
+      <view wx:if="{{loadingMore}}">正在加载更多…</view>
+      <button wx:elif="{{moreError}}" class="more-retry" bindtap="retryMore">加载失败，点此重试</button>
+      <button wx:elif="{{nextCursor && !offline}}" class="more-button" bindtap="loadMore">继续加载</button>
+      <view wx:elif="{{items.length}}" class="list-end">没有更多消息了</view>
+    </view>
+  </view>
+</view>

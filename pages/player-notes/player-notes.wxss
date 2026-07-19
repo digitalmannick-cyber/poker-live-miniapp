@@ -41,6 +41,7 @@
 }
 
 .player-notes-message {
+  position: relative;
   width: 72rpx;
   height: 72rpx;
   display: flex;
@@ -52,6 +53,31 @@
   font-weight: 1000;
   background: rgba(255,255,255,0.075);
   border: 1rpx solid rgba(255,255,255,0.18);
+}
+
+.player-notes-message-icon {
+  width: 38rpx;
+  height: 38rpx;
+}
+
+.player-notes-message-badge {
+  position: absolute;
+  top: -10rpx;
+  right: -12rpx;
+  min-width: 30rpx;
+  height: 30rpx;
+  padding: 0 7rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18rpx;
+  color: #ffffff;
+  font-size: 18rpx;
+  line-height: 1;
+  font-weight: 1000;
+  background: #e60012;
+  border: 3rpx solid #0b0b0f;
 }
 
 .player-section-tabs {
