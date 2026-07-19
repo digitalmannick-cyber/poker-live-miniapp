@@ -8,6 +8,7 @@
     "pages/player-notes/player-notes",
     "pages/player-note-detail/player-note-detail",
     "pages/social-invite/social-invite",
+    "pages/social-card-preview/social-card-preview",
     "pages/stats/stats",
     "pages/profile/profile",
     "pages/home/home",

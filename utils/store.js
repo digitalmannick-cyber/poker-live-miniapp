@@ -1342,8 +1342,13 @@ function reconcileFriendPlayerNote(remoteNote) {
 function createPlayerNote(payload) {
   const data = readStore()
   const timestamp = now()
+  const requestedId = String(payload && payload._id || '').trim()
+  if (requestedId) {
+    const existing = data.playerNotes.find(item => item._id === requestedId)
+    if (existing) return normalizePlayerNote(existing)
+  }
   const candidate = normalizePlayerNote(Object.assign({}, payload || {}, {
-    _id: createId('player_note'),
+    _id: requestedId || createId('player_note'),
     createdAt: timestamp,
     updatedAt: timestamp
   }))
