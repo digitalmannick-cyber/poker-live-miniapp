@@ -187,7 +187,7 @@ function buildPlayerNotePayload(input) {
   const source = input || {}
   const payload = {}
   const has = key => Object.prototype.hasOwnProperty.call(source, key)
-  const stringKeys = ['_id', 'linkedFriendUserId', 'importedCardShareId', 'importedCardMode', 'name', 'avatarUrl', 'avatarFileId', 'avatarText', 'type', 'note', 'lastVenue', 'lastStake']
+  const stringKeys = ['_id', 'linkedFriendUserId', 'name', 'avatarUrl', 'avatarFileId', 'avatarText', 'type', 'note', 'lastVenue', 'lastStake']
   stringKeys.forEach(key => {
     if (has(key)) payload[key] = String(source[key] || '').trim()
   })
@@ -247,6 +247,34 @@ function getPlayerNoteHandReplay(options) {
   })
 }
 
+function getPlayerCardImportReceipt(options) {
+  const config = options || {}
+  return callDataFunction('get_player_card_import_receipt', {
+    playerId: normalizePlayerId(config.playerId),
+    shareId: String(config.shareId || '').trim()
+  })
+}
+
+function beginPlayerCardImportReceipt(options) {
+  const config = options || {}
+  return callDataFunction('begin_player_card_import_receipt', {
+    playerId: normalizePlayerId(config.playerId),
+    clientMutationId: String(config.clientMutationId || '').trim(),
+    shareId: String(config.shareId || '').trim(),
+    mode: config.mode === 'overwrite' ? 'overwrite' : 'new',
+    targetPlayerNoteId: String(config.targetPlayerNoteId || '').trim()
+  })
+}
+
+function completePlayerCardImportReceipt(options) {
+  const config = options || {}
+  return callDataFunction('complete_player_card_import_receipt', {
+    playerId: normalizePlayerId(config.playerId),
+    clientMutationId: String(config.clientMutationId || '').trim(),
+    shareId: String(config.shareId || '').trim()
+  })
+}
+
 module.exports = {
   DATA_FUNCTION_NAME,
   syncAndGetStats,
@@ -265,6 +293,9 @@ module.exports = {
   deletePlayerNote,
   listPlayerNoteHands,
   getPlayerNoteHandReplay,
+  getPlayerCardImportReceipt,
+  beginPlayerCardImportReceipt,
+  completePlayerCardImportReceipt,
   recoverBestBackup,
   loginAccount,
   exportBackupPage,

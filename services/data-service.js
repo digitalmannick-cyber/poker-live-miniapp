@@ -1571,29 +1571,46 @@ async function getPlayerNoteById(noteId) {
   return getLocalAdapter().getPlayerNoteById(noteId)
 }
 
-async function getPlayerNoteByImportedCardShareId(shareId) {
-  scheduleCloudBootstrap()
-  return getLocalAdapter().getPlayerNoteByImportedCardShareId(shareId)
+function requirePlayerCardReceiptCloud() {
+  if (!cloudUtils.canUseCloud() || !canStartCloudTask()) {
+    const error = new Error('cloud player card receipt unavailable')
+    error.code = 'CLOUD_PLAYER_CARD_RECEIPT_UNAVAILABLE'
+    throw error
+  }
 }
 
-async function refreshPlayerNotesFromCloud() {
-  if (!cloudUtils.canUseCloud() || !canStartCloudTask()) {
-    const error = new Error('cloud player notes unavailable')
-    error.code = 'CLOUD_PLAYER_NOTES_UNAVAILABLE'
-    throw error
-  }
-  await bootstrapCloudSync(true, { waitForCloud: true })
-  const response = await cloudDataApi.listPlayerNotes({
+async function getPlayerCardImportReceipt(shareId) {
+  requirePlayerCardReceiptCloud()
+  const response = await cloudDataApi.getPlayerCardImportReceipt({
     playerId: getCurrentPlayerId(),
-    includeArchived: true
+    shareId: String(shareId || '').trim()
   })
-  if (!response || !Array.isArray(response.playerNotes)) {
-    const error = new Error('cloud player notes unavailable')
-    error.code = 'CLOUD_PLAYER_NOTES_UNAVAILABLE'
-    throw error
-  }
-  mergeRemoteBusinessPatch({ playerNotes: response.playerNotes })
-  return response.playerNotes
+  return response && response.receipt || null
+}
+
+async function beginPlayerCardImportReceipt(input) {
+  requirePlayerCardReceiptCloud()
+  const source = input || {}
+  const shareId = String(source.shareId || '').trim()
+  const response = await cloudDataApi.beginPlayerCardImportReceipt({
+    playerId: getCurrentPlayerId(),
+    clientMutationId: source.clientMutationId || createClientMutationId('begin_player_card_import_receipt', shareId),
+    shareId,
+    mode: source.mode,
+    targetPlayerNoteId: source.targetPlayerNoteId
+  })
+  return response && response.receipt || null
+}
+
+async function completePlayerCardImportReceipt(shareId, clientMutationId) {
+  requirePlayerCardReceiptCloud()
+  const targetShareId = String(shareId || '').trim()
+  const response = await cloudDataApi.completePlayerCardImportReceipt({
+    playerId: getCurrentPlayerId(),
+    clientMutationId: clientMutationId || createClientMutationId('complete_player_card_import_receipt', targetShareId),
+    shareId: targetShareId
+  })
+  return response && response.receipt || null
 }
 
 function scheduleSocialStatsSyncAfterCloudWrite() {
@@ -2268,8 +2285,9 @@ module.exports = {
   getReviewHands,
   getPlayerNotes,
   getPlayerNoteById,
-  getPlayerNoteByImportedCardShareId,
-  refreshPlayerNotesFromCloud,
+  getPlayerCardImportReceipt,
+  beginPlayerCardImportReceipt,
+  completePlayerCardImportReceipt,
   getFriendPlayerNote,
   getPlayerNoteBattleHands,
   createPlayerNote,

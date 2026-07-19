@@ -58,22 +58,6 @@ function clearMatchingPendingImport(shareId, mutationId) {
   return true
 }
 
-function completedStorageKey(shareId) {
-  return 'playerCardImportCompleted:' + String(shareId || '')
-}
-
-function readCompletedImport(shareId) {
-  if (typeof wx === 'undefined' || typeof wx.getStorageSync !== 'function') return null
-  const value = wx.getStorageSync(completedStorageKey(shareId))
-  if (!value || value.shareId !== shareId || !value.playerId) return null
-  return value
-}
-
-function writeCompletedImport(value) {
-  if (typeof wx === 'undefined' || typeof wx.setStorageSync !== 'function') return
-  wx.setStorageSync(completedStorageKey(value && value.shareId), value)
-}
-
 function stableImportedPlayerId(shareId) {
   const token = String(shareId || '')
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
@@ -95,6 +79,9 @@ Page({
     copiedAvatar: null,
     createdPlayerNoteId: '',
     importedPlayerId: '',
+    receiptStatus: '',
+    receiptMode: '',
+    receiptTargetPlayerNoteId: '',
     overwriteTargetMissing: false,
     receiptCheckFailed: false
   },
@@ -115,6 +102,9 @@ Page({
       importing: false,
       copiedAvatar: null,
       importedPlayerId: '',
+      receiptStatus: '',
+      receiptMode: '',
+      receiptTargetPlayerNoteId: '',
       overwriteTargetMissing: false,
       receiptCheckFailed: false,
       importMutationId,
@@ -148,62 +138,76 @@ Page({
     }
     this.setData({ status: 'loading', errorMessage: '' })
     try {
+      let receipt
+      try {
+        receipt = await dataService.getPlayerCardImportReceipt(shareId)
+      } catch (error) {
+        if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
+        this.setData({
+          status: 'error',
+          receiptCheckFailed: true,
+          errorMessage: '暂时无法确认这张名片的导入状态，请联网后重试。'
+        })
+        return
+      }
+      if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
       const share = await socialService.getPlayerCardShare(shareId)
       if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
       const pending = readPendingImport(shareId)
-      let notes
-      if (share && share.imported) {
-        const completed = readCompletedImport(shareId)
-        if (completed) {
-          this.setData({ share, status: 'imported', importedPlayerId: String(completed.playerId), receiptCheckFailed: false })
-          return
-        }
-        try {
-          notes = await dataService.refreshPlayerNotesFromCloud()
-        } catch (error) {
-          if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
-          this.setData({
-            share,
-            serverConfirmed: true,
-            status: 'error',
-            receiptCheckFailed: true,
-            errorMessage: '暂时无法确认这张名片是否已写入玩家库，请联网后重试。'
-          })
-          return
-        }
-        if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
-        const cloudReceipt = (Array.isArray(notes) ? notes : []).find(item => item && item.importedCardShareId === shareId)
-        if (cloudReceipt) {
-          this.setData({ share, status: 'imported', importedPlayerId: String(cloudReceipt._id), receiptCheckFailed: false })
-          return
-        }
-      } else {
-        notes = await dataService.getPlayerNotes({ sourceKind: 'library' })
+      if (receipt && receipt.status === 'completed') {
+        this.setData({
+          share,
+          status: 'imported',
+          importedPlayerId: String(receipt.targetPlayerNoteId || ''),
+          receiptStatus: 'completed',
+          receiptMode: receipt.mode,
+          receiptTargetPlayerNoteId: String(receipt.targetPlayerNoteId || ''),
+          receiptCheckFailed: false
+        })
+        return
       }
+      const notes = await dataService.getPlayerNotes({ sourceKind: 'library' })
       if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
       const nameDuplicate = importer.findDuplicateByName(notes, share && share.card && share.card.name)
       let duplicate = nameDuplicate
       let overwriteTargetMissing = false
-      if (pending && pending.mode === 'overwrite' && pending.overwriteTargetId) {
+      const resumeMode = receipt && receipt.status === 'pending' ? receipt.mode : (pending && pending.mode)
+      const resumeTargetId = receipt && receipt.status === 'pending'
+        ? String(receipt.targetPlayerNoteId || '')
+        : String(pending && pending.overwriteTargetId || '')
+      if (resumeMode === 'overwrite' && resumeTargetId) {
         const storedTarget = (Array.isArray(notes) ? notes : []).find(item => {
-          return item && item._id === pending.overwriteTargetId && item.sourceKind === 'library' && item.archived !== true
+          return item && item._id === resumeTargetId && item.sourceKind === 'library' && item.archived !== true
         })
         if (storedTarget) duplicate = storedTarget
-        else overwriteTargetMissing = true
+        else {
+          duplicate = null
+          overwriteTargetMissing = true
+        }
       }
-      const needsResume = !!(pending && pending.serverConfirmed)
-      const serverConfirmed = !!(pending && pending.serverConfirmed || share && share.imported)
-      const createdPlayerNoteId = String(pending && pending.createdPlayerNoteId || (share && share.imported ? stableImportedPlayerId(shareId) : ''))
+      const needsResume = !!(receipt && receipt.status === 'pending' || pending && pending.serverConfirmed)
+      const serverConfirmed = !!(needsResume || share && share.imported)
+      const createdPlayerNoteId = String(
+        receipt && receipt.status === 'pending' && receipt.mode === 'new' && receipt.targetPlayerNoteId ||
+        pending && pending.createdPlayerNoteId ||
+        (share && share.imported ? stableImportedPlayerId(shareId) : '')
+      )
       this.setData({
         share,
         duplicate,
         serverConfirmed,
         createdPlayerNoteId,
+        importMode: String(resumeMode || ''),
+        receiptStatus: String(receipt && receipt.status || ''),
+        receiptMode: String(receipt && receipt.mode || ''),
+        receiptTargetPlayerNoteId: String(receipt && receipt.targetPlayerNoteId || ''),
         overwriteTargetMissing,
         receiptCheckFailed: false,
-        status: needsResume && !overwriteTargetMissing ? 'error' : 'ready',
+        status: receipt && receipt.status === 'pending' && overwriteTargetMissing
+          ? 'error'
+          : (needsResume && !overwriteTargetMissing ? 'error' : 'ready'),
         errorMessage: overwriteTargetMissing
-          ? '上次选择覆盖的玩家已不存在，请重新明确选择。'
+          ? '原覆盖目标已不存在或已归档，无法继续覆盖。'
           : (needsResume ? '上次导入尚未写入玩家库，请继续完成。' : '')
       })
     } catch (error) {
@@ -247,12 +251,16 @@ Page({
     if (this.data.importing || this.data.status === 'imported') return
     if (this.data.receiptCheckFailed) return
     if (!this.data.share || !this.data.share.card) return
+    if (this.data.receiptStatus === 'pending' && this.data.receiptMode !== mode) return
     if (mode === 'overwrite' && !this.data.duplicate) return
     const shareId = String(this.data.share.shareId || this.data.shareId)
     const operationSequence = (this._cardPreviewOperationSeq || 0) + 1
     this._cardPreviewOperationSeq = operationSequence
     const createdPlayerNoteId = mode === 'new'
-      ? (this.data.createdPlayerNoteId || stableImportedPlayerId(this.data.share.shareId || this.data.shareId))
+      ? (this.data.receiptTargetPlayerNoteId || this.data.createdPlayerNoteId || stableImportedPlayerId(this.data.share.shareId || this.data.shareId))
+      : ''
+    const overwriteTargetId = mode === 'overwrite'
+      ? String(this.data.receiptTargetPlayerNoteId || this.data.duplicate._id || '')
       : ''
     const pending = {
       shareId: this.data.share.shareId || this.data.shareId,
@@ -260,7 +268,7 @@ Page({
       mode,
       serverConfirmed: !!this.data.serverConfirmed,
       createdPlayerNoteId,
-      overwriteTargetId: mode === 'overwrite' ? String(this.data.duplicate._id || '') : ''
+      overwriteTargetId
     }
     writePendingImport(pending)
     this.setData({ importing: true, importMode: mode, status: this.data.serverConfirmed ? 'importing' : 'confirming', errorMessage: '' })
@@ -275,6 +283,23 @@ Page({
         this.setData({ serverConfirmed: true, status: 'importing', createdPlayerNoteId })
       }
       if (!this.isCurrentOperation(operationSequence, shareId)) return
+      if (this.data.receiptStatus !== 'pending') {
+        const targetPlayerNoteId = mode === 'overwrite' ? overwriteTargetId : createdPlayerNoteId
+        const begunReceipt = await dataService.beginPlayerCardImportReceipt({
+          shareId,
+          mode,
+          targetPlayerNoteId,
+          clientMutationId: this.data.importMutationId + ':begin-receipt'
+        })
+        if (!this.isCurrentOperation(operationSequence, shareId)) return
+        if (!begunReceipt || begunReceipt.status !== 'pending') throw new Error('导入回执创建失败，请重试。')
+        this.setData({
+          receiptStatus: 'pending',
+          receiptMode: begunReceipt.mode,
+          receiptTargetPlayerNoteId: String(begunReceipt.targetPlayerNoteId || '')
+        })
+      }
+      if (!this.isCurrentOperation(operationSequence, shareId)) return
       let copiedAvatar = this.data.copiedAvatar
       if (!copiedAvatar) {
         copiedAvatar = await importer.copyCardAvatar(
@@ -285,10 +310,7 @@ Page({
         this.setData({ copiedAvatar })
       }
       if (!this.isCurrentOperation(operationSequence, shareId)) return
-      const patch = Object.assign(importer.buildCardOverwritePatch(this.data.share.card, copiedAvatar), {
-        importedCardShareId: shareId,
-        importedCardMode: mode
-      })
+      const patch = importer.buildCardOverwritePatch(this.data.share.card, copiedAvatar)
       let saved
       if (mode === 'overwrite') {
         const targetId = String(pending.overwriteTargetId || '')
@@ -297,7 +319,7 @@ Page({
         })
         if (!this.isCurrentOperation(operationSequence, shareId)) return
         if (!currentTarget) {
-          const error = new Error('上次选择覆盖的玩家已不存在，请重新明确选择。')
+          const error = new Error('原覆盖目标已不存在或已归档，无法继续覆盖。')
           error.code = 'OVERWRITE_TARGET_MISSING'
           throw error
         }
@@ -306,13 +328,19 @@ Page({
         saved = await dataService.createPlayerNote(Object.assign({ _id: createdPlayerNoteId }, patch), { waitForCloud: true })
       }
       if (!saved || !saved._id) throw new Error('玩家保存失败，请重试。')
-      writeCompletedImport({ shareId, playerId: String(saved._id), mode })
-      clearMatchingPendingImport(pending.shareId, pending.mutationId)
       if (!this.isCurrentOperation(operationSequence, shareId)) return
+      const completedReceipt = await dataService.completePlayerCardImportReceipt(
+        shareId,
+        this.data.importMutationId + ':complete-receipt'
+      )
+      if (!this.isCurrentOperation(operationSequence, shareId)) return
+      if (!completedReceipt || completedReceipt.status !== 'completed') throw new Error('导入回执完成失败，请重试。')
+      clearMatchingPendingImport(pending.shareId, pending.mutationId)
       this.setData({
         importing: false,
         status: 'imported',
         importedPlayerId: String(saved._id),
+        receiptStatus: 'completed',
         errorMessage: ''
       })
     } catch (error) {

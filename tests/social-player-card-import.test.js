@@ -53,14 +53,14 @@ test('applying overwrite keeps ids, relationship, hands, and system metadata', (
   assert.equal(next.name, '新名')
 })
 
-test('private import receipts survive player-note normalization without entering the five-field card patch', () => {
+test('private import receipts never enter player-note normalization or the five-field card patch', () => {
   const store = require('../utils/store')
   const normalized = store.__test.normalizePlayerNote({
     _id: 'p1', name: '老张', sourceKind: 'library',
     importedCardShareId: 'pcs_1', importedCardMode: 'overwrite'
   })
-  assert.equal(normalized.importedCardShareId, 'pcs_1')
-  assert.equal(normalized.importedCardMode, 'overwrite')
+  assert.equal(Object.hasOwn(normalized, 'importedCardShareId'), false)
+  assert.equal(Object.hasOwn(normalized, 'importedCardMode'), false)
   assert.equal(Object.hasOwn(importer.buildCardOverwritePatch({ name: '老张' }), 'importedCardShareId'), false)
   const playerUi = [
     fs.readFileSync(path.join(__dirname, '..', 'pages/player-notes/player-notes.wxml'), 'utf8'),

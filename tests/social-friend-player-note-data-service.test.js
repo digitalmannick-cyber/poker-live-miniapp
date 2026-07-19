@@ -65,6 +65,19 @@ function loadDataService(cloudState, calls) {
           async listPlayerNotes() {
             return { playerNotes: [] }
           },
+          async getPlayerCardImportReceipt(options) {
+            calls.getReceipt.push(options)
+            if (cloudState.failReceiptRead) throw new Error('receipt offline')
+            return { receipt: cloudState.receipt || null }
+          },
+          async beginPlayerCardImportReceipt(options) {
+            calls.beginReceipt.push(options)
+            return { receipt: Object.assign({}, options, { status: 'pending' }) }
+          },
+          async completePlayerCardImportReceipt(options) {
+            calls.completeReceipt.push(options)
+            return { receipt: Object.assign({}, cloudState.receipt || {}, { shareId: options.shareId, status: 'completed' }) }
+          },
           async loginAccount() {
             return {}
           }
@@ -87,7 +100,7 @@ function loadDataService(cloudState, calls) {
 test('offline friend ensure retries canonical cloud creation after recovery and subsequent update targets the canonical ID', async () => {
   resetStorage()
   const cloudState = { available: false, failCreate: false, canonicalId: 'canonical_cloud_note' }
-  const calls = { create: [], update: [] }
+  const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
   const dataService = loadDataService(cloudState, calls)
 
   const offline = await dataService.ensureFriendPlayerNote({ socialUserId: 'su_friend', nickname: 'Offline Wolf' })
@@ -109,36 +122,43 @@ test('offline friend ensure retries canonical cloud creation after recovery and 
   assert.equal(calls.update[0].noteId, cloudState.canonicalId)
 })
 
-test('card import receipts are included in awaited create and overwrite cloud writes', async () => {
+test('card import receipts use dedicated cloud actions and never player-note payload fields', async () => {
   resetStorage()
   const cloudState = { available: true, failCreate: false, canonicalId: 'unused' }
-  const calls = { create: [], update: [] }
+  const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
   const dataService = loadDataService(cloudState, calls)
 
-  const created = await dataService.createPlayerNote({
-    _id: 'player_note_card_pcs_1', sourceKind: 'library', name: '老张',
-    importedCardShareId: 'pcs_1', importedCardMode: 'new'
-  }, { waitForCloud: true })
-  assert.equal(created._id, 'player_note_card_pcs_1')
-  assert.equal(calls.create[0].payload.importedCardShareId, 'pcs_1')
-  assert.equal(calls.create[0].payload.importedCardMode, 'new')
+  assert.equal(await dataService.getPlayerCardImportReceipt('pcs_1'), null)
+  const pending = await dataService.beginPlayerCardImportReceipt({ shareId: 'pcs_1', mode: 'new', targetPlayerNoteId: 'note-1' })
+  assert.equal(pending.status, 'pending')
+  const completed = await dataService.completePlayerCardImportReceipt('pcs_1')
+  assert.equal(completed.status, 'completed')
+  assert.equal(calls.getReceipt[0].shareId, 'pcs_1')
+  assert.match(calls.beginReceipt[0].clientMutationId, /begin_player_card_import_receipt/)
+  assert.match(calls.completeReceipt[0].clientMutationId, /complete_player_card_import_receipt/)
 
-  const updated = await dataService.updatePlayerNote(created._id, {
-    name: '老张', importedCardShareId: 'pcs_2', importedCardMode: 'overwrite'
-  }, { waitForCloud: true })
-  assert.equal(updated.importedCardShareId, 'pcs_2')
-  assert.equal(calls.update[0].patch.importedCardMode, 'overwrite')
+  const created = await dataService.createPlayerNote({ _id: 'note-1', name: '老张' }, { waitForCloud: true })
+  assert.equal(Object.hasOwn(calls.create[0].payload, 'importedCardShareId'), false)
+  assert.equal(Object.hasOwn(calls.create[0].payload, 'importedCardMode'), false)
+  assert.equal(created._id, 'note-1')
 })
 
 test('an awaited card receipt write fails before local creation when cloud is unavailable', async () => {
   resetStorage()
   const cloudState = { available: false, failCreate: false, canonicalId: 'unused' }
-  const calls = { create: [], update: [] }
+  const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
   const dataService = loadDataService(cloudState, calls)
   await assert.rejects(dataService.createPlayerNote({
     _id: 'player_note_card_offline', name: '离线名片',
-    importedCardShareId: 'pcs_offline', importedCardMode: 'new'
   }, { waitForCloud: true }), error => error.code === 'CLOUD_PLAYER_NOTE_WRITE_REQUIRED')
   assert.equal(await dataService.getPlayerNoteById('player_note_card_offline'), null)
   assert.equal(calls.create.length, 0)
+})
+
+test('receipt read failure is propagated for fail-closed page behavior', async () => {
+  resetStorage()
+  const cloudState = { available: true, failReceiptRead: true, canonicalId: 'unused' }
+  const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
+  const dataService = loadDataService(cloudState, calls)
+  await assert.rejects(dataService.getPlayerCardImportReceipt('pcs_1'), /receipt offline/)
 })

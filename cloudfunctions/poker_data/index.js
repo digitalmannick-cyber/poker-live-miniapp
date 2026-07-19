@@ -15,6 +15,7 @@ const COLLECTIONS = {
   hands: 'hands',
   handActions: 'hand_actions',
   playerNotes: 'player_notes',
+  playerCardImportReceipts: 'player_card_import_receipts',
   bankrollLogs: 'bankroll_logs',
   profiles: 'profiles',
   userSettings: 'user_settings',
@@ -1359,6 +1360,124 @@ function getFriendPlayerNoteDocumentId(ownerOpenId, playerId, linkedFriendUserId
     .digest('hex')
 }
 
+function getPlayerCardImportReceiptDocumentId(ownerOpenId, playerId, shareId) {
+  return crypto.createHash('sha256')
+    .update(JSON.stringify([
+      String(ownerOpenId || '').trim(),
+      normalizePlayerId(playerId),
+      String(shareId || '').trim()
+    ]))
+    .digest('hex')
+}
+
+function buildPlayerCardImportReceiptDto(receipt) {
+  if (!receipt) return null
+  return {
+    shareId: String(receipt.shareId || '').trim(),
+    mode: receipt.mode === 'overwrite' ? 'overwrite' : 'new',
+    targetPlayerNoteId: String(receipt.targetPlayerNoteId || '').trim(),
+    status: receipt.status === 'completed' ? 'completed' : 'pending'
+  }
+}
+
+function isMissingDocumentError(error) {
+  const code = String(error && (error.errCode || error.code || '') || '')
+  const message = String(error && (error.errMsg || error.message || error) || '')
+  return code === '-502001' || /not found|does not exist|document.*not exist/i.test(message)
+}
+
+async function getReceiptDocByPointRead(store, docId) {
+  try {
+    const result = await store.collection(COLLECTIONS.playerCardImportReceipts).doc(docId).get()
+    return result && result.data || null
+  } catch (error) {
+    if (isMissingDocumentError(error)) return null
+    throw error
+  }
+}
+
+function validateReceiptActionInput(event, requireMutation) {
+  const playerId = normalizePlayerId(event && event.playerId)
+  const shareId = String(event && event.shareId || '').trim()
+  const clientMutationId = getClientMutationId(event)
+  if (!playerId) return { error: { code: 'MISSING_PLAYER_ID', message: 'missing playerId' } }
+  if (!shareId) return { error: { code: 'MISSING_SHARE_ID', message: 'missing shareId' } }
+  if (requireMutation && !clientMutationId) {
+    return { error: { code: 'MISSING_CLIENT_MUTATION_ID', message: 'missing clientMutationId' } }
+  }
+  return { playerId, shareId, clientMutationId }
+}
+
+async function getPlayerCardImportReceiptAction(event, ownerOpenId) {
+  const input = validateReceiptActionInput(event, false)
+  if (input.error) return input.error
+  const docId = getPlayerCardImportReceiptDocumentId(ownerOpenId, input.playerId, input.shareId)
+  const receipt = await getReceiptDocByPointRead(db, docId)
+  if (!receipt || receipt.ownerOpenId !== ownerOpenId || normalizePlayerId(receipt.playerId) !== input.playerId || receipt.shareId !== input.shareId) {
+    return { code: 0, data: { receipt: null } }
+  }
+  return { code: 0, data: { receipt: buildPlayerCardImportReceiptDto(receipt) } }
+}
+
+async function beginPlayerCardImportReceiptAction(event, ownerOpenId) {
+  const input = validateReceiptActionInput(event, true)
+  if (input.error) return input.error
+  const mode = event.mode === 'overwrite' ? 'overwrite' : (event.mode === 'new' ? 'new' : '')
+  const targetPlayerNoteId = String(event.targetPlayerNoteId || '').trim()
+  if (!mode || !targetPlayerNoteId) return { code: 'INVALID_RECEIPT', message: 'invalid receipt mode or target' }
+  const docId = getPlayerCardImportReceiptDocumentId(ownerOpenId, input.playerId, input.shareId)
+  await ensureCollection(COLLECTIONS.playerCardImportReceipts)
+  const result = await db.runTransaction(async transaction => {
+    const current = await getReceiptDocByPointRead(transaction, docId)
+    if (current) {
+      if (current.ownerOpenId !== ownerOpenId || normalizePlayerId(current.playerId) !== input.playerId ||
+        current.shareId !== input.shareId || current.mode !== mode || current.targetPlayerNoteId !== targetPlayerNoteId) {
+        return { conflict: true }
+      }
+      return { receipt: current }
+    }
+    const receipt = {
+      ownerOpenId,
+      playerId: input.playerId,
+      shareId: input.shareId,
+      mode,
+      targetPlayerNoteId,
+      status: 'pending',
+      beginMutationId: input.clientMutationId,
+      createdAt: now(),
+      updatedAt: now()
+    }
+    await transaction.collection(COLLECTIONS.playerCardImportReceipts).doc(docId).set({ data: receipt })
+    return { receipt }
+  })
+  if (result && result.conflict) return { code: 'CONFLICT', message: 'receipt mode or target conflicts with existing import' }
+  return { code: 0, data: { receipt: buildPlayerCardImportReceiptDto(result && result.receipt) } }
+}
+
+async function completePlayerCardImportReceiptAction(event, ownerOpenId) {
+  const input = validateReceiptActionInput(event, true)
+  if (input.error) return input.error
+  const docId = getPlayerCardImportReceiptDocumentId(ownerOpenId, input.playerId, input.shareId)
+  await ensureCollection(COLLECTIONS.playerCardImportReceipts)
+  const result = await db.runTransaction(async transaction => {
+    const current = await getReceiptDocByPointRead(transaction, docId)
+    if (!current || current.ownerOpenId !== ownerOpenId || normalizePlayerId(current.playerId) !== input.playerId || current.shareId !== input.shareId) {
+      return { missing: true }
+    }
+    if (current.status === 'completed') return { receipt: current }
+    const receipt = Object.assign({}, current, {
+      status: 'completed',
+      completeMutationId: input.clientMutationId,
+      completedAt: now(),
+      updatedAt: now()
+    })
+    await transaction.collection(COLLECTIONS.playerCardImportReceipts).doc(docId).set({ data: omitId(receipt) })
+    return { receipt }
+  })
+  if (result && result.missing) return { code: 'RECEIPT_NOT_FOUND', message: 'receipt not found' }
+  return { code: 0, data: { receipt: buildPlayerCardImportReceiptDto(result && result.receipt) } }
+}
+
 function hasOwnField(value, key) {
   return Object.prototype.hasOwnProperty.call(value || {}, key)
 }
@@ -1388,8 +1507,6 @@ function buildPlayerNoteDoc(base, patch) {
     battleHandIds: normalizePlayerNoteStringList(merged.battleHandIds || merged.linkedHandIds),
     sourceKind,
     linkedFriendUserId,
-    importedCardShareId: String(merged.importedCardShareId || '').trim(),
-    importedCardMode: merged.importedCardMode === 'overwrite' ? 'overwrite' : (merged.importedCardShareId ? 'new' : ''),
     archived: !!merged.archived,
     createdAt: Number(merged.createdAt) || now(),
     updatedAt: now()
@@ -1717,6 +1834,15 @@ exports.main = async function main(rawEvent) {
     if (action === 'get_player_note_hand_replay') {
       return await getPlayerNoteHandReplayAction(event || {}, ownerOpenId)
     }
+    if (action === 'get_player_card_import_receipt') {
+      return await getPlayerCardImportReceiptAction(event || {}, ownerOpenId)
+    }
+    if (action === 'begin_player_card_import_receipt') {
+      return await beginPlayerCardImportReceiptAction(event || {}, ownerOpenId)
+    }
+    if (action === 'complete_player_card_import_receipt') {
+      return await completePlayerCardImportReceiptAction(event || {}, ownerOpenId)
+    }
     if (action === 'create_session') {
       return await createSessionAction(event || {}, ownerOpenId)
     }
@@ -1767,5 +1893,7 @@ exports.__test = {
   normalizeAgentExportRange,
   getSessionDurationBackfill,
   exportAgentData,
-  getFriendPlayerNoteDocumentId
+  getFriendPlayerNoteDocumentId,
+  getPlayerCardImportReceiptDocumentId,
+  buildPlayerCardImportReceiptDto
 }

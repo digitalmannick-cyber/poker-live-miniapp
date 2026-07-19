@@ -73,14 +73,18 @@ test('new import blocks double click, keeps one mutation, copies avatar, and cre
     assert.equal(loaded.calls.confirm.length, 1)
     confirm.resolve({ imported: true })
     await Promise.all([first, second])
-    assert.deepEqual(loaded.calls.order, ['confirm', 'copy-avatar', 'create'])
+    assert.deepEqual(loaded.calls.order, ['confirm', 'begin-receipt', 'copy-avatar', 'create', 'complete-receipt'])
     assert.equal(loaded.calls.create.length, 1)
     assert.equal(loaded.calls.confirm[0].clientMutationId, page.data.importMutationId)
     assert.equal(loaded.calls.create[0].avatarUrl, 'cloud://receiver/copied.png')
     assert.equal(loaded.calls.create[0].avatarFileId, 'cloud://receiver/copied.png')
     assert.deepEqual(loaded.calls.createOptions[0], { waitForCloud: true })
-    assert.equal(loaded.calls.create[0].importedCardShareId, 'pcs_1')
-    assert.equal(loaded.calls.create[0].importedCardMode, 'new')
+    assert.equal(Object.hasOwn(loaded.calls.create[0], 'importedCardShareId'), false)
+    assert.equal(Object.hasOwn(loaded.calls.create[0], 'importedCardMode'), false)
+    assert.deepEqual(loaded.calls.beginReceipt[0], {
+      shareId: 'pcs_1', mode: 'new', targetPlayerNoteId: loaded.calls.create[0]._id,
+      clientMutationId: page.data.importMutationId + ':begin-receipt'
+    })
     assert.notEqual(loaded.calls.create[0].avatarUrl, cardShare().card.avatarUrl)
     assert.equal(page.data.status, 'imported')
     assert.match(page.data.importedPlayerId, /^player_note_card_/)
@@ -109,7 +113,7 @@ test('avatar failure retries local saga without confirming twice and never write
   } finally { loaded.restore() }
 })
 
-test('a server-confirmed pending saga survives page reopen and completes without confirming again', async () => {
+test('a begun receipt survives a crash and resumes on another device without confirming again', async () => {
   const storage = new Map()
   const first = loadPage({ storage, copyAvatar() {
     throw Object.assign(new Error('copy failed'), { code: 'CARD_AVATAR_COPY_FAILED' })
@@ -123,7 +127,10 @@ test('a server-confirmed pending saga survives page reopen and completes without
     assert.equal(pending.mode, 'new')
   } finally { first.restore() }
 
-  const reopened = loadPage({ storage, getShare: Object.assign(cardShare(), { imported: true }) })
+  const reopened = loadPage({
+    getShare: Object.assign(cardShare(), { imported: true }),
+    receipt: { shareId: 'pcs_1', mode: 'new', targetPlayerNoteId: 'player_note_card_pcs_1', status: 'pending' }
+  })
   try {
     const page = createInstance(reopened.definition)
     await page.onLoad({ shareId: 'pcs_1' })
@@ -132,8 +139,10 @@ test('a server-confirmed pending saga survives page reopen and completes without
     await page.importAsNew()
     assert.equal(reopened.calls.confirm.length, 0)
     assert.equal(reopened.calls.create.length, 1)
+    assert.equal(reopened.calls.create[0]._id, 'player_note_card_pcs_1')
+    assert.equal(reopened.calls.beginReceipt.length, 0)
+    assert.equal(reopened.calls.completeReceipt.length, 1)
     assert.equal(page.data.status, 'imported')
-    assert.equal(storage.has('playerCardImportPending:pcs_1'), false)
   } finally { reopened.restore() }
 })
 
@@ -147,11 +156,13 @@ test('overwrite uses one whitelist update and preserves target identity and hand
     const page = createInstance(loaded.definition)
     await page.onLoad({ shareId: 'pcs_1' })
     await page.overwriteExisting()
-    assert.deepEqual(loaded.calls.order, ['confirm', 'copy-avatar', 'update'])
+    assert.deepEqual(loaded.calls.order, ['confirm', 'begin-receipt', 'copy-avatar', 'update', 'complete-receipt'])
     assert.equal(loaded.calls.update[0].id, 'existing')
-    assert.deepEqual(Object.keys(loaded.calls.update[0].patch).sort(), ['avatarFileId', 'avatarUrl', 'importedCardMode', 'importedCardShareId', 'leakTags', 'name', 'note', 'type'])
-    assert.equal(loaded.calls.update[0].patch.importedCardShareId, 'pcs_1')
-    assert.equal(loaded.calls.update[0].patch.importedCardMode, 'overwrite')
+    assert.deepEqual(Object.keys(loaded.calls.update[0].patch).sort(), ['avatarFileId', 'avatarUrl', 'leakTags', 'name', 'note', 'type'])
+    assert.deepEqual(loaded.calls.beginReceipt[0], {
+      shareId: 'pcs_1', mode: 'overwrite', targetPlayerNoteId: 'existing',
+      clientMutationId: page.data.importMutationId + ':begin-receipt'
+    })
     assert.deepEqual(loaded.calls.updateOptions[0], { waitForCloud: true })
     for (const forbidden of ['_id', 'playerId', 'sourceKind', 'battleHandIds', 'createdAt', 'lastSeenAt', 'lastVenue', 'lastStake']) {
       assert.equal(Object.hasOwn(loaded.calls.update[0].patch, forbidden), false)
@@ -177,7 +188,8 @@ test('local create failure retries with the same deterministic player id and no 
     assert.equal(loaded.calls.confirm.length, 1)
     assert.equal(loaded.calls.create[1]._id, stableId)
     assert.equal(page.data.status, 'imported')
-    assert.equal(storage.get('playerCardImportCompleted:pcs_1').playerId, stableId)
+    assert.equal(storage.has('playerCardImportCompleted:pcs_1'), false)
+    assert.equal(loaded.calls.completeReceipt.length, 1)
   } finally { loaded.restore() }
 })
 
@@ -260,17 +272,15 @@ test('an overwrite modal callback is stale after unload and creates no pending s
   } finally { loaded.restore() }
 })
 
-test('overwrite resume is pinned to its stored target id and never switches to the first same-name note', async () => {
-  const pending = {
-    shareId: 'pcs_1', mutationId: 'stable-mutation', mode: 'overwrite',
-    serverConfirmed: true, createdPlayerNoteId: '', overwriteTargetId: 'target-b'
-  }
-  const storage = new Map([['playerCardImportPending:pcs_1', pending]])
+test('pending overwrite receipt is pinned to its target id and never switches to the first same-name note', async () => {
   const notes = [
     { _id: 'target-a', sourceKind: 'library', name: '老张' },
     { _id: 'target-b', sourceKind: 'library', name: '老张', battleHandIds: ['h1'] }
   ]
-  const loaded = loadPage({ storage, getShare: Object.assign(cardShare(), { imported: true }), notes, refreshedNotes: notes })
+  const loaded = loadPage({
+    getShare: Object.assign(cardShare(), { imported: true }), notes,
+    receipt: { shareId: 'pcs_1', mode: 'overwrite', targetPlayerNoteId: 'target-b', status: 'pending' }
+  })
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ shareId: 'pcs_1' })
@@ -280,32 +290,31 @@ test('overwrite resume is pinned to its stored target id and never switches to t
   } finally { loaded.restore() }
 })
 
-test('a missing overwrite target requires a new explicit choice instead of silently switching', async () => {
-  const storage = new Map([['playerCardImportPending:pcs_1', {
-    shareId: 'pcs_1', mutationId: 'stable-mutation', mode: 'overwrite',
-    serverConfirmed: true, createdPlayerNoteId: '', overwriteTargetId: 'missing-target'
-  }]])
+test('a missing pending receipt target fails closed instead of silently switching', async () => {
   const loaded = loadPage({
-    storage,
     getShare: Object.assign(cardShare(), { imported: true }),
+    receipt: { shareId: 'pcs_1', mode: 'overwrite', targetPlayerNoteId: 'missing-target', status: 'pending' },
     notes: [{ _id: 'other-same-name', sourceKind: 'library', name: '老张' }]
   })
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ shareId: 'pcs_1' })
-    assert.equal(page.data.status, 'ready')
+    assert.equal(page.data.status, 'error')
     assert.equal(page.data.overwriteTargetMissing, true)
+    assert.equal(page.data.duplicate, null)
+    assert.match(page.data.errorMessage, /无法继续覆盖/)
+    await page.importAsNew()
+    await page.overwriteExisting()
     assert.equal(loaded.calls.update.length, 0)
+    assert.equal(loaded.calls.create.length, 0)
     assert.equal(loaded.calls.confirm.length, 0)
   } finally { loaded.restore() }
 })
 
-test('already-imported and unavailable shares never write the player library', async () => {
-  const completedStorage = new Map([['playerCardImportCompleted:pcs_1', { shareId: 'pcs_1', playerId: 'saved-player', mode: 'new' }]])
+test('completed receipt and unavailable shares never write the player library', async () => {
   const imported = loadPage({
-    storage: completedStorage,
     getShare: Object.assign(cardShare(), { imported: true }),
-    notes: [{ _id: 'saved-player', sourceKind: 'library', name: '老张', importedCardShareId: 'pcs_1', importedCardMode: 'new' }]
+    receipt: { shareId: 'pcs_1', mode: 'new', targetPlayerNoteId: 'saved-player', status: 'completed' }
   })
   try {
     const page = createInstance(imported.definition)
@@ -325,8 +334,8 @@ test('already-imported and unavailable shares never write the player library', a
   } finally { unavailable.restore() }
 })
 
-test('an imported share without a local completion receipt can finish on another device', async () => {
-  const loaded = loadPage({ getShare: Object.assign(cardShare(), { imported: true }), refreshedNotes: [] })
+test('an imported share without a private receipt can choose and finish on another device', async () => {
+  const loaded = loadPage({ getShare: Object.assign(cardShare(), { imported: true }), receipt: null })
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ shareId: 'pcs_1' })
@@ -340,15 +349,10 @@ test('an imported share without a local completion receipt can finish on another
   } finally { loaded.restore() }
 })
 
-test('cloud player-note receipt prevents a second import on a device without local storage', async () => {
-  const receipt = {
-    _id: 'existing-overwrite', sourceKind: 'library', name: '老张',
-    importedCardShareId: 'pcs_1', importedCardMode: 'overwrite'
-  }
+test('completed private receipt prevents a second import on a device without local storage', async () => {
   const loaded = loadPage({
     getShare: Object.assign(cardShare(), { imported: true }),
-    notes: [],
-    refreshedNotes: [receipt]
+    receipt: { shareId: 'pcs_1', mode: 'overwrite', targetPlayerNoteId: 'existing-overwrite', status: 'completed' }
   })
   try {
     const page = createInstance(loaded.definition)
@@ -360,10 +364,28 @@ test('cloud player-note receipt prevents a second import on a device without loc
   } finally { loaded.restore() }
 })
 
-test('failed cloud receipt refresh fails closed and cannot create a second player', async () => {
+test('two completed shares for the same overwritten player each reopen without creating', async () => {
+  for (const shareId of ['pcs_s1', 'pcs_s2']) {
+    const loaded = loadPage({
+      getShare: Object.assign(cardShare(), { shareId, imported: true }),
+      receipt: { shareId, mode: 'overwrite', targetPlayerNoteId: 'same-player', status: 'completed' }
+    })
+    try {
+      const page = createInstance(loaded.definition)
+      await page.onLoad({ shareId })
+      assert.equal(page.data.status, 'imported')
+      assert.equal(page.data.importedPlayerId, 'same-player')
+      await page.importAsNew()
+      assert.equal(loaded.calls.create.length, 0)
+      assert.equal(loaded.calls.update.length, 0)
+    } finally { loaded.restore() }
+  }
+})
+
+test('failed private receipt point read fails closed and cannot create a second player', async () => {
   const loaded = loadPage({
     getShare: Object.assign(cardShare(), { imported: true }),
-    refreshError: new Error('cloud unavailable')
+    receiptError: new Error('cloud unavailable')
   })
   try {
     const page = createInstance(loaded.definition)
@@ -393,7 +415,7 @@ function deferred() {
 function loadPage(options = {}) {
   let definition
   let mutationIndex = 0
-  const calls = { order: [], confirm: [], create: [], createOptions: [], update: [], updateOptions: [], getPlayerNotes: [], refreshPlayerNotes: 0, navigateTo: [], modals: [] }
+  const calls = { order: [], confirm: [], beginReceipt: [], completeReceipt: [], getReceipt: [], create: [], createOptions: [], update: [], updateOptions: [], getPlayerNotes: [], navigateTo: [], modals: [] }
   const originalLoad = Module._load
   Module._load = function (request, parent, isMain) {
     if (parent && /pages[\\/]social-card-preview[\\/]social-card-preview\.js$/.test(parent.filename || '')) {
@@ -411,13 +433,20 @@ function loadPage(options = {}) {
       }
       if (request === '../../services/data-service') return {
         async getPlayerNotes(input) { calls.getPlayerNotes.push(input); return options.notes || [] },
-        async refreshPlayerNotesFromCloud() {
-          calls.refreshPlayerNotes += 1
-          if (options.refreshError) throw options.refreshError
-          return options.refreshedNotes || []
+        async getPlayerCardImportReceipt(shareId) {
+          calls.getReceipt.push(shareId)
+          if (options.receiptError) throw options.receiptError
+          return options.receipt === undefined ? null : options.receipt
         },
-        async getPlayerNoteByImportedCardShareId(shareId) {
-          return (options.notes || []).find(item => item.importedCardShareId === shareId) || null
+        async beginPlayerCardImportReceipt(input) {
+          calls.order.push('begin-receipt'); calls.beginReceipt.push(input)
+          if (options.beginReceiptError) throw options.beginReceiptError
+          return Object.assign({}, input, { status: 'pending' })
+        },
+        async completePlayerCardImportReceipt(input) {
+          calls.order.push('complete-receipt'); calls.completeReceipt.push(input)
+          if (options.completeReceiptError) throw options.completeReceiptError
+          return Object.assign({}, options.receipt || calls.beginReceipt[0], { status: 'completed' })
         },
         async createPlayerNote(payload, createOptions) {
           calls.order.push('create'); calls.create.push(payload); calls.createOptions.push(createOptions)
