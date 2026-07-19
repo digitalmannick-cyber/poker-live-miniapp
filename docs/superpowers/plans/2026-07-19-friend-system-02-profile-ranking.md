@@ -184,8 +184,10 @@ git commit -m "feat: integrate friend hub into player tab"
 - Modify: `pages/player-note-detail/player-note-detail.js`
 - Modify: `pages/player-note-detail/player-note-detail.wxml`
 - Modify: `pages/player-note-detail/player-note-detail.wxss`
+- Modify: `cloudfunctions/poker_social/lib/friendship.js`
 - Modify: `services/social-service.js`
 - Test: `tests/social-friend-detail.test.js`
+- Test: `tests/social-player-hub.test.js`
 - Test: `tests/player-notes-navigation.test.js`
 
 **Interfaces:**
@@ -247,7 +249,7 @@ Expected: PASS。
 - [ ] **Step 5: 提交好友详情**
 
 ```powershell
-git add pages/player-note-detail services/social-service.js tests/social-friend-detail.test.js tests/player-notes-navigation.test.js
+git add pages/player-note-detail cloudfunctions/poker_social/lib/friendship.js services/social-service.js tests/social-friend-detail.test.js tests/social-player-hub.test.js tests/player-notes-navigation.test.js
 git commit -m "feat: reuse player detail for private friend notes"
 ```
 
