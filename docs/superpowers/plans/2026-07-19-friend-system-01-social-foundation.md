@@ -149,7 +149,7 @@ git commit -m "feat: scaffold isolated social service"
 - Produces: `initializeSocialProfile({ playerId, nickname, avatarMode, avatarFileId, statsVisible, defaultShareScope })`、`getMySocialProfile()`。
 - DTO: `{ socialUserId, nickname, avatarUrl, avatarText, title, statsVisible, defaultShareScope }`。
 
-- [ ] **Step 1: 写资料白名单失败测试**
+- [x] **Step 1: 写资料白名单失败测试**
 
 ```js
 test('profile DTO never exposes owner identity or avatar file id', () => {
@@ -163,13 +163,13 @@ test('profile DTO never exposes owner identity or avatar file id', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-profile.test.js`
 
 Expected: FAIL because `lib/profile.js` does not exist。
 
-- [ ] **Step 3: 实现随机身份与白名单映射**
+- [x] **Step 3: 实现随机身份与白名单映射**
 
 ```js
 function normalizeProfileInput(input) {
@@ -187,13 +187,13 @@ function normalizeProfileInput(input) {
 
 创建资料时使用 `crypto.randomBytes(16).toString('hex')` 生成 `su_` ID。`privatePlayerId` 只保存在服务端，用于后续读取当前账号自己的源数据，不进入 DTO。`avatarMode` 只接受 `wechat` 或 `custom`；微信头像昵称必须由用户明确选择后提交，不能静默读取。
 
-- [ ] **Step 4: 运行资料与 API 测试**
+- [x] **Step 4: 运行资料与 API 测试**
 
 Run: `node --test tests/social-profile.test.js tests/social-api.test.js tests/social-cloud-routing.test.js`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交资料能力**
+- [x] **Step 5: 提交资料能力**
 
 ```powershell
 git add cloudfunctions/poker_social/lib/profile.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/index.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-profile.test.js
