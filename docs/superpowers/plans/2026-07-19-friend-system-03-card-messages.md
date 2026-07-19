@@ -322,7 +322,7 @@ git commit -m "feat: add social notification model"
 - Consumes: notification actions from Task 4 and friendship actions from Plan 01。
 - Produces: message-center route, numeric header badge and boolean player-tab red dot。
 
-- [ ] **Step 1: 写消息页面与红点失败测试**
+- [x] **Step 1: 写消息页面与红点失败测试**
 
 ```js
 assert.ok(appConfig.pages.includes('pages/social-messages/social-messages'))
@@ -333,13 +333,13 @@ assert.match(messageJs, /内容已不可访问/)
 assert.match(tabWxml, /socialUnread/)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-message-center.test.js tests/social-tab-unread.test.js`
 
 Expected: FAIL because message center is missing。
 
-- [ ] **Step 3: 实现消息跳转和安全失效状态**
+- [x] **Step 3: 实现消息跳转和安全失效状态**
 
 ```js
 async openMessage(event) {
@@ -360,7 +360,7 @@ async openMessage(event) {
 
 消息列表每页 20 条，未读数显示上限 `99+`；全部已读成功后立即清零页面徽标和底部玩家 Tab 红点。好友申请消息内直接提供接受/拒绝。
 
-- [ ] **Step 4: 运行消息、导航与 Tab 回归**
+- [x] **Step 4: 运行消息、导航与 Tab 回归**
 
 Run:
 
@@ -372,7 +372,7 @@ node tests/player-notes-navigation.test.js
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交消息页面**
+- [x] **Step 5: 提交消息页面**
 
 ```powershell
 git add pages/social-messages app.json pages/player-notes custom-tab-bar utils/tab-bar.js tests/social-message-center.test.js tests/social-tab-unread.test.js
