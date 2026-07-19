@@ -1,0 +1,172 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+
+const profile = require('../cloudfunctions/poker_social/lib/profile')
+
+test('profile DTO never exposes owner identity or avatar file id', () => {
+  const dto = profile.toProfileDto({
+    _id: 'su_1',
+    ownerOpenId: 'secret',
+    privatePlayerId: 'PLAYER-1',
+    profile: { nickname: '老王', avatarFileId: 'cloud://secret' }
+  }, { avatarUrl: 'https://temp/avatar' })
+
+  assert.deepEqual(dto, {
+    socialUserId: 'su_1',
+    nickname: '老王',
+    avatarUrl: 'https://temp/avatar',
+    avatarText: '老',
+    title: '初来乍到',
+    statsVisible: true,
+    defaultShareScope: 'friends'
+  })
+  assert.doesNotMatch(JSON.stringify(dto), /ownerOpenId|privatePlayerId|avatarFileId|secret/)
+})
+
+test('profile input retains player identity privately and requires an explicit supported avatar mode', () => {
+  const input = profile.normalizeProfileInput({
+    playerId: ' player-7 ',
+    nickname: '  阿强  ',
+    avatarMode: 'wechat',
+    avatarFileId: 'cloud://avatar',
+    statsVisible: false,
+    defaultShareScope: 'selected'
+  })
+
+  assert.deepEqual(input, {
+    privatePlayerId: 'PLAYER-7',
+    profile: { nickname: '阿强', avatarFileId: 'cloud://avatar', avatarText: '阿' },
+    avatarMode: 'wechat',
+    statsVisible: false,
+    defaultShareScope: 'selected'
+  })
+  assert.throws(
+    () => profile.normalizeProfileInput({ nickname: '阿强', avatarMode: 'silent' }),
+    error => error.code === 'INVALID_PROFILE'
+  )
+})
+
+test('social app persists a private profile and returns only its public DTO', async () => {
+  const records = []
+  const repository = {
+    async find(collection, query) {
+      return records.find(row => row.ownerOpenId === query.ownerOpenId) || null
+    },
+    async set(collection, id, value) {
+      const record = Object.assign({}, value, { _id: id })
+      const index = records.findIndex(row => row._id === id)
+      if (index >= 0) records[index] = record
+      else records.push(record)
+      return record
+    }
+  }
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const app = createSocialApp({
+    repository,
+    identity: { resolve: () => ({ ownerOpenId: 'openid-private' }) },
+    requestId: () => 'profile-request',
+    avatarUrl: async fileId => 'https://temp/' + fileId
+  })
+
+  const created = await app.handle({
+    action: 'initialize_social_profile',
+    playerId: 'player-7',
+    nickname: '阿强',
+    avatarMode: 'custom',
+    avatarFileId: 'avatar-file',
+    defaultShareScope: 'square'
+  }, {})
+  const read = await app.handle({ action: 'get_my_social_profile' }, {})
+
+  assert.equal(created.code, 0)
+  assert.match(created.data.socialUserId, /^su_[0-9a-f]{32}$/)
+  assert.deepEqual(read, { code: 0, data: created.data, requestId: 'profile-request' })
+  assert.equal(records[0].ownerOpenId, 'openid-private')
+  assert.equal(records[0].privatePlayerId, 'PLAYER-7')
+  assert.equal(records[0].profile.avatarFileId, 'avatar-file')
+  assert.deepEqual(Object.keys(created.data).sort(), [
+    'avatarText', 'avatarUrl', 'defaultShareScope', 'nickname', 'socialUserId', 'statsVisible', 'title'
+  ])
+  assert.equal(Object.hasOwn(created.data, 'ownerOpenId'), false)
+  assert.equal(Object.hasOwn(created.data, 'privatePlayerId'), false)
+  assert.equal(Object.hasOwn(created.data, 'avatarFileId'), false)
+})
+
+test('social service forwards only explicitly supplied profile input', async () => {
+  const apiPath = require.resolve('../services/social-api')
+  const servicePath = require.resolve('../services/social-service')
+  const api = require(apiPath)
+  const original = api.callSocialFunction
+  const calls = []
+  api.callSocialFunction = async (action, payload) => {
+    calls.push({ action, payload })
+    return { socialUserId: 'su_1' }
+  }
+  delete require.cache[servicePath]
+
+  try {
+    const service = require('../services/social-service')
+    const input = { nickname: '用户选择的昵称', avatarMode: 'wechat', avatarFileId: 'selected-avatar' }
+    assert.deepEqual(await service.initializeSocialProfile(input), { socialUserId: 'su_1' })
+    assert.deepEqual(await service.getMySocialProfile(), { socialUserId: 'su_1' })
+    assert.deepEqual(calls, [
+      { action: 'initialize_social_profile', payload: input },
+      { action: 'get_my_social_profile', payload: undefined }
+    ])
+  } finally {
+    api.callSocialFunction = original
+    delete require.cache[servicePath]
+  }
+})
+
+test('CloudBase repository persists a profile and finds it by owner identity', async () => {
+  const records = []
+  const writes = []
+  const database = {
+    collection(name) {
+      return {
+        doc(id) {
+          return {
+            async get() {
+              return { data: records.find(row => row._id === id) || null }
+            },
+            async set(input) {
+              writes.push({ name, id, input })
+              const record = Object.assign({}, input.data, { _id: id })
+              const index = records.findIndex(row => row._id === id)
+              if (index >= 0) records[index] = record
+              else records.push(record)
+            }
+          }
+        },
+        where(query) {
+          return {
+            limit() {
+              return {
+                async get() {
+                  return { data: records.filter(row => Object.keys(query).every(key => row[key] === query[key])) }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  const { createCloudSocialRepository } = require('../cloudfunctions/poker_social/lib/repository')
+  const repository = createCloudSocialRepository(database)
+
+  await repository.set('social_users', 'su_1', { ownerOpenId: 'openid-private', privatePlayerId: 'PLAYER-1' })
+
+  assert.deepEqual(writes, [{
+    name: 'social_users',
+    id: 'su_1',
+    input: { data: { ownerOpenId: 'openid-private', privatePlayerId: 'PLAYER-1' } }
+  }])
+  assert.deepEqual(await repository.get('social_users', 'su_1'), {
+    _id: 'su_1', ownerOpenId: 'openid-private', privatePlayerId: 'PLAYER-1'
+  })
+  assert.deepEqual(await repository.find('social_users', { ownerOpenId: 'openid-private' }), {
+    _id: 'su_1', ownerOpenId: 'openid-private', privatePlayerId: 'PLAYER-1'
+  })
+})

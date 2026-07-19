@@ -1,9 +1,11 @@
+const { createProfileHandlers } = require('./lib/profile')
+
 function withoutPrivateIdentifiers(value) {
   if (Array.isArray(value)) return value.map(withoutPrivateIdentifiers)
   if (!value || typeof value !== 'object') return value
 
   return Object.keys(value).reduce((result, key) => {
-    if (key !== 'ownerOpenId' && key !== '_openid') {
+    if (key !== 'ownerOpenId' && key !== '_openid' && key !== 'privatePlayerId' && key !== 'avatarFileId') {
       result[key] = withoutPrivateIdentifiers(value[key])
     }
     return result
@@ -26,7 +28,10 @@ function publicError(error) {
 function createSocialApp(deps) {
   const config = deps || {}
   const identity = config.identity || {}
-  const handlers = config.handlers || {}
+  const profileHandlers = config.repository
+    ? createProfileHandlers(config.repository, { avatarUrl: config.avatarUrl })
+    : {}
+  const handlers = Object.assign({}, profileHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()
