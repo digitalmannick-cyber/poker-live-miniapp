@@ -50,6 +50,7 @@ test('social app returns a request-scoped unknown action error without private i
 
   assert.deepEqual(result, {
     code: 'UNKNOWN_ACTION',
+    data: null,
     message: 'unknown social action',
     requestId: 'request-2'
   })
@@ -67,7 +68,93 @@ test('social app maps typed errors to the public response contract', async () =>
 
   const result = await app.handle({ action: 'fail' }, { openId: 'openid-private' })
 
-  assert.deepEqual(result, { code: 'FORBIDDEN', message: 'not allowed', requestId: 'request-3' })
+  assert.deepEqual(result, { code: 'FORBIDDEN', data: null, message: 'not allowed', requestId: 'request-3' })
+})
+
+test('social app treats inherited toString as an unknown action', async () => {
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const app = createSocialApp({
+    identity: { resolve: () => ({ ownerOpenId: 'openid-private' }) },
+    handlers: {},
+    requestId: () => 'request-prototype-1'
+  })
+
+  const result = await app.handle({ action: 'toString' }, { openId: 'openid-private' })
+
+  assert.deepEqual(result, {
+    code: 'UNKNOWN_ACTION',
+    data: null,
+    message: 'unknown social action',
+    requestId: 'request-prototype-1'
+  })
+})
+
+test('social app treats inherited constructor as an unknown action', async () => {
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const app = createSocialApp({
+    identity: { resolve: () => ({ ownerOpenId: 'openid-private' }) },
+    handlers: {},
+    requestId: () => 'request-prototype-2'
+  })
+
+  const result = await app.handle({ action: 'constructor' }, { openId: 'openid-private' })
+
+  assert.deepEqual(result, {
+    code: 'UNKNOWN_ACTION',
+    data: null,
+    message: 'unknown social action',
+    requestId: 'request-prototype-2'
+  })
+})
+
+test('social app maps public error messages by code and never returns an internal identifier', async () => {
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const internalOpenId = 'openid-real-value-should-not-leak'
+  const app = createSocialApp({
+    identity: { resolve: () => ({ ownerOpenId: internalOpenId }) },
+    handlers: {
+      fail() {
+        const error = new Error('access rejected for ' + internalOpenId)
+        error.code = 'FORBIDDEN'
+        throw error
+      }
+    },
+    requestId: () => 'request-private-message'
+  })
+
+  const result = await app.handle({ action: 'fail' }, { openId: internalOpenId })
+
+  assert.deepEqual(result, {
+    code: 'FORBIDDEN',
+    data: null,
+    message: 'not allowed',
+    requestId: 'request-private-message'
+  })
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(internalOpenId))
+})
+
+test('social app maps unknown errors to the fixed public failure response', async () => {
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const app = createSocialApp({
+    identity: { resolve: () => ({ ownerOpenId: 'openid-private' }) },
+    handlers: {
+      fail() {
+        const error = new Error('internal database failure')
+        error.code = 'DATABASE_INTERNAL'
+        throw error
+      }
+    },
+    requestId: () => 'request-unknown-error'
+  })
+
+  const result = await app.handle({ action: 'fail' }, { openId: 'openid-private' })
+
+  assert.deepEqual(result, {
+    code: 'SOCIAL_ERROR',
+    data: null,
+    message: 'social function failed',
+    requestId: 'request-unknown-error'
+  })
 })
 
 test('memory social repository isolates seed data and supports get, set, where, and transactions', async () => {
@@ -133,6 +220,7 @@ test('cloud entrypoint supplies WXContext OPENID to the social app without expos
 
   assert.deepEqual(result, {
     code: 'UNKNOWN_ACTION',
+    data: null,
     message: 'unknown social action',
     requestId: result.requestId
   })

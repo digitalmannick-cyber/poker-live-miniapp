@@ -10,9 +10,17 @@ function withoutPrivateIdentifiers(value) {
   }, {})
 }
 
-function publicMessage(error) {
-  const message = String(error && (error.message || error.errMsg) || 'social function failed')
-  return /ownerOpenId|_openid/i.test(message) ? 'social function failed' : message
+const PUBLIC_ERROR_MESSAGES = Object.freeze({
+  FORBIDDEN: 'not allowed',
+  UNAUTHENTICATED: 'identity unavailable'
+})
+
+function publicError(error) {
+  const code = String(error && error.code || '')
+  if (Object.prototype.hasOwnProperty.call(PUBLIC_ERROR_MESSAGES, code)) {
+    return { code, message: PUBLIC_ERROR_MESSAGES[code] }
+  }
+  return { code: 'SOCIAL_ERROR', message: 'social function failed' }
 }
 
 function createSocialApp(deps) {
@@ -29,16 +37,19 @@ function createSocialApp(deps) {
       const action = String(event && event.action || '').trim()
       try {
         const actor = await identity.resolve(context && context.openId)
-        const handler = handlers[action]
+        const hasHandler = Object.prototype.hasOwnProperty.call(handlers, action)
+        const handler = hasHandler ? handlers[action] : null
         if (typeof handler !== 'function') {
-          return { code: 'UNKNOWN_ACTION', message: 'unknown social action', requestId: currentRequestId }
+          return { code: 'UNKNOWN_ACTION', data: null, message: 'unknown social action', requestId: currentRequestId }
         }
         const data = await handler(event || {}, actor, context || {})
         return { code: 0, data: withoutPrivateIdentifiers(data || {}), requestId: currentRequestId }
       } catch (error) {
+        const publicResult = publicError(error)
         return {
-          code: String(error && error.code || 'SOCIAL_ERROR'),
-          message: publicMessage(error),
+          code: publicResult.code,
+          data: null,
+          message: publicResult.message,
           requestId: currentRequestId
         }
       }
