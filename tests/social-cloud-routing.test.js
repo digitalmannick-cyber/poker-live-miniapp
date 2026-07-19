@@ -157,16 +157,16 @@ test('social app maps unknown errors to the fixed public failure response', asyn
   })
 })
 
-test('memory social repository isolates seed data and supports get, set, where, and transactions', async () => {
+test('memory social repository isolates seed data and limits transactions to point operations', async () => {
   const { createMemorySocialRepository } = require('./helpers/social-fixture')
   const repository = createMemorySocialRepository({ profiles: [{ _id: 'profile-1', label: 'original' }] })
 
   assert.deepEqual(repository.get('profiles', 'profile-1'), { _id: 'profile-1', label: 'original' })
   repository.set('profiles', 'profile-1', { label: 'updated' })
   repository.set('profiles', 'profile-2', { label: 'another' })
-  const fromTransaction = await repository.runTransaction(store => store.where('profiles', row => row.label === 'updated'))
+  const fromTransaction = await repository.runTransaction(store => store.get('profiles', 'profile-1'))
 
-  assert.deepEqual(fromTransaction, [{ _id: 'profile-1', label: 'updated' }])
+  assert.deepEqual(fromTransaction, { _id: 'profile-1', label: 'updated' })
   assert.deepEqual(repository.where('profiles', row => row.label === 'another'), [{ _id: 'profile-2', label: 'another' }])
   assert.deepEqual(repository.dump(), {
     profiles: [

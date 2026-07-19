@@ -118,6 +118,49 @@ function markAllNotificationsRead(input) {
   return write('mark_all_notifications_read', input)
 }
 
+function previewHandShare(input) {
+  return callSocialFunction('preview_hand_share', { handId: String(input && input.handId || '').trim() })
+}
+
+function publishHand(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('publish_hand', {
+    handId: String(source.handId || '').trim(),
+    previewHash: String(source.previewHash || '').trim(),
+    scope: String(source.scope || '').trim(),
+    targetUserIds: Array.isArray(source.targetUserIds) ? source.targetUserIds.slice() : [],
+    publicShareConfirmed: source.publicShareConfirmed === true,
+    clientMutationId: source.clientMutationId
+  })
+}
+
+function updateHandShareScope(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('update_hand_share_scope', {
+    shareId: String(source.shareId || '').trim(),
+    scope: String(source.scope || '').trim(),
+    targetUserIds: Array.isArray(source.targetUserIds) ? source.targetUserIds.slice() : [],
+    publicShareConfirmed: source.publicShareConfirmed === true,
+    clientMutationId: source.clientMutationId
+  })
+}
+
+function withdrawHandShare(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('withdraw_hand_share', {
+    shareId: String(source.shareId || '').trim(),
+    clientMutationId: source.clientMutationId
+  })
+}
+
+function withdrawSharesBySourceHand(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('withdraw_shares_by_source_hand', {
+    handId: String(source.handId || '').trim(),
+    clientMutationId: source.clientMutationId
+  })
+}
+
 module.exports = {
   initializeSocialProfile,
   getMySocialProfile,
@@ -140,6 +183,11 @@ module.exports = {
   getUnreadNotificationCount,
   markNotificationRead,
   markAllNotificationsRead,
+  previewHandShare,
+  publishHand,
+  updateHandShareScope,
+  withdrawHandShare,
+  withdrawSharesBySourceHand,
   scheduleMyStatsSync,
   __test: { normalizePlayerId, socialStatsStorageKey }
 }

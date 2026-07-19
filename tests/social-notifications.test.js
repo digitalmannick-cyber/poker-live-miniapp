@@ -541,3 +541,22 @@ test('CloudBase notification repository uses recipient-scoped keyset queries and
   assert.match(indexes, /social_notification_heads/)
   assert.match(indexes, /social_notification_actors/)
 })
+
+test('notification reads run bounded selected-hand outbox compensation before observing state', async () => {
+  const repository = createMemorySocialRepository({ social_users: users() })
+  const calls = []
+  const handlers = createNotificationHandlers(repository, {
+    compensateRecipientOutboxes: async (recipientId, limits) => {
+      calls.push({ recipientId, limits })
+    }
+  })
+
+  assert.deepEqual(await handlers.get_unread_count({}, { ownerOpenId: 'openid-b' }), { unreadCount: 0 })
+  assert.deepEqual(await handlers.list_notifications({}, { ownerOpenId: 'openid-b' }), {
+    items: [], nextCursor: null, unreadCount: 0
+  })
+  assert.deepEqual(calls, [
+    { recipientId: 'su_b', limits: { maxOutboxes: 5, maxTargets: 10 } },
+    { recipientId: 'su_b', limits: { maxOutboxes: 5, maxTargets: 10 } }
+  ])
+})

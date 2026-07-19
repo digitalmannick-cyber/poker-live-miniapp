@@ -14,6 +14,7 @@ async function callSocialFunction(action, payload) {
   if (body.code && body.code !== 0) {
     const error = new Error(body.message || 'social function failed')
     error.code = body.code
+    error.requestId = body.requestId || ''
     throw error
   }
   return body.data || {}

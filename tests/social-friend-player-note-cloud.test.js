@@ -6,18 +6,24 @@ function matches(doc, filters) {
   return Object.keys(filters || {}).every(key => doc && doc[key] === filters[key])
 }
 
+function clone(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
 function createCollections(seed) {
   const collections = Object.assign({
     player_notes: [],
     sync_operations: [],
     audit_logs: []
   }, seed || {})
+  let transactionTail = Promise.resolve()
 
-  function collection(name) {
+  function collection(name, source) {
+    const store = source || collections
     let filters = {}
     let offset = 0
     let limit = 100
-    if (!collections[name]) collections[name] = []
+    if (!store[name]) store[name] = []
     return {
       where(nextFilters) {
         filters = nextFilters || {}
@@ -32,35 +38,49 @@ function createCollections(seed) {
         return this
       },
       async get() {
-        return { data: collections[name].filter(item => matches(item, filters)).slice(offset, offset + limit) }
+        return { data: store[name].filter(item => matches(item, filters)).slice(offset, offset + limit) }
       },
       async add({ data }) {
-        const next = Object.assign({ _id: name + '_' + (collections[name].length + 1) }, data)
-        collections[name].push(next)
+        const next = Object.assign({ _id: name + '_' + (store[name].length + 1) }, data)
+        store[name].push(next)
         return { _id: next._id }
       },
       doc(id) {
         return {
           async get() {
-            const found = collections[name].find(item => item._id === id)
+            const found = store[name].find(item => item._id === id)
             if (!found) throw new Error('not found')
             return { data: found }
           },
           async set({ data }) {
             const next = Object.assign({ _id: id }, data)
-            const index = collections[name].findIndex(item => item._id === id)
-            if (index === -1) collections[name].push(next)
-            else collections[name][index] = next
+            const index = store[name].findIndex(item => item._id === id)
+            if (index === -1) store[name].push(next)
+            else store[name][index] = next
           },
           async remove() {
-            collections[name] = collections[name].filter(item => item._id !== id)
+            store[name] = store[name].filter(item => item._id !== id)
           }
         }
       }
     }
   }
 
-  return { collections, collection }
+  return {
+    collections,
+    collection,
+    runTransaction(callback) {
+      const operation = transactionTail.then(async () => {
+        const draft = clone(collections)
+        const result = await callback({ collection(name) { return collection(name, draft) } })
+        Object.keys(collections).forEach(key => delete collections[key])
+        Object.assign(collections, draft)
+        return result
+      })
+      transactionTail = operation.then(() => undefined, () => undefined)
+      return operation
+    }
+  }
 }
 
 function loadPokerData(seed, ownerOpenId) {
@@ -73,7 +93,7 @@ function loadPokerData(seed, ownerOpenId) {
         DYNAMIC_CURRENT_ENV: 'test',
         init() {},
         database() {
-          return { collection: mock.collection }
+          return { collection: mock.collection, runTransaction: mock.runTransaction }
         },
         getWXContext() {
           return { OPENID: activeOwnerOpenId }
@@ -119,8 +139,8 @@ test('two devices creating a friend note with different local IDs converge on on
     pokerData.main(createFriendEvent('device_b', 'local_b', 'su_friend'))
   ])
 
-  assert.equal(left.code, 0)
-  assert.equal(right.code, 0)
+  assert.equal(left.code, 0, left.message)
+  assert.equal(right.code, 0, right.message)
   assert.equal(left.data.playerNote._id, right.data.playerNote._id)
   assert.notEqual(left.data.playerNote._id, 'local_a')
   assert.notEqual(right.data.playerNote._id, 'local_b')
@@ -152,7 +172,7 @@ test('recreating an archived legacy friend note restores the owner-scoped note w
   })
   const result = await pokerData.main(createFriendEvent('restore_legacy', 'local_new', 'su_friend'))
 
-  assert.equal(result.code, 0)
+  assert.equal(result.code, 0, result.message)
   assert.equal(result.data.playerNote._id, 'legacy_note')
   assert.equal(result.data.playerNote.archived, false)
   assert.equal(result.data.playerNote.name, 'Local Wolf')

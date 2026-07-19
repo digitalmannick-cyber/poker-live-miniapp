@@ -3,6 +3,7 @@ const { createFriendshipHandlers } = require('./lib/friendship')
 const { createRankingHandlers } = require('./lib/ranking')
 const { createPlayerCardHandlers } = require('./lib/player-card')
 const { createNotificationWriter, createNotificationHandlers } = require('./lib/notification')
+const { createHandShareHandlers, compensateRecipientOutboxes } = require('./lib/hand-share')
 
 function withoutPrivateIdentifiers(value) {
   if (typeof value === 'string' && value.includes('cloud://')) return null
@@ -40,7 +41,14 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   PLAYER_CARD_UNAVAILABLE: 'player card unavailable',
   BLIND_REQUIRED: 'big blind required',
   INVALID_HAND_SNAPSHOT: 'invalid hand snapshot',
-  HAND_ACTIONS_REQUIRED: 'hand actions required'
+  HAND_ACTIONS_REQUIRED: 'hand actions required',
+  HAND_ACTIONS_LIMIT_EXCEEDED: 'hand actions limit exceeded',
+  HAND_SOURCE_UPDATING: 'hand source updating',
+  HAND_PREVIEW_STALE: 'hand preview stale',
+  HAND_ALREADY_SHARED: 'hand already shared',
+  INVALID_SHARE_SCOPE: 'invalid share scope',
+  RATE_LIMITED: 'rate limited',
+  CONTENT_UNAVAILABLE: 'content unavailable'
 })
 
 function publicError(error) {
@@ -67,10 +75,19 @@ function createSocialApp(deps) {
   const playerCardHandlers = config.repository
     ? createPlayerCardHandlers(config.repository, Object.assign({}, config.playerCard || {}, { avatarUrl: config.avatarUrl || config.playerCard && config.playerCard.avatarUrl, notificationWriter }))
     : {}
-  const notificationHandlers = config.repository
-    ? createNotificationHandlers(config.repository, Object.assign({}, config.notification || {}, { avatarUrl: config.avatarUrl || config.notification && config.notification.avatarUrl }))
+  const handShareHandlers = config.repository
+    ? createHandShareHandlers(config.repository, Object.assign({}, config.handShare || {}, { notificationWriter }))
     : {}
-  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers, notificationHandlers, config.handlers || {})
+  const compensateSelectedHands = config.repository
+    ? (recipientId, limits) => compensateRecipientOutboxes(config.repository, recipientId, Object.assign({}, config.handShare || {}, limits || {}, { notificationWriter }))
+    : async () => {}
+  const notificationHandlers = config.repository
+    ? createNotificationHandlers(config.repository, Object.assign({}, config.notification || {}, {
+      avatarUrl: config.avatarUrl || config.notification && config.notification.avatarUrl,
+      compensateRecipientOutboxes: compensateSelectedHands
+    }))
+    : {}
+  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers, handShareHandlers, notificationHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()

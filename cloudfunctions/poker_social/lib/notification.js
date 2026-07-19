@@ -347,9 +347,13 @@ function parseLimit(value) {
 function createNotificationHandlers(repository, options) {
   const config = options || {}
   const now = typeof config.now === 'function' ? config.now : () => Date.now()
+  const compensateRecipientOutboxes = typeof config.compensateRecipientOutboxes === 'function'
+    ? config.compensateRecipientOutboxes
+    : async () => {}
   return {
     async list_notifications(event, actor) {
       const actorUser = await findActorUser(repository, actor)
+      await compensateRecipientOutboxes(actorUser._id, { maxOutboxes: 5, maxTargets: 10 })
       const limit = parseLimit(event && event.limit)
       const cursor = event && event.cursor ? decodeCursor(event.cursor) : null
       const stateId = stateDocumentId(actorUser._id)
@@ -414,6 +418,7 @@ function createNotificationHandlers(repository, options) {
 
     async get_unread_count(event, actor) {
       const actorUser = await findActorUser(repository, actor)
+      await compensateRecipientOutboxes(actorUser._id, { maxOutboxes: 5, maxTargets: 10 })
       const state = await repository.get(COLLECTIONS.STATE, stateDocumentId(actorUser._id))
       return { unreadCount: unreadCountOf(state) }
     }

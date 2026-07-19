@@ -1,3 +1,5 @@
+const { socialError } = require('./social-error')
+
 const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_USERS: 'social_users',
   SOCIAL_FRIENDSHIPS: 'social_friendships',
@@ -8,8 +10,14 @@ const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_NOTIFICATIONS: 'social_notifications',
   SOCIAL_NOTIFICATION_STATE: 'social_notification_state',
   SOCIAL_NOTIFICATION_HEADS: 'social_notification_heads',
-  SOCIAL_NOTIFICATION_ACTORS: 'social_notification_actors'
+  SOCIAL_NOTIFICATION_ACTORS: 'social_notification_actors',
+  SOCIAL_HAND_SHARES: 'social_hand_shares',
+  SOCIAL_HAND_SHARE_SLOTS: 'social_hand_share_slots',
+  SOCIAL_RATE_LIMITS: 'social_rate_limits',
+  SOCIAL_NOTIFICATION_OUTBOX: 'social_notification_outbox'
 })
+
+const ACCOUNT_CLEAR_SOCIAL_COLLECTIONS = Object.freeze(Object.values(SOCIAL_COLLECTIONS))
 
 const PRIVATE_PAGE_SIZE = 100
 
@@ -23,8 +31,8 @@ function createCloudSocialRepository(database) {
     throw new Error('cloud database unavailable')
   }
 
-  function createStore(client) {
-    return {
+  function createStore(client, transactionMode) {
+    const store = {
     async get(collection, id) {
       try {
         const response = await client.collection(collection).doc(id).get()
@@ -40,12 +48,80 @@ function createCloudSocialRepository(database) {
       return response && Array.isArray(response.data) && response.data[0] || null
     },
 
+    async findSocialUserByOpenId(ownerOpenId) {
+      const response = await client.collection(SOCIAL_COLLECTIONS.SOCIAL_USERS)
+        .where({ ownerOpenId: String(ownerOpenId || '') }).limit(1).get()
+      return response && Array.isArray(response.data) && response.data[0] || null
+    },
+
+    async listOwnedHandActions(ownerOpenId, privatePlayerId, handId) {
+      const queryOwnerField = async ownerField => {
+        const filters = {
+          [ownerField]: String(ownerOpenId || ''),
+          playerId: String(privatePlayerId || ''),
+          handId: String(handId || '')
+        }
+        const countRequest = client.collection('hand_actions').where(filters)
+        if (typeof countRequest.count !== 'function') throw socialError('HAND_ACTIONS_LIMIT_EXCEEDED', 'hand actions limit exceeded')
+        const countResponse = await countRequest.count()
+        const total = Number(countResponse && countResponse.total)
+        if (!Number.isSafeInteger(total) || total < 0 || total > PRIVATE_PAGE_SIZE) {
+          throw socialError('HAND_ACTIONS_LIMIT_EXCEEDED', 'hand actions limit exceeded')
+        }
+        let request = client.collection('hand_actions').where(filters)
+        if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('exact action query unavailable')
+        request = request.orderBy('sequence', 'asc').orderBy('_id', 'asc').limit(PRIVATE_PAGE_SIZE)
+        const response = await request.get()
+        const rows = Array.isArray(response && response.data) ? response.data : []
+        if (rows.length !== total) throw socialError('HAND_ACTIONS_LIMIT_EXCEEDED', 'hand actions limit exceeded')
+        return rows
+      }
+      const modern = await queryOwnerField('ownerOpenId')
+      const legacy = await queryOwnerField('_openid')
+      const byId = new Map()
+      modern.concat(legacy).forEach(row => byId.set(String(row && row._id || ''), row))
+      const rows = Array.from(byId.values())
+      if (rows.length > PRIVATE_PAGE_SIZE) throw socialError('HAND_ACTIONS_LIMIT_EXCEEDED', 'hand actions limit exceeded')
+      return rows.sort((left, right) => Number(left.sequence) - Number(right.sequence) || String(left._id || '').localeCompare(String(right._id || '')))
+    },
+
+    async findOneAcceptedFriend(socialUserId) {
+      const querySide = async key => {
+        let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_FRIENDSHIPS)
+          .where({ [key]: String(socialUserId || ''), status: 'accepted' })
+        if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('friend witness query unavailable')
+        request = request.orderBy('acceptedAt', 'desc').orderBy('_id', 'asc').limit(1)
+        const response = await request.get()
+        return Array.isArray(response && response.data) ? response.data[0] || null : null
+      }
+      const left = await querySide('userA')
+      const right = await querySide('userB')
+      if (!left) return right
+      if (!right) return left
+      return Number(left.acceptedAt || 0) >= Number(right.acceptedAt || 0) ? left : right
+    },
+
+    async listNotificationOutboxesForRecipient(recipientId, limit) {
+      let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_OUTBOX).where({
+        status: 'pending', targetUserIds: String(recipientId || '')
+      })
+      if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('outbox query unavailable')
+      request = request.orderBy('createdAt', 'asc').orderBy('_id', 'asc').limit(Math.min(5, Math.max(1, Number(limit) || 5)))
+      const response = await request.get()
+      return Array.isArray(response && response.data) ? response.data : []
+    },
+
     async set(collection, id, value) {
       const record = Object.assign({}, value, { _id: id })
       const data = Object.assign({}, record)
       delete data._id
       await client.collection(collection).doc(id).set({ data })
       return record
+    },
+
+    async remove(collection, id) {
+      await client.collection(collection).doc(id).remove()
+      return true
     },
 
     async patchSocialUserStats(id, patch) {
@@ -188,15 +264,17 @@ function createCloudSocialRepository(database) {
       return Array.isArray(response && response.data) ? response.data : []
     }
     }
+    if (transactionMode) return { get: store.get, set: store.set, remove: store.remove }
+    return store
   }
 
   const store = createStore(database)
   return Object.assign(store, {
     async runTransaction(callback) {
       if (typeof database.runTransaction !== 'function') throw new Error('cloud database transactions unavailable')
-      return database.runTransaction(transaction => callback(createStore(transaction)))
+      return database.runTransaction(transaction => callback(createStore(transaction, true)))
     }
   })
 }
 
-module.exports = { SOCIAL_COLLECTIONS, createCloudSocialRepository }
+module.exports = { SOCIAL_COLLECTIONS, ACCOUNT_CLEAR_SOCIAL_COLLECTIONS, createCloudSocialRepository }

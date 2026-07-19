@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "indexes": [
+    {
+      "collection": "social_friendships",
+      "fields": [
+        { "field": "userA", "order": "ASC" },
+        { "field": "status", "order": "ASC" },
+        { "field": "acceptedAt", "order": "DESC" },
+        { "field": "_id", "order": "ASC" }
+      ]
+    },
+    {
+      "collection": "social_friendships",
+      "fields": [
+        { "field": "userB", "order": "ASC" },
+        { "field": "status", "order": "ASC" },
+        { "field": "acceptedAt", "order": "DESC" },
+        { "field": "_id", "order": "ASC" }
+      ]
+    },
+    {
+      "collection": "social_hand_shares",
+      "fields": [
+        { "field": "status", "order": "ASC" },
+        { "field": "scope", "order": "ASC" },
+        { "field": "createdAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    },
+    {
+      "collection": "social_hand_shares",
+      "fields": [
+        { "field": "publisherId", "order": "ASC" },
+        { "field": "status", "order": "ASC" },
+        { "field": "createdAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    },
+    {
+      "collection": "social_hand_shares",
+      "fields": [
+        { "field": "targetUserIds", "array": true },
+        { "field": "status", "order": "ASC" },
+        { "field": "createdAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    },
+    {
+      "collection": "social_notification_outbox",
+      "fields": [
+        { "field": "status", "order": "ASC" },
+        { "field": "targetUserIds", "array": true },
+        { "field": "createdAt", "order": "ASC" },
+        { "field": "_id", "order": "ASC" }
+      ]
+    },
+    {
+      "collection": "hand_actions",
+      "fields": [
+        { "field": "ownerOpenId", "order": "ASC" },
+        { "field": "playerId", "order": "ASC" },
+        { "field": "handId", "order": "ASC" },
+        { "field": "sequence", "order": "ASC" },
+        { "field": "_id", "order": "ASC" }
+      ]
+    },
+    {
+      "collection": "hand_actions",
+      "fields": [
+        { "field": "_openid", "order": "ASC" },
+        { "field": "playerId", "order": "ASC" },
+        { "field": "handId", "order": "ASC" },
+        { "field": "sequence", "order": "ASC" },
+        { "field": "_id", "order": "ASC" }
+      ]
+    },
+    {
+      "collection": "social_notifications",
+      "fields": [
+        { "field": "recipientId", "order": "ASC" },
+        { "field": "createdAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    }
+  ],
+  "pointReadOnly": [
+    "social_hand_share_slots",
+    "social_rate_limits",
+    "social_notification_state",
+    "social_notification_heads",
+    "social_notification_actors"
+  ]
+}

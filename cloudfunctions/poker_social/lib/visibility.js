@@ -23,4 +23,23 @@ function isReadableCardShare(share, viewerId, nowMs) {
   return share.status === 'active' && Number(share.expiresAt) > Number(nowMs)
 }
 
-module.exports = { requireAcceptedFriendship, isReadableCardShare }
+function hasAcceptedPair(friendship, leftUserId, rightUserId) {
+  if (!friendship || friendship.status !== 'accepted') return false
+  const expected = [String(leftUserId || ''), String(rightUserId || '')].sort()
+  const actual = [String(friendship.userA || ''), String(friendship.userB || '')].sort()
+  return !!expected[0] && expected[0] === actual[0] && expected[1] === actual[1]
+}
+
+function canReadShare(viewerId, share, friendship) {
+  const viewer = String(viewerId || '')
+  if (!viewer || !share || share.status !== 'active' || Number(share.sourceDeletedAt) > 0) return false
+  const publisherId = String(share.publisherId || '')
+  if (!publisherId || !['square', 'friends', 'selected'].includes(share.scope)) return false
+  if (viewer === publisherId) return true
+  if (share.scope === 'square') return true
+  if (!hasAcceptedPair(friendship, viewer, publisherId)) return false
+  if (share.scope === 'friends') return true
+  return share.scope === 'selected' && Array.isArray(share.targetUserIds) && share.targetUserIds.includes(viewer)
+}
+
+module.exports = { requireAcceptedFriendship, isReadableCardShare, hasAcceptedPair, canReadShare }

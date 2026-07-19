@@ -15,6 +15,10 @@ const { AUTO_CLOUD_BOOTSTRAP, AI_REMINDER_SUBSCRIBE_TEMPLATE_ID } = require('../
 let bootstrapPromise = null
 let cloudBootstrapScheduleTimer = null
 let businessSyncPromise = Promise.resolve()
+const cloudMutationDrainPromises = {}
+let cloudMutationDrainEpoch = 0
+let cloudMutationAccountContextId = ''
+let cloudMutationAccountContextEpoch = 0
 let cloudBootstrapComplete = false
 const CLOUD_TIMEOUT_MS = 1500
 const CLOUD_BOOTSTRAP_TIMEOUT_MS = 5000
@@ -27,6 +31,8 @@ const TEST_ACCOUNT_KEY = 'pokerLiveTestAccount'
 const TEST_ACCOUNT_BACKUP_KEY = 'pokerLiveTestAccountBackup'
 const AI_REMINDER_SUBSCRIBE_GRANT_KEY = 'pokerAiReminderSubscribeGrantReady'
 const PROFILE_STATS_SNAPSHOT_KEY = 'pokerLiveProfileStatsSnapshot'
+const CLOUD_MUTATION_OUTBOX_KEY = 'pokerCloudMutationOutboxV1'
+const CLOUD_MUTATION_DRAIN_LIMIT = 5
 let cloudRetryAfter = 0
 const statsDataCache = {}
 const statsDataPrefetching = {}
@@ -573,7 +579,11 @@ function resetCloudBootstrapState() {
 }
 
 function scheduleBusinessDataSync(label) {
-  return Promise.resolve(false)
+  if (!canStartCloudTask() || !cloudUtils.canUseCloud()) return Promise.resolve(false)
+  return drainCloudMutationOutbox().catch(error => {
+    logCloudBackgroundFailure(label || 'sync business data failed', error)
+    return false
+  })
 }
 
 function syncBusinessDataNow(label) {
@@ -647,7 +657,10 @@ function scheduleHandCloudPatchSync(handId, patch, label) {
   }
   return runCloudTask(
     async () => {
-      const result = await cloudRepo.updateHand(handId, patch)
+      const mutationPayload = { playerId: getCurrentPlayerId(), handId, patch: patch || {} }
+      const response = await runAuthoritativeMutation('update_hand', handId, mutationPayload, clientMutationId =>
+        cloudDataApi.updateHand(Object.assign({}, mutationPayload, { clientMutationId })))
+      const result = response && response.hand
       if (!result) {
         throw new Error('cloud hand patch missed: ' + handId)
       }
@@ -671,13 +684,10 @@ async function confirmHandCloudSync(handId, patch, hand, label) {
   try {
     const handForCloud = hand || Object.assign({ _id: handId }, patch || {})
     const playerId = getCurrentPlayerId()
+    const mutationPayload = { playerId, handId, payload: handForCloud }
     const upsertResult = await withTimeoutError(
-      cloudDataApi.upsertHand({
-        playerId,
-        handId,
-        payload: handForCloud,
-        clientMutationId: 'voice_backfill_' + handId + '_' + Date.now()
-      }),
+      runAuthoritativeMutation('upsert_hand', handId, mutationPayload, clientMutationId =>
+        cloudDataApi.upsertHand(Object.assign({}, mutationPayload, { clientMutationId }))),
       HAND_CLOUD_SYNC_CONFIRM_TIMEOUT_MS,
       'cloud hand upsert timeout'
     )
@@ -705,8 +715,10 @@ async function confirmHandCloudSync(handId, patch, hand, label) {
 async function saveHandPatchToCloudAfterLocalFailure(handId, patch, label) {
   if (!cloudUtils.canUseCloud()) return false
   try {
+    const mutationPayload = { playerId: getCurrentPlayerId(), handId, patch: patch || {} }
     await withTimeoutError(
-      cloudRepo.updateHand(handId, patch),
+      runAuthoritativeMutation('update_hand', handId, mutationPayload, clientMutationId =>
+        cloudDataApi.updateHand(Object.assign({}, mutationPayload, { clientMutationId }))),
       CLOUD_STATS_FUNCTION_TIMEOUT_MS,
       'cloud hand patch timeout'
     )
@@ -995,8 +1007,10 @@ async function bootstrapCloudSync(forceRefresh, options) {
   }
 
   const task = (async () => {
-    const localBackup = store.exportBackup()
+    let localBackup = store.exportBackup()
     const loggedIn = await loginWechatAccount()
+    await drainCloudMutationOutbox()
+    localBackup = store.exportBackup()
     if (loggedIn) {
       return true
     }
@@ -1034,7 +1048,11 @@ async function bootstrapCloudSync(forceRefresh, options) {
       await cloudRepo.saveSettings(playerId, localSettings)
     }
 
-    await cloudRepo.seedBusinessData(store.exportBackup())
+    await cloudDataApi.syncAndGetStats({
+      playerId,
+      backup: store.exportBackup(),
+      rangeKey: 'all'
+    })
     cloudBootstrapComplete = true
     return true
   })()
@@ -1571,6 +1589,278 @@ async function getPlayerNoteById(noteId) {
   return getLocalAdapter().getPlayerNoteById(noteId)
 }
 
+function canonicalizeMutationPayload(value) {
+  if (Array.isArray(value)) return value.map(canonicalizeMutationPayload)
+  if (!value || typeof value !== 'object') return value
+  return Object.keys(value).sort().reduce((result, key) => {
+    if (value[key] !== undefined) result[key] = canonicalizeMutationPayload(value[key])
+    return result
+  }, {})
+}
+
+function mutationOutboxDescriptor(accountId, action, targetId, payload) {
+  return JSON.stringify([
+    String(accountId || '').trim().toUpperCase(),
+    String(action || '').trim(),
+    String(targetId || '').trim(),
+    canonicalizeMutationPayload(payload || {})
+  ])
+}
+
+function loadCloudMutationOutbox() {
+  if (typeof wx === 'undefined' || !wx || typeof wx.getStorageSync !== 'function') return []
+  const stored = wx.getStorageSync(CLOUD_MUTATION_OUTBOX_KEY)
+  return stored && stored.version === 1 && Array.isArray(stored.records) ? stored.records.filter(Boolean) : []
+}
+
+function saveCloudMutationOutbox(records) {
+  if (typeof wx === 'undefined' || !wx || typeof wx.setStorageSync !== 'function') {
+    throw new Error('cloud mutation outbox storage unavailable')
+  }
+  const safeRecords = (Array.isArray(records) ? records : []).filter(Boolean)
+  const pending = safeRecords.filter(record => record.status === 'pending')
+  const history = safeRecords.filter(record => record.status !== 'pending').slice(-50)
+  wx.setStorageSync(CLOUD_MUTATION_OUTBOX_KEY, { version: 1, records: pending.concat(history) })
+}
+
+function getOrCreateCloudMutation(action, targetId, payload) {
+  const accountId = getCurrentPlayerId()
+  if (!accountId) throw new Error('missing playerId')
+  const descriptor = mutationOutboxDescriptor(accountId, action, targetId, payload)
+  const records = loadCloudMutationOutbox()
+  const existing = records.find(record => record && record.status === 'pending' && record.descriptor === descriptor && record.accountId === accountId)
+  const canonicalPayload = canonicalizeMutationPayload(payload || {})
+  if (existing && existing.clientMutationId) {
+    if (!existing.payload) {
+      existing.payload = canonicalPayload
+      saveCloudMutationOutbox(records)
+    }
+    return existing
+  }
+  const record = {
+    accountId,
+    action: String(action || ''),
+    targetId: String(targetId || ''),
+    descriptor,
+    payload: canonicalPayload,
+    clientMutationId: createClientMutationId(action, targetId),
+    status: 'pending',
+    attemptCount: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    lastErrorCode: ''
+  }
+  records.push(record)
+  saveCloudMutationOutbox(records)
+  return record
+}
+
+function updateCloudMutationRecord(record, patch) {
+  const records = loadCloudMutationOutbox()
+  const index = records.findIndex(item => item && item.descriptor === record.descriptor && item.clientMutationId === record.clientMutationId)
+  if (index < 0) return
+  records[index] = Object.assign({}, records[index], patch || {}, { updatedAt: Date.now() })
+  saveCloudMutationOutbox(records)
+}
+
+function clearCloudMutationRecord(record) {
+  const records = loadCloudMutationOutbox().filter(item => !(item && item.descriptor === record.descriptor && item.clientMutationId === record.clientMutationId))
+  saveCloudMutationOutbox(records)
+}
+
+function captureCloudMutationAccountContext() {
+  const accountId = getCurrentPlayerId()
+  if (accountId !== cloudMutationAccountContextId) {
+    cloudMutationAccountContextId = accountId
+    cloudMutationAccountContextEpoch += 1
+  }
+  return { accountId, epoch: cloudMutationAccountContextEpoch }
+}
+
+function isCloudMutationAccountContextCurrent(context) {
+  const current = captureCloudMutationAccountContext()
+  return !!context && current.accountId === context.accountId && current.epoch === context.epoch
+}
+
+function staleAccountContextError() {
+  const error = new Error('account changed while cloud mutation was in flight')
+  error.code = 'STALE_ACCOUNT_CONTEXT'
+  return error
+}
+
+async function runAuthoritativeMutation(action, targetId, payload, invoke) {
+  const context = captureCloudMutationAccountContext()
+  const record = getOrCreateCloudMutation(action, targetId, payload)
+  updateCloudMutationRecord(record, {
+    attemptCount: Math.max(0, Number(record.attemptCount) || 0) + 1,
+    lastAttemptAt: Date.now(),
+    lastErrorCode: ''
+  })
+  let result
+  try {
+    result = await invoke(record.clientMutationId)
+  } catch (error) {
+    updateCloudMutationRecord(record, {
+      lastErrorCode: String(error && (error.code || error.errCode) || 'UNKNOWN').slice(0, 64)
+    })
+    throw error
+  }
+  if (result && result.rejected === true) {
+    updateCloudMutationRecord(record, {
+      status: 'terminal_rejected',
+      terminalReason: String(result.reason || 'REJECTED').slice(0, 64)
+    })
+  } else {
+    clearCloudMutationRecord(record)
+  }
+  if (!isCloudMutationAccountContextCurrent(context)) throw staleAccountContextError()
+  return result
+}
+
+function invokeCloudMutationRecord(record) {
+  const input = Object.assign({}, canonicalizeMutationPayload(record && record.payload || {}), {
+    clientMutationId: record && record.clientMutationId || ''
+  })
+  const action = String(record && record.action || '')
+  if (action === 'create_session') return cloudDataApi.createSession(input)
+  if (action === 'update_session') return cloudDataApi.updateSession(input)
+  if (action === 'finish_session') return cloudDataApi.finishSession(input)
+  if (action === 'create_hand') return cloudDataApi.createHand(input)
+  if (action === 'update_hand') return cloudDataApi.updateHand(input)
+  if (action === 'upsert_hand') return cloudDataApi.upsertHand(input)
+  if (action === 'delete_hand') return cloudDataApi.deleteHand(input)
+  if (action === 'delete_session') return cloudDataApi.deleteSession(input)
+  if (action === 'create_player_note') return cloudDataApi.createPlayerNote(input)
+  if (action === 'update_player_note') return cloudDataApi.updatePlayerNote(input)
+  if (action === 'delete_player_note') return cloudDataApi.deletePlayerNote(input)
+  const error = new Error('unsupported cloud mutation action')
+  error.code = 'UNSUPPORTED_MUTATION_ACTION'
+  throw error
+}
+
+function reconcileCloudMutationResult(record, result) {
+  const action = String(record && record.action || '')
+  const payload = record && record.payload || {}
+  if (['create_session', 'update_session'].includes(action) && result && result.session) {
+    mergeRemoteBusinessPatch({ sessions: [result.session] })
+    return
+  }
+  if (action === 'finish_session' && result && result.session) {
+    mergeRemoteBusinessPatch({
+      sessions: [result.session],
+      bankrollLogs: result.bankrollLog ? [result.bankrollLog] : []
+    })
+    return
+  }
+  if (['create_hand', 'update_hand', 'upsert_hand'].includes(action) && result && result.hand) {
+    mergeRemoteBusinessPatch({
+      sessions: result.session ? [result.session] : (result.sessions || []),
+      hands: [result.hand],
+      handActions: result.actions || []
+    })
+    return
+  }
+  if (action === 'delete_hand' && result && result.deleted) {
+    removeLocalBusinessDocs({ handId: payload.handId || record.targetId })
+    if (result.session) mergeRemoteBusinessPatch({ sessions: [result.session] })
+    return
+  }
+  if (action === 'delete_session' && result && result.deleted) {
+    removeLocalBusinessDocs({ sessionId: payload.sessionId || record.targetId, handIds: result.handIds || [] })
+    return
+  }
+  if (action === 'create_player_note' && result && result.playerNote) {
+    const localId = String(payload.payload && payload.payload._id || record.targetId || '').trim()
+    const canonicalId = String(result.playerNote._id || '').trim()
+    if (localId && canonicalId && localId !== canonicalId) {
+      const backup = store.exportBackup()
+      const local = (backup.playerNotes || []).find(note => note && note._id === localId) || payload.payload || {}
+      const canonical = Object.assign({}, local, result.playerNote, {
+        _id: canonicalId,
+        note: local.note != null ? local.note : result.playerNote.note,
+        leakTags: Array.isArray(local.leakTags) ? local.leakTags : result.playerNote.leakTags,
+        battleHandIds: Array.isArray(local.battleHandIds) ? local.battleHandIds : result.playerNote.battleHandIds
+      })
+      writeLocalDataPatch({
+        playerNotes: [canonical].concat((backup.playerNotes || []).filter(note => note && note._id !== localId && note._id !== canonicalId))
+      })
+      const records = loadCloudMutationOutbox()
+      let changed = false
+      records.forEach(item => {
+        if (!item || item.status !== 'pending' || item.accountId !== record.accountId ||
+          !['update_player_note', 'delete_player_note'].includes(item.action)) return
+        const itemPayload = Object.assign({}, item.payload || {})
+        if (String(itemPayload.noteId || '') !== localId && String(item.targetId || '') !== localId) return
+        itemPayload.noteId = canonicalId
+        item.payload = itemPayload
+        item.targetId = canonicalId
+        item.descriptor = mutationOutboxDescriptor(item.accountId, item.action, canonicalId, itemPayload)
+        changed = true
+      })
+      if (changed) saveCloudMutationOutbox(records)
+      clearStatsDataCache()
+      return
+    }
+    mergeRemoteBusinessPatch({ playerNotes: [result.playerNote] })
+    return
+  }
+  if (['update_player_note', 'delete_player_note'].includes(action) && result && result.playerNote) {
+    mergeRemoteBusinessPatch({ playerNotes: [result.playerNote] })
+  }
+}
+
+function drainCloudMutationOutbox() {
+  if (!canStartCloudTask() || !cloudUtils.canUseCloud()) return Promise.resolve({ attempted: 0, completed: 0 })
+  const accountId = getCurrentPlayerId()
+  if (!accountId) return Promise.resolve({ attempted: 0, completed: 0 })
+  if (cloudMutationDrainPromises[accountId]) return cloudMutationDrainPromises[accountId]
+  const accountContext = captureCloudMutationAccountContext()
+  const epoch = ++cloudMutationDrainEpoch
+  let task = null
+  task = (async () => {
+    const pending = loadCloudMutationOutbox()
+      .filter(record => record && record.status === 'pending' && record.accountId === accountId && record.payload)
+      .slice(0, CLOUD_MUTATION_DRAIN_LIMIT)
+    let completed = 0
+    for (const pendingRecord of pending) {
+      if (epoch !== cloudMutationDrainEpoch || !isCloudMutationAccountContextCurrent(accountContext)) break
+      const record = loadCloudMutationOutbox().find(item => item && item.status === 'pending' &&
+        item.accountId === accountId && item.clientMutationId === pendingRecord.clientMutationId)
+      if (!record || !record.payload) continue
+      updateCloudMutationRecord(record, {
+        attemptCount: Math.max(0, Number(record.attemptCount) || 0) + 1,
+        lastAttemptAt: Date.now(),
+        lastErrorCode: ''
+      })
+      try {
+        const result = await invokeCloudMutationRecord(record)
+        if (result && result.rejected === true) {
+          updateCloudMutationRecord(record, {
+            status: 'terminal_rejected',
+            terminalReason: String(result.reason || 'REJECTED').slice(0, 64)
+          })
+          break
+        }
+        if (epoch === cloudMutationDrainEpoch && isCloudMutationAccountContextCurrent(accountContext)) {
+          reconcileCloudMutationResult(record, result)
+        }
+        clearCloudMutationRecord(record)
+        completed += 1
+      } catch (error) {
+        updateCloudMutationRecord(record, {
+          lastErrorCode: String(error && (error.code || error.errCode) || 'UNKNOWN').slice(0, 64)
+        })
+        break
+      }
+    }
+    return { attempted: pending.length, completed }
+  })().finally(() => {
+    if (cloudMutationDrainPromises[accountId] === task) delete cloudMutationDrainPromises[accountId]
+  })
+  cloudMutationDrainPromises[accountId] = task
+  return task
+}
+
 function requirePlayerCardReceiptCloud() {
   if (!cloudUtils.canUseCloud() || !canStartCloudTask()) {
     const error = new Error('cloud player card receipt unavailable')
@@ -1640,13 +1930,16 @@ async function createPlayerNote(payload, options) {
   }
   const result = await getLocalAdapter().createPlayerNote(payload || {})
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
-    const cloudTask = cloudDataApi.createPlayerNote({
-      playerId: getCurrentPlayerId(),
-      clientMutationId: createClientMutationId('create_player_note', result._id),
-      payload: result
-    }).then(response => {
+    const mutationPayload = { playerId: getCurrentPlayerId(), payload: result }
+    const cloudTask = runAuthoritativeMutation('create_player_note', result._id, mutationPayload, clientMutationId =>
+      cloudDataApi.createPlayerNote(Object.assign({}, mutationPayload, { clientMutationId }))).then(response => {
       if (response && response.playerNote) {
-        mergeRemoteBusinessPatch({ playerNotes: [response.playerNote] })
+        reconcileCloudMutationResult({
+          accountId: getCurrentPlayerId(),
+          action: 'create_player_note',
+          targetId: result._id,
+          payload: mutationPayload
+        }, response)
         return response.playerNote
       }
       throw new Error('cloud create player note failed')
@@ -1672,11 +1965,9 @@ async function ensureFriendPlayerNote(snapshot) {
   const result = await adapter.ensureFriendPlayerNote(snapshot || {})
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
     try {
-      const response = await cloudDataApi.createPlayerNote({
-        playerId: getCurrentPlayerId(),
-        clientMutationId: createClientMutationId('ensure_friend_player_note', result.linkedFriendUserId),
-        payload: result
-      })
+      const mutationPayload = { playerId: getCurrentPlayerId(), payload: result }
+      const response = await runAuthoritativeMutation('create_player_note', result.linkedFriendUserId, mutationPayload, clientMutationId =>
+        cloudDataApi.createPlayerNote(Object.assign({}, mutationPayload, { clientMutationId })))
       if (response && response.playerNote) {
         mergeRemoteBusinessPatch({ playerNotes: [response.playerNote] })
         return adapter.reconcileFriendPlayerNote(response.playerNote) || response.playerNote
@@ -1693,12 +1984,9 @@ async function detachFriendPlayerNote(friendUserId) {
   const result = await getLocalAdapter().detachFriendPlayerNote(friendUserId)
   if (!result) return null
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
-    cloudDataApi.updatePlayerNote({
-      playerId: getCurrentPlayerId(),
-      clientMutationId: createClientMutationId('detach_friend_player_note', result._id),
-      noteId: result._id,
-      patch: result
-    }).then(response => {
+    const mutationPayload = { playerId: getCurrentPlayerId(), noteId: result._id, patch: result }
+    runAuthoritativeMutation('update_player_note', result._id, mutationPayload, clientMutationId =>
+      cloudDataApi.updatePlayerNote(Object.assign({}, mutationPayload, { clientMutationId }))).then(response => {
       if (response && response.playerNote) {
         mergeRemoteBusinessPatch({ playerNotes: [response.playerNote] })
       }
@@ -1719,12 +2007,9 @@ async function updatePlayerNote(noteId, patch, options) {
   }
   const result = await getLocalAdapter().updatePlayerNote(noteId, patch || {})
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
-    const cloudTask = cloudDataApi.updatePlayerNote({
-      playerId: getCurrentPlayerId(),
-      clientMutationId: createClientMutationId('update_player_note', noteId),
-      noteId,
-      patch: result
-    }).then(response => {
+    const mutationPayload = { playerId: getCurrentPlayerId(), noteId, patch: result }
+    const cloudTask = runAuthoritativeMutation('update_player_note', noteId, mutationPayload, clientMutationId =>
+      cloudDataApi.updatePlayerNote(Object.assign({}, mutationPayload, { clientMutationId }))).then(response => {
       if (response && response.playerNote) {
         mergeRemoteBusinessPatch({ playerNotes: [response.playerNote] })
         return response.playerNote
@@ -1750,11 +2035,9 @@ async function updatePlayerNote(noteId, patch, options) {
 async function deletePlayerNote(noteId) {
   const deleted = await getLocalAdapter().deletePlayerNote(noteId)
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
-    cloudDataApi.deletePlayerNote({
-      playerId: getCurrentPlayerId(),
-      clientMutationId: createClientMutationId('delete_player_note', noteId),
-      noteId
-    }).then(response => {
+    const mutationPayload = { playerId: getCurrentPlayerId(), noteId }
+    runAuthoritativeMutation('delete_player_note', noteId, mutationPayload, clientMutationId =>
+      cloudDataApi.deletePlayerNote(Object.assign({}, mutationPayload, { clientMutationId }))).then(response => {
       if (response && response.playerNote) {
         mergeRemoteBusinessPatch({ playerNotes: [response.playerNote] })
       }
@@ -1811,19 +2094,14 @@ async function importPbtPlayerNotesFromCsv(csvText) {
     const playerId = getCurrentPlayerId()
     const jobs = []
     plan.create.forEach(note => {
-      jobs.push(cloudDataApi.createPlayerNote({
-        playerId,
-        clientMutationId: createClientMutationId('import_pbt_player_note_create', note._id),
-        payload: note
-      }))
+      const mutationPayload = { playerId, payload: note }
+      jobs.push(runAuthoritativeMutation('create_player_note', note._id, mutationPayload, clientMutationId =>
+        cloudDataApi.createPlayerNote(Object.assign({}, mutationPayload, { clientMutationId }))))
     })
     plan.update.forEach(note => {
-      jobs.push(cloudDataApi.updatePlayerNote({
-        playerId,
-        clientMutationId: createClientMutationId('import_pbt_player_note_update', note._id),
-        noteId: note._id,
-        patch: note
-      }))
+      const mutationPayload = { playerId, noteId: note._id, patch: note }
+      jobs.push(runAuthoritativeMutation('update_player_note', note._id, mutationPayload, clientMutationId =>
+        cloudDataApi.updatePlayerNote(Object.assign({}, mutationPayload, { clientMutationId }))))
     })
     Promise.allSettled(jobs).then(results => {
       const syncedNotes = results
@@ -1949,11 +2227,9 @@ async function createSession(payload) {
   }
   requireCloudWriteAvailable()
   const playerId = getCurrentPlayerId()
-  const response = await cloudDataApi.createSession({
-    playerId,
-    clientMutationId: createClientMutationId('create_session'),
-    payload
-  })
+  const mutationPayload = { playerId, payload: payload || {} }
+  const response = await runAuthoritativeMutation('create_session', '', mutationPayload, clientMutationId =>
+    cloudDataApi.createSession(Object.assign({}, mutationPayload, { clientMutationId })))
   if (response && response.rejected) {
     throw new Error(response.reason || 'create session rejected')
   }
@@ -1966,12 +2242,9 @@ async function createSession(payload) {
 
 async function updateSession(sessionId, patch) {
   requireCloudWriteAvailable()
-  const response = await cloudDataApi.updateSession({
-    playerId: getCurrentPlayerId(),
-    clientMutationId: createClientMutationId('update_session', sessionId),
-    sessionId,
-    patch
-  })
+  const mutationPayload = { playerId: getCurrentPlayerId(), sessionId, patch: patch || {} }
+  const response = await runAuthoritativeMutation('update_session', sessionId, mutationPayload, clientMutationId =>
+    cloudDataApi.updateSession(Object.assign({}, mutationPayload, { clientMutationId })))
   if (response && response.rejected) {
     throw new Error(response.reason || 'update session rejected')
   }
@@ -1987,12 +2260,9 @@ async function finishSession(sessionId, endingChips) {
   const payload = typeof endingChips === 'object' && endingChips !== null
     ? endingChips
     : { cashOut: endingChips }
-  const response = await cloudDataApi.finishSession({
-    playerId: getCurrentPlayerId(),
-    clientMutationId: createClientMutationId('finish_session', sessionId),
-    sessionId,
-    payload
-  })
+  const mutationPayload = { playerId: getCurrentPlayerId(), sessionId, payload }
+  const response = await runAuthoritativeMutation('finish_session', sessionId, mutationPayload, clientMutationId =>
+    cloudDataApi.finishSession(Object.assign({}, mutationPayload, { clientMutationId })))
   if (response && response.rejected) {
     throw new Error(response.reason || 'finish session rejected')
   }
@@ -2109,11 +2379,11 @@ async function dispatchAiReminderSubscribeMessages(createdHand) {
 
 async function createHand(payload) {
   requireCloudWriteAvailable()
-  const response = await cloudDataApi.createHand({
-    playerId: getCurrentPlayerId(),
-    clientMutationId: createClientMutationId('create_hand'),
-    payload
-  })
+  const playerId = getCurrentPlayerId()
+  const mutationPayload = { playerId, payload: payload || {} }
+  const targetId = String(payload && payload._id || '')
+  const response = await runAuthoritativeMutation('create_hand', targetId, mutationPayload, clientMutationId =>
+    cloudDataApi.createHand(Object.assign({}, mutationPayload, { clientMutationId })))
   if (response && response.rejected) {
     throw new Error(response.reason || 'create hand rejected')
   }
@@ -2135,12 +2405,9 @@ async function createHand(payload) {
 async function updateHandInternal(handId, patch, options) {
   const config = options || {}
   requireCloudWriteAvailable()
-  const response = await cloudDataApi.updateHand({
-    playerId: getCurrentPlayerId(),
-    clientMutationId: createClientMutationId('update_hand', handId),
-    handId,
-    patch
-  })
+  const mutationPayload = { playerId: getCurrentPlayerId(), handId, patch: patch || {} }
+  const response = await runAuthoritativeMutation('update_hand', handId, mutationPayload, clientMutationId =>
+    cloudDataApi.updateHand(Object.assign({}, mutationPayload, { clientMutationId })))
   if (response && response.rejected) {
     if (config.waitForCloud && response.reason === 'HAND_NOT_FOUND') {
       const handForCloud = Object.assign({ _id: handId }, store.getHandById(handId) || {}, patch || {})
@@ -2203,11 +2470,9 @@ async function updateHandWithCloudSync(handId, patch, syncLabel) {
 
 async function deleteHand(handId) {
   requireCloudWriteAvailable()
-  const response = await cloudDataApi.deleteHand({
-    playerId: getCurrentPlayerId(),
-    clientMutationId: createClientMutationId('delete_hand', handId),
-    handId
-  })
+  const mutationPayload = { playerId: getCurrentPlayerId(), handId }
+  const response = await runAuthoritativeMutation('delete_hand', handId, mutationPayload, clientMutationId =>
+    cloudDataApi.deleteHand(Object.assign({}, mutationPayload, { clientMutationId })))
   if (response && response.rejected) {
     throw new Error(response.reason || 'delete hand rejected')
   }
@@ -2222,11 +2487,9 @@ async function deleteHand(handId) {
 
 async function deleteSession(sessionId) {
   requireCloudWriteAvailable()
-  const response = await cloudDataApi.deleteSession({
-    playerId: getCurrentPlayerId(),
-    clientMutationId: createClientMutationId('delete_session', sessionId),
-    sessionId
-  })
+  const mutationPayload = { playerId: getCurrentPlayerId(), sessionId }
+  const response = await runAuthoritativeMutation('delete_session', sessionId, mutationPayload, clientMutationId =>
+    cloudDataApi.deleteSession(Object.assign({}, mutationPayload, { clientMutationId })))
   if (response && response.rejected) {
     throw new Error(response.reason || 'delete session rejected')
   }
@@ -2333,6 +2596,12 @@ module.exports = {
     dispatchAiReminderSubscribeMessages,
     scheduleBusinessDataSync,
     syncBusinessDataNow,
+    canonicalizeMutationPayload,
+    mutationOutboxDescriptor,
+    loadCloudMutationOutbox,
+    runAuthoritativeMutation,
+    drainCloudMutationOutbox,
+    reconcileCloudMutationResult,
     hasRealBusinessData,
     getSessionSummaryReadiness
   }
