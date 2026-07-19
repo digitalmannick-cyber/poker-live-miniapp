@@ -16,6 +16,13 @@ function helpAndFeedbackMarkup() {
   return wxml.slice(start, nextSection < 0 ? wxml.length : nextSection)
 }
 
+function cssBlock(selector) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = wxss.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`))
+  assert.ok(match, `${selector} should exist`)
+  return match[1]
+}
+
 test('logged-in profile users can open native customer feedback chat', () => {
   const markup = helpAndFeedbackMarkup()
 
@@ -26,8 +33,20 @@ test('logged-in profile users can open native customer feedback chat', () => {
   assert.match(markup, />反馈问题、Bug 或功能建议<\/view>/)
 })
 
-test('native customer feedback button removes WeChat default button chrome', () => {
-  assert.match(wxss, /\.customer-feedback-button\s*\{[\s\S]*?width:\s*100%;[\s\S]*?margin:\s*0;[\s\S]*?padding:\s*18rpx 4rpx;[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/)
+test('native customer feedback matches the command-row flex layout', () => {
+  const button = cssBlock('.customer-feedback-button')
+  const arrow = cssBlock('.profile-command-page .customer-feedback-button .setting-arrow')
+
+  assert.match(button, /width:\s*100%/)
+  assert.match(button, /display:\s*flex/)
+  assert.match(button, /align-items:\s*center/)
+  assert.match(button, /justify-content:\s*space-between/)
+  assert.match(button, /gap:\s*20rpx/)
+  assert.match(button, /border:\s*0/)
+  assert.match(button, /background:\s*transparent/)
+  assert.doesNotMatch(button, /white-space:\s*nowrap/)
+  assert.match(arrow, /margin-left:\s*auto/)
+  assert.match(cssBlock('.setting-arrow'), /flex-shrink:\s*0/)
   assert.match(wxss, /\.customer-feedback-button::after\s*\{[\s\S]*?border:\s*none;/)
 })
 

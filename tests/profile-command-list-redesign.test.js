@@ -207,3 +207,16 @@ test('all command-list arrows use one chevron and a stable loading glyph', () =>
   assert.match(arrow, /align-items:\s*center/)
   assert.match(arrow, /justify-content:\s*center/)
 })
+
+test('hero stats use layered wine surfaces instead of black command panels', () => {
+  const shared = cssBlock('.profile-command-page .profile-hero-chip')
+  const hands = cssBlock('.profile-command-page .profile-hero-chip-hands')
+  const profit = cssBlock('.profile-command-page .profile-hero-chip-profit')
+
+  assert.doesNotMatch(shared, /var\(--profile-panel\)/)
+  assert.match(shared, /border-left:\s*6rpx solid rgba\(255, 255, 255, 0\.22\)/)
+  assert.match(hands, /linear-gradient\(135deg, rgba\(112, 20, 38, 0\.88\), rgba\(72, 8, 24, 0\.84\)\)/)
+  assert.match(profit, /linear-gradient\(135deg, rgba\(82, 14, 42, 0\.88\), rgba\(52, 7, 28, 0\.84\)\)/)
+  assert.doesNotMatch(hands, /#(?:000|000000)|rgba\(0,\s*0,\s*0/)
+  assert.doesNotMatch(profit, /#(?:000|000000)|rgba\(0,\s*0,\s*0/)
+})

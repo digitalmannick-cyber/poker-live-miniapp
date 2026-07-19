@@ -1366,6 +1366,10 @@
   line-height: normal;
   text-align: left;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
 }
 
 .customer-feedback-button::after {
@@ -1418,6 +1422,7 @@
   justify-content: center;
   background: rgba(255,255,255,0.05);
   border: 1rpx solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
 }
 
 .setting-block {
@@ -3155,9 +3160,17 @@
 .profile-command-page .profile-hero-chip {
   border-radius: 0;
   border: 0;
-  border-left: 6rpx solid var(--profile-red);
-  background: var(--profile-panel);
+  border-left: 6rpx solid rgba(255, 255, 255, 0.22);
+  background: rgba(92, 12, 32, 0.86);
   box-shadow: none;
+}
+
+.profile-command-page .profile-hero-chip-hands {
+  background: linear-gradient(135deg, rgba(112, 20, 38, 0.88), rgba(72, 8, 24, 0.84));
+}
+
+.profile-command-page .profile-hero-chip-profit {
+  background: linear-gradient(135deg, rgba(82, 14, 42, 0.88), rgba(52, 7, 28, 0.84));
 }
 
 .profile-command-page .profile-command-section {
@@ -3201,6 +3214,10 @@
 .profile-command-page .setting-arrow {
   color: rgba(255, 255, 255, 0.56);
   font-size: 34rpx;
+}
+
+.profile-command-page .customer-feedback-button .setting-arrow {
+  margin-left: auto;
 }
 
 .profile-command-page .segment-hit {
