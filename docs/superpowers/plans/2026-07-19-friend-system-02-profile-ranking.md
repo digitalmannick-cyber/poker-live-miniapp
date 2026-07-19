@@ -269,7 +269,7 @@ git commit -m "feat: reuse player detail for private friend notes"
 - Produces cloud action `sync_my_social_stats` and `ranking.buildDailyBuckets({ sessions, hands, timezoneOffsetMinutes })`。
 - Produces `socialService.scheduleMyStatsSync(playerId)`，五分钟内只触发一次。
 
-- [ ] **Step 1: 写有效时长与北京时间边界测试**
+- [x] **Step 1: 写有效时长与北京时间边界测试**
 
 ```js
 const result = ranking.buildDailyBuckets({
@@ -284,13 +284,13 @@ assert.equal(result[0].durationMinutes, 150)
 assert.equal(result[0].recordedHandCount, 1)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-stats-sync.test.js`
 
 Expected: FAIL because ranking module is missing。
 
-- [ ] **Step 3: 实现只读私有源和尽力同步**
+- [x] **Step 3: 实现只读私有源和尽力同步**
 
 ```js
 async function scheduleMyStatsSync(playerId) {
@@ -306,13 +306,13 @@ async function scheduleMyStatsSync(playerId) {
 
 在场次/手牌写入成功后调用该函数并 `.catch(logCloudBackgroundFailure)`，不得 `await` 它来决定核心写入是否成功。云函数使用当前 OpenID 与传入 `playerId` 读取本人私有数据，写入 `social_daily_stats`。
 
-- [ ] **Step 4: 验证同步与核心写入隔离**
+- [x] **Step 4: 验证同步与核心写入隔离**
 
 Run: `node --test tests/social-stats-sync.test.js tests/ai-reminder-cloud-write-flow.test.js`
 
 Expected: PASS；模拟社交同步拒绝时 `createHand` 和 `finishSession` 仍返回核心结果。
 
-- [ ] **Step 5: 提交统计日桶**
+- [x] **Step 5: 提交统计日桶**
 
 ```powershell
 git add cloudfunctions/poker_social/lib/ranking.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/index.js cloudfunctions/poker_social/app.js services/social-api.js services/social-service.js services/data-service.js tests/social-stats-sync.test.js
