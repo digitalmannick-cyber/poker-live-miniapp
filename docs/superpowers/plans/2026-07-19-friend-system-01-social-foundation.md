@@ -206,6 +206,8 @@ git commit -m "feat: add private social identity profile"
 - Create: `cloudfunctions/poker_social/lib/invite.js`
 - Create: `cloudfunctions/poker_social/lib/friendship.js`
 - Create: `cloudfunctions/poker_social/lib/idempotency.js`
+- Modify: `cloudfunctions/poker_social/lib/repository.js`
+- Modify: `cloudfunctions/poker_social/index.js`
 - Modify: `cloudfunctions/poker_social/app.js`
 - Modify: `services/social-service.js`
 - Test: `tests/social-friendship.test.js`
@@ -268,7 +270,7 @@ Expected: PASS；覆盖双方同时申请、重复接受、拒绝冷却、解除
 - [ ] **Step 5: 提交关系状态机**
 
 ```powershell
-git add cloudfunctions/poker_social/lib/invite.js cloudfunctions/poker_social/lib/friendship.js cloudfunctions/poker_social/lib/idempotency.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-friendship.test.js
+git add cloudfunctions/poker_social/lib/invite.js cloudfunctions/poker_social/lib/friendship.js cloudfunctions/poker_social/lib/idempotency.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/index.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-friendship.test.js
 git commit -m "feat: implement social friendship lifecycle"
 ```
 
