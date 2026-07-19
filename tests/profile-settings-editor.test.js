@@ -194,3 +194,18 @@ test('social setting requests never write back after profile page unload', async
   await saving
   assert.deepEqual(savingPage.data.socialSettings, { statsVisible: true, defaultShareScope: 'friends' })
 })
+
+test('unknown or failed social settings are read-only until a successful reload', async () => {
+  const page = installProfilePage()
+  let saveCalls = 0
+  socialProfileLoader = () => Promise.reject(new Error('network'))
+  socialSettingsSaver = patch => { saveCalls += 1; return Promise.resolve(patch) }
+
+  assert.equal(await page.loadSocialSettings(), null)
+  assert.equal(page.data.socialSettingsStatus, 'error')
+  assert.equal(await page.toggleSocialStatsVisible(), null)
+  assert.equal(await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'square' } } }), null)
+  assert.equal(await page.saveSocialSettings({ statsVisible: false, defaultShareScope: 'selected' }), null)
+  assert.equal(saveCalls, 0)
+  assert.deepEqual(page.data.socialSettings, { statsVisible: true, defaultShareScope: 'friends' }, 'unknown server privacy must not be overwritten by local defaults')
+})

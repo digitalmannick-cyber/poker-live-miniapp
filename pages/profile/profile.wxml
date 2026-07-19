@@ -165,7 +165,7 @@
             <view class="setting-title">好友统计可见</view>
             <view class="small muted">关闭后，好友主页将隐藏累计时长和手牌数，并退出本周、月度和累计排行榜。</view>
           </view>
-          <view class="social-switch-hit {{socialSettingsSaving || socialSettingsStatus === 'loading' ? 'disabled' : ''}}" bindtap="toggleSocialStatsVisible">
+          <view class="social-switch-hit {{socialSettingsSaving || socialSettingsStatus !== 'ready' ? 'disabled' : ''}}" bindtap="toggleSocialStatsVisible">
             <view class="social-switch {{socialSettings.statsVisible ? 'on' : ''}}"><view class="social-switch-dot"></view></view>
           </view>
         </view>
@@ -176,9 +176,9 @@
         <view class="setting-title">默认手牌发布范围</view>
         <view class="small muted social-setting-desc">指定好友只会默认进入选择器，不会永久保存好友名单。</view>
         <view class="social-scope-row">
-          <view class="social-scope-item {{socialSettings.defaultShareScope === 'square' ? 'active' : ''}} {{socialSettingsSaving || socialSettingsStatus === 'loading' ? 'disabled' : ''}}" data-scope="square" bindtap="selectDefaultShareScope">广场</view>
-          <view class="social-scope-item {{socialSettings.defaultShareScope === 'friends' ? 'active' : ''}} {{socialSettingsSaving || socialSettingsStatus === 'loading' ? 'disabled' : ''}}" data-scope="friends" bindtap="selectDefaultShareScope">全部好友</view>
-          <view class="social-scope-item {{socialSettings.defaultShareScope === 'selected' ? 'active' : ''}} {{socialSettingsSaving || socialSettingsStatus === 'loading' ? 'disabled' : ''}}" data-scope="selected" bindtap="selectDefaultShareScope">指定好友</view>
+          <view class="social-scope-item {{socialSettings.defaultShareScope === 'square' ? 'active' : ''}} {{socialSettingsSaving || socialSettingsStatus !== 'ready' ? 'disabled' : ''}}" data-scope="square" bindtap="selectDefaultShareScope">广场</view>
+          <view class="social-scope-item {{socialSettings.defaultShareScope === 'friends' ? 'active' : ''}} {{socialSettingsSaving || socialSettingsStatus !== 'ready' ? 'disabled' : ''}}" data-scope="friends" bindtap="selectDefaultShareScope">全部好友</view>
+          <view class="social-scope-item {{socialSettings.defaultShareScope === 'selected' ? 'active' : ''}} {{socialSettingsSaving || socialSettingsStatus !== 'ready' ? 'disabled' : ''}}" data-scope="selected" bindtap="selectDefaultShareScope">指定好友</view>
         </view>
       </view>
 

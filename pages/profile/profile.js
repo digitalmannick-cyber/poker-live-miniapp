@@ -396,8 +396,12 @@ Page({
     return 'social_settings_' + Date.now() + '_' + Math.floor(Math.random() * 1000000)
   },
 
+  canEditSocialSettings() {
+    return this._socialSettingsAttached !== false && this.data.socialSettingsStatus === 'ready' && !this.data.socialSettingsSaving
+  },
+
   async saveSocialSettings(nextSettings) {
-    if (this._socialSettingsAttached === false || this.data.socialSettingsSaving || this.data.socialSettingsStatus === 'loading') return null
+    if (!this.canEditSocialSettings()) return null
     const current = this.data.socialSettings || { statsVisible: true, defaultShareScope: 'friends' }
     const next = Object.assign({}, current, nextSettings || {})
     const sequence = (Number(this._socialSettingsSequence) || 0) + 1
@@ -429,13 +433,13 @@ Page({
   },
 
   toggleSocialStatsVisible() {
-    if (this.data.socialSettingsSaving || this.data.socialSettingsStatus === 'loading') return null
+    if (!this.canEditSocialSettings()) return null
     return this.saveSocialSettings({ statsVisible: this.data.socialSettings.statsVisible === false })
   },
 
   selectDefaultShareScope(event) {
     const scope = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.scope || '')
-    if (!['square', 'friends', 'selected'].includes(scope) || this.data.socialSettingsSaving || this.data.socialSettingsStatus === 'loading') return null
+    if (!['square', 'friends', 'selected'].includes(scope) || !this.canEditSocialSettings()) return null
     return this.saveSocialSettings({ defaultShareScope: scope })
   },
 
