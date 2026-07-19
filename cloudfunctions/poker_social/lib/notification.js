@@ -97,6 +97,10 @@ function emptyState(recipientId) {
   }
 }
 
+function unreadCountOf(state) {
+  return Math.max(0, Math.floor(Number(state && state.unreadCount) || 0))
+}
+
 function isEffectivelyRead(notification, state) {
   if (Number(notification && notification.readAt) > 0) return true
   const watermarkAt = Number(state && state.readThroughCreatedAt) || 0
@@ -141,12 +145,10 @@ async function toNotificationDto(row, state, options) {
     },
     targetType,
     targetId,
-    target: { type: targetType, id: targetId },
     actionState: String(row && row.actionState || ''),
     aggregateCount: Math.max(1, Math.floor(Number(row && row.aggregateCount) || 1)),
     read: isEffectivelyRead(row, state),
-    createdAt: Math.max(0, Number(row && row.createdAt) || 0),
-    latestAt: Math.max(0, Number(row && row.latestAt) || 0)
+    createdAt: Math.max(0, Number(row && row.createdAt) || 0)
   }
 }
 
@@ -319,7 +321,8 @@ function createNotificationHandlers(repository, options) {
       const tail = pageRows[pageRows.length - 1]
       return {
         items,
-        nextCursor: hasMore && tail ? encodeCursor({ createdAt: tail.createdAt, id: tail._id }) : null
+        nextCursor: hasMore && tail ? encodeCursor({ createdAt: tail.createdAt, id: tail._id }) : null,
+        unreadCount: unreadCountOf(state)
       }
     },
 
@@ -331,15 +334,17 @@ function createNotificationHandlers(repository, options) {
         if (!row || row.recipientId !== actorUser._id) throw socialError('FORBIDDEN', 'not allowed')
         const stateId = stateDocumentId(actorUser._id)
         const state = await store.get(COLLECTIONS.STATE, stateId) || emptyState(actorUser._id)
+        let unreadCount = unreadCountOf(state)
         if (!isEffectivelyRead(row, state)) {
           const at = Number(now()) || Date.now()
+          unreadCount = Math.max(0, unreadCount - 1)
           await store.set(COLLECTIONS.NOTIFICATIONS, row._id, Object.assign({}, row, { readAt: at }))
           await store.set(COLLECTIONS.STATE, stateId, Object.assign({}, state, {
-            unreadCount: Math.max(0, Math.floor(Number(state.unreadCount) || 0) - 1),
+            unreadCount,
             updatedAt: at
           }))
         }
-        return { notificationId: row._id, read: true }
+        return { notificationId: row._id, read: true, unreadCount }
       })
     },
 
@@ -362,7 +367,7 @@ function createNotificationHandlers(repository, options) {
     async get_unread_count(event, actor) {
       const actorUser = await findActorUser(repository, actor)
       const state = await repository.get(COLLECTIONS.STATE, stateDocumentId(actorUser._id))
-      return { unreadCount: Math.max(0, Math.floor(Number(state && state.unreadCount) || 0)) }
+      return { unreadCount: unreadCountOf(state) }
     }
   }
 }

@@ -3,7 +3,7 @@ const { socialError } = require('./social-error')
 const { deriveInviteToken, buildInviteRecord, getInviteId, assertActiveInvite } = require('./invite')
 const { MUTATION_COLLECTION, mutationRecordId, runIdempotent, requireClientMutationId } = require('./idempotency')
 const { toProfileDto } = require('./profile')
-const { createNotificationWriter } = require('./notification')
+const { COLLECTIONS: NOTIFICATION_COLLECTIONS, stateDocumentId, createNotificationWriter } = require('./notification')
 
 const USER_COLLECTION = 'social_users'
 const FRIENDSHIP_COLLECTION = 'social_friendships'
@@ -94,6 +94,14 @@ async function publicUserDto(user, avatarUrl) {
 
 function friendshipResult(record) {
   return { friendshipId: record._id, status: record.status, cooldownUntil: Number(record.cooldownUntil) || 0 }
+}
+
+async function friendRequestActionResult(store, actorUserId, record, actionState) {
+  const state = await store.get(NOTIFICATION_COLLECTIONS.STATE, stateDocumentId(actorUserId))
+  return Object.assign(friendshipResult(record), {
+    actionState,
+    unreadCount: Math.max(0, Math.floor(Number(state && state.unreadCount) || 0))
+  })
 }
 
 function profileSnapshot(user) {
@@ -288,7 +296,7 @@ function createFriendshipHandlers(repository, options) {
             at: Number(next.acceptedAt) || now()
           })
         }
-        return friendshipResult(next)
+        return friendRequestActionResult(store, actorUser._id, next, 'accepted')
       })
     },
 
@@ -309,7 +317,7 @@ function createFriendshipHandlers(repository, options) {
             actionState: 'rejected'
           })
         }
-        return friendshipResult(next)
+        return friendRequestActionResult(store, actorUser._id, next, 'rejected')
       })
     },
 

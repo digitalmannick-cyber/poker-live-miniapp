@@ -96,9 +96,16 @@ test('notification DTO is a safe navigation hint and list uses stable cursor pag
   assert.equal(second.nextCursor, null)
   assert.equal(new Set(first.items.concat(second.items).map(row => row.notificationId)).size, 3)
   const dto = first.items.concat(second.items).find(row => row.kind === 'friend_request')
+  assert.deepEqual(Object.keys(dto).sort(), [
+    'actionState', 'actor', 'aggregateCount', 'createdAt', 'kind', 'notificationId',
+    'read', 'targetId', 'targetType'
+  ])
+  assert.equal(first.unreadCount, 3)
+  assert.equal(second.unreadCount, 3)
   assert.deepEqual(dto.actor, { socialUserId: 'su_a', nickname: 'Alice', avatarUrl: 'https://temp.example/su_a', avatarText: 'A' })
   assert.equal(dto.actionState, 'pending')
-  assert.deepEqual(dto.target, { type: 'friendship', id: 'target_0' })
+  assert.equal(dto.targetType, 'friendship')
+  assert.equal(dto.targetId, 'target_0')
   assert.equal(dto.read, false)
   for (const forbidden of ['recipientId', 'sourceEventId', 'avatarFileId', 'ownerOpenId', '_openid', 'accessible']) {
     assert.equal(JSON.stringify(first).includes(forbidden), false)
@@ -120,8 +127,10 @@ test('individual and all-read mutations use an authoritative watermark and exact
   }))
   const handlers = createNotificationHandlers(repository, { now: () => now })
   assert.deepEqual(await handlers.get_unread_count({}, { ownerOpenId: 'openid-b' }), { unreadCount: 2 })
-  await handlers.mark_notification_read({ notificationId: first._id, clientMutationId: 'read-one' }, { ownerOpenId: 'openid-b' })
-  await handlers.mark_notification_read({ notificationId: first._id, clientMutationId: 'read-one-again' }, { ownerOpenId: 'openid-b' })
+  const marked = await handlers.mark_notification_read({ notificationId: first._id, clientMutationId: 'read-one' }, { ownerOpenId: 'openid-b' })
+  assert.deepEqual(marked, { notificationId: first._id, read: true, unreadCount: 1 })
+  const markedAgain = await handlers.mark_notification_read({ notificationId: first._id, clientMutationId: 'read-one-again' }, { ownerOpenId: 'openid-b' })
+  assert.deepEqual(markedAgain, { notificationId: first._id, read: true, unreadCount: 1 })
   assert.deepEqual(await handlers.get_unread_count({}, { ownerOpenId: 'openid-b' }), { unreadCount: 1 })
   await assert.rejects(
     handlers.mark_notification_read({ notificationId: first._id, clientMutationId: 'cross-read' }, { ownerOpenId: 'openid-a' }),
@@ -268,16 +277,32 @@ test('friend request, acceptance, rejection actionState, and card share notifica
   await friendship.send_friend_request({ token: invite.token, clientMutationId: 'request-b-retry-new-id' }, { ownerOpenId: 'openid-b' })
   assert.equal(repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_request').length, 1)
   now = 2_000
-  await friendship.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'accept-a' }, { ownerOpenId: 'openid-a' })
+  const [accepted, acceptedReplay] = await Promise.all([
+    friendship.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'accept-a' }, { ownerOpenId: 'openid-a' }),
+    friendship.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'accept-a' }, { ownerOpenId: 'openid-a' })
+  ])
+  assert.deepEqual(acceptedReplay, accepted)
+  assert.equal(accepted.actionState, 'accepted')
+  assert.equal(accepted.unreadCount, 1)
+  assert.equal(accepted.unreadCount, repository.get(COLLECTIONS.STATE, stateDocumentId('su_a')).unreadCount)
   const requestNotification = repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_request')[0]
   assert.equal(requestNotification.actionState, 'accepted')
   assert.equal(repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_accepted').length, 1)
-  await friendship.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'accept-a-new-id' }, { ownerOpenId: 'openid-a' })
+  const acceptedAgain = await friendship.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'accept-a-new-id' }, { ownerOpenId: 'openid-a' })
+  assert.equal(acceptedAgain.actionState, 'accepted')
+  assert.equal(acceptedAgain.unreadCount, repository.get(COLLECTIONS.STATE, stateDocumentId('su_a')).unreadCount)
   assert.equal(repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_accepted').length, 1)
 
   const inviteB = await friendship.create_invite({ clientMutationId: 'invite-b' }, { ownerOpenId: 'openid-b' })
   const pendingFromC = await friendship.send_friend_request({ token: inviteB.token, clientMutationId: 'request-c' }, { ownerOpenId: 'openid-c' })
-  await friendship.reject_friend_request({ friendshipId: pendingFromC.friendshipId, clientMutationId: 'reject-b' }, { ownerOpenId: 'openid-b' })
+  const rejected = await friendship.reject_friend_request({ friendshipId: pendingFromC.friendshipId, clientMutationId: 'reject-b' }, { ownerOpenId: 'openid-b' })
+  assert.equal(rejected.actionState, 'rejected')
+  assert.equal(rejected.unreadCount, 2)
+  assert.equal(rejected.unreadCount, repository.get(COLLECTIONS.STATE, stateDocumentId('su_b')).unreadCount)
+  assert.deepEqual(
+    await friendship.reject_friend_request({ friendshipId: pendingFromC.friendshipId, clientMutationId: 'reject-b' }, { ownerOpenId: 'openid-b' }),
+    rejected
+  )
   const rejectedNotification = repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_request' && row.targetId === pendingFromC.friendshipId)[0]
   assert.equal(rejectedNotification.actionState, 'rejected')
 
