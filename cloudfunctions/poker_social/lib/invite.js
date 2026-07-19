@@ -2,10 +2,11 @@ const crypto = require('crypto')
 const { socialError } = require('./social-error')
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const MIN_TOKEN_SECRET_BYTES = 32
 
 function deriveInviteToken(secret, actorId, action, clientMutationId) {
   const key = String(secret || '')
-  if (!key) throw socialError('INVITE_SECRET_UNAVAILABLE', 'invite secret unavailable')
+  if (Buffer.byteLength(key, 'utf8') < MIN_TOKEN_SECRET_BYTES) throw socialError('INVITE_SECRET_UNAVAILABLE', 'invite secret unavailable')
   return crypto.createHmac('sha256', key)
     .update([String(actorId || ''), String(action || ''), String(clientMutationId || '')].join(':'))
     .digest()
@@ -44,4 +45,4 @@ function assertActiveInvite(record, nowMs) {
   return record
 }
 
-module.exports = { INVITE_TTL_MS, deriveInviteToken, digestToken, buildInviteRecord, getInviteId, assertActiveInvite }
+module.exports = { INVITE_TTL_MS, MIN_TOKEN_SECRET_BYTES, deriveInviteToken, digestToken, buildInviteRecord, getInviteId, assertActiveInvite }

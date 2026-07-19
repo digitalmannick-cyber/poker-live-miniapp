@@ -257,9 +257,9 @@ function buildFriendshipRecord(leftUserId, rightUserId, requesterId, nowMs) {
 }
 ```
 
-好友邀请码使用 `crypto.randomBytes(16).toString('base64url')` 生成 22 字符代码，集合只保存 `sha256(code)`；有效期固定 7 天。`create_invite_qr` 调用注入的 `qrCode.getUnlimited({ scene: code, page: 'pages/social-invite/social-invite' })`，将返回图片上传到临时云文件并只向客户端返回展示 URL。事务通过 repository 的 `runTransaction(callback)` 完成。同一 `clientMutationId` 返回第一次保存的结果。
+好友邀请码使用最少 32 随机字节的云函数环境变量 `SOCIAL_INVITE_TOKEN_SECRET`，以 HMAC-SHA256 由邀请人、动作和 `clientMutationId` 派生 22 字符代码，集合只保存 `sha256(code)`；有效期固定 7 天，密钥缺失或不足 32 字节时失败关闭。`create_invite_qr` 调用注入的 `qrCode.getUnlimited({ scene: code, page: 'pages/social-invite/social-invite' })`；事务只保存稳定邀请摘要/云路径，提交后才上传图片并返回每次可重新签发的临时展示 URL。事务通过 repository 的 `runTransaction(callback)` 完成。
 
-`list_friends` 分别查询 `userA=current` 和 `userB=current` 的 accepted 记录后合并分页，不对 `userIds` 数组做全表扫描。
+`list_friends` 分别查询 `userA=current` 和 `userB=current` 的 accepted 记录后按 `acceptedAt DESC, _id ASC` 合并分页，不对 `userIds` 数组做全表扫描；offset 最大 1000，超过时公开返回 `INVALID_PAGINATION`，不得静默截断。两侧查询需要索引 `(userA ASC, status ASC, acceptedAt DESC, _id ASC)` 与 `(userB ASC, status ASC, acceptedAt DESC, _id ASC)`。
 
 - [ ] **Step 4: 运行好友关系测试**
 

@@ -217,7 +217,7 @@ poker_social/
 
 ### 6.3 `social_invites`
 
-保存 16 字节安全随机数生成的 22 字符 base64url 邀请码的 SHA-256 摘要，不保存可直接使用的明文邀请码。该长度能够直接放入小程序码 `scene`，同时提供 128 位随机强度。字段包括邀请人、用途、过期时间、撤销状态和使用次数。打开邀请只获得发起申请的能力，不能直接成为好友。邀请有效期为 7 天。
+好友邀请码由云函数环境变量 `SOCIAL_INVITE_TOKEN_SECRET`（最少 32 个随机字节）与邀请人、动作、`clientMutationId` 通过 HMAC-SHA256 派生为 22 字符 base64url 代码。数据库只保存其 SHA-256 摘要，不保存可直接使用的明文邀请码或可逆值；密钥缺失或不足 32 字节时创建邀请必须失败关闭。该长度能够直接放入小程序码 `scene`。字段包括邀请人、用途、过期时间、撤销状态和使用次数。打开邀请只获得发起申请的能力，不能直接成为好友。邀请有效期为 7 天。
 
 ### 6.4 `social_daily_stats`
 
@@ -317,6 +317,8 @@ sequenceDiagram
 ```
 
 拒绝或解除后写入 `cooldownUntil = now + 7 days`。接受、拒绝和解除都根据当前状态幂等返回。
+
+`create_invite_qr` 的幂等对象是稳定的邀请代码、邀请摘要和 `cloudPath`；小程序码生成与云文件上传在数据库事务提交后执行。`qrCodeUrl` 是每次调用都可重新签发的临时展示 URL，不承诺重试后字面相同。
 
 ### 7.2 同步社交统计
 
@@ -457,8 +459,8 @@ playerNoteId, leakTags, note, battleHandIds
 
 ### 9.2 分享令牌
 
-- 好友邀请码使用 16 字节密码学安全随机数并编码为 22 字符 base64url，路径或小程序码 `scene` 只携带明文邀请码。
-- 数据库仅保存摘要。
+- 好友邀请码使用至少 32 个随机字节的云函数环境变量密钥，通过 HMAC-SHA256 派生为 22 字符 base64url；路径或小程序码 `scene` 只携带派生后的明文邀请码。
+- 数据库仅保存摘要，密钥不进入小程序包、仓库或客户端响应；密钥缺失或不足 32 字节时创建邀请失败关闭。
 - 好友邀请令牌 7 天有效；玩家名片令牌与唯一接收人和 7 天有效期绑定。
 - 微信卡片被转发后，名片仍只有指定接收人能够打开。
 
@@ -480,7 +482,7 @@ playerNoteId, leakTags, note, battleHandIds
 - 动态、好友、消息和评论默认每页 20 条。
 - 排行榜只返回 Top 10 与可选 `myRank`，不返回全量好友排名。
 - 指定好友发布最多选择 50 人，避免文档和权限判断无限增长。
-- 动态按 `status + createdAt` 建索引；评论按 `shareId + status + createdAt` 建索引；通知按 `recipientId + read + createdAt` 建索引；日统计按 `socialUserId + dateKey` 建索引；好友关系分别按 `userA + status` 和 `userB + status` 建索引。
+- 动态按 `status + createdAt` 建索引；评论按 `shareId + status + createdAt` 建索引；通知按 `recipientId + read + createdAt` 建索引；日统计按 `socialUserId + dateKey` 建索引；好友关系必须分别建立与查询排序完全匹配的复合索引：`(userA ASC, status ASC, acceptedAt DESC, _id ASC)` 和 `(userB ASC, status ASC, acceptedAt DESC, _id ASC)`。部署到测试环境时必须验证两条 `list_friends` 定向查询命中对应索引。
 - 好友列表不逐条请求统计；`list_friends` 服务端批量装配公开资料和允许的统计摘要。
 
 ## 12. 测试设计

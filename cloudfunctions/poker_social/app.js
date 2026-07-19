@@ -27,7 +27,8 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   INVALID_FRIENDSHIP_STATE: 'invalid friendship state',
   SOCIAL_USER_NOT_FOUND: 'social user not found',
   QR_UNAVAILABLE: 'qr unavailable',
-  INVITE_SECRET_UNAVAILABLE: 'invite unavailable'
+  INVITE_SECRET_UNAVAILABLE: 'invite unavailable',
+  INVALID_PAGINATION: 'invalid pagination'
 })
 
 function publicError(error) {

@@ -8,6 +8,7 @@ const USER_COLLECTION = 'social_users'
 const FRIENDSHIP_COLLECTION = 'social_friendships'
 const INVITE_COLLECTION = 'social_invites'
 const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000
+const MAX_FRIEND_OFFSET = 1000
 
 function orderedPair(leftUserId, rightUserId) {
   const pair = [String(leftUserId || ''), String(rightUserId || '')].sort()
@@ -235,6 +236,7 @@ function createFriendshipHandlers(repository, options) {
     async list_friends(event, actor) {
       const actorUser = await findActorUser(repository, actor)
       const offset = Math.max(0, Number(event && event.offset) || 0)
+      if (offset > MAX_FRIEND_OFFSET) throw socialError('INVALID_PAGINATION', 'invalid pagination')
       const limit = Math.min(50, Math.max(1, Number(event && event.limit) || 20))
       const page = typeof repository.listAcceptedFriendships === 'function'
         ? await repository.listAcceptedFriendships(actorUser._id, { offset, limit })
@@ -254,4 +256,4 @@ function createFriendshipHandlers(repository, options) {
   }
 }
 
-module.exports = { COOLDOWN_MS, getPairId, transition, buildFriendshipRecord, createFriendshipHandlers }
+module.exports = { COOLDOWN_MS, MAX_FRIEND_OFFSET, getPairId, transition, buildFriendshipRecord, createFriendshipHandlers }
