@@ -39,7 +39,7 @@
 - Test helper: `createMemorySocialRepository(seed)`，提供 `get(collection, id)`、`set(collection, id, value)`、`where(collection, predicate)`、`runTransaction(callback)`。
 - Response: `{ code: 0, data, requestId }` or `{ code: string, message: string, requestId }`。
 
-- [ ] **Step 1: 写客户端调用失败测试**
+- [x] **Step 1: 写客户端调用失败测试**
 
 ```js
 test('callSocialFunction sends action to poker_social and maps cloud errors', async () => {
@@ -51,13 +51,13 @@ test('callSocialFunction sends action to poker_social and maps cloud errors', as
 })
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-api.test.js`
 
 Expected: FAIL with `Cannot find module '../services/social-api'`。
 
-- [ ] **Step 3: 实现最小 API 和可注入路由**
+- [x] **Step 3: 实现最小 API 和可注入路由**
 
 ```js
 // services/social-api.js
@@ -121,13 +121,13 @@ function createMemorySocialRepository(seed) {
 module.exports = { createMemorySocialRepository }
 ```
 
-- [ ] **Step 4: 验证路由和 API**
+- [x] **Step 4: 验证路由和 API**
 
 Run: `node --test tests/social-api.test.js tests/social-cloud-routing.test.js`
 
 Expected: PASS；测试同时断言返回对象不包含 `ownerOpenId` 和 `_openid`。
 
-- [ ] **Step 5: 提交任务文件**
+- [x] **Step 5: 提交任务文件**
 
 ```powershell
 git add cloudfunctions/poker_social services/social-api.js utils/social-mutation.js tests/helpers/social-fixture.js tests/social-api.test.js tests/social-cloud-routing.test.js
