@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { socialError } = require('./social-error')
+const { runIdempotent } = require('./idempotency')
 
 const PROFILE_COLLECTION = 'social_users'
 const SHARE_SCOPES = new Set(['square', 'friends', 'selected'])
@@ -73,6 +74,26 @@ function createProfileHandlers(repository, options) {
       const record = await repository.find(PROFILE_COLLECTION, { ownerOpenId: actor.ownerOpenId })
       if (!record) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
       return getDto(record)
+    },
+
+    async update_social_settings(event, actor) {
+      const record = await repository.find(PROFILE_COLLECTION, { ownerOpenId: actor.ownerOpenId })
+      if (!record) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
+      if (typeof event.statsVisible !== 'boolean' || !SHARE_SCOPES.has(event.defaultShareScope)) {
+        throw socialError('INVALID_SOCIAL_SETTINGS', 'invalid social settings')
+      }
+      return runIdempotent(repository, record._id, 'update_social_settings', event, async store => {
+        if (typeof store.patchSocialSettings !== 'function') throw new Error('social repository settings support unavailable')
+        const updated = await store.patchSocialSettings(record._id, {
+          statsVisible: event.statsVisible,
+          defaultShareScope: event.defaultShareScope,
+          updatedAt: Date.now()
+        })
+        return {
+          statsVisible: updated.statsVisible !== false,
+          defaultShareScope: SHARE_SCOPES.has(updated.defaultShareScope) ? updated.defaultShareScope : 'friends'
+        }
+      })
     }
   }
 }

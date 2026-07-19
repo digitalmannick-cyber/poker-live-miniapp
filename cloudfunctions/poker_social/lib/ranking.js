@@ -133,9 +133,109 @@ function calculateTitle(totalDurationMinutes) {
   return '初来乍到'
 }
 
+const RANGE_KEYS = new Set(['week', 'month', 'all'])
+
+function normalizeRangeKey(value) {
+  const key = String(value || 'week').trim()
+  if (!RANGE_KEYS.has(key)) throw socialError('INVALID_RANKING_RANGE', 'invalid ranking range')
+  return key
+}
+
+function rangeStartDateKey(rangeKey, nowTimestamp) {
+  const key = normalizeRangeKey(rangeKey)
+  if (key === 'all') return ''
+  const timestamp = Number(nowTimestamp)
+  const now = Number.isFinite(timestamp) ? timestamp : Date.now()
+  const local = new Date(now + BEIJING_OFFSET_MINUTES * 60000)
+  if (key === 'month') {
+    return String(local.getUTCFullYear()) + String(local.getUTCMonth() + 1).padStart(2, '0') + '01'
+  }
+  const mondayDelta = (local.getUTCDay() + 6) % 7
+  const monday = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() - mondayDelta))
+  return String(monday.getUTCFullYear()) + String(monday.getUTCMonth() + 1).padStart(2, '0') + String(monday.getUTCDate()).padStart(2, '0')
+}
+
+function aggregateDailyStats(dailyRows, socialUserIds, rangeKey, nowTimestamp) {
+  const ids = Array.from(new Set((socialUserIds || []).map(value => String(value || '')).filter(Boolean)))
+  const startDateKey = rangeStartDateKey(rangeKey, nowTimestamp)
+  const totals = new Map(ids.map(id => [id, { socialUserId: id, durationMinutes: 0, recordedHandCount: 0 }]))
+  ;(Array.isArray(dailyRows) ? dailyRows : []).forEach(row => {
+    const id = String(row && row.socialUserId || '')
+    const dateKey = String(row && row.dateKey || '')
+    const total = totals.get(id)
+    if (!total || !/^\d{8}$/.test(dateKey) || (startDateKey && dateKey < startDateKey)) return
+    total.durationMinutes += Math.max(0, Math.floor(Number(row.durationMinutes) || 0))
+    total.recordedHandCount += Math.max(0, Math.floor(Number(row.recordedHandCount) || 0))
+  })
+  return ids.map(id => totals.get(id))
+}
+
+function rankingDto(row, rank) {
+  const source = row || {}
+  return {
+    socialUserId: String(source.socialUserId || ''),
+    nickname: String(source.nickname || ''),
+    avatarUrl: String(source.avatarUrl || ''),
+    avatarText: String(source.avatarText || String(source.nickname || '').slice(0, 1)),
+    title: String(source.title || ''),
+    durationMinutes: Math.max(0, Math.floor(Number(source.durationMinutes) || 0)),
+    recordedHandCount: Math.max(0, Math.floor(Number(source.recordedHandCount) || 0)),
+    rank
+  }
+}
+
+function rankRows(rows, viewerId) {
+  const sorted = (Array.isArray(rows) ? rows : []).slice().sort((left, right) => {
+    return (Number(right.durationMinutes) || 0) - (Number(left.durationMinutes) || 0) ||
+      String(left.socialUserId || '').localeCompare(String(right.socialUserId || ''))
+  })
+  let previousMinutes = null
+  let previousRank = 0
+  const ranked = sorted.map((row, index) => {
+    const minutes = Math.max(0, Math.floor(Number(row.durationMinutes) || 0))
+    const rank = minutes === previousMinutes ? previousRank : index + 1
+    previousMinutes = minutes
+    previousRank = rank
+    return rankingDto(row, rank)
+  })
+  const top10 = ranked.slice(0, 10)
+  const viewer = ranked.find(row => row.socialUserId === String(viewerId || '')) || null
+  return {
+    top10,
+    myRank: viewer && !top10.some(row => row.socialUserId === viewer.socialUserId) ? viewer : null
+  }
+}
+
 function createRankingHandlers(repository, options) {
   const config = options || {}
   const timezoneOffsetMinutes = Number(config.timezoneOffsetMinutes) || BEIJING_OFFSET_MINUTES
+  const now = typeof config.now === 'function' ? config.now : Date.now
+
+  async function listAcceptedFriendships(socialUserId) {
+    const rows = []
+    let offset = 0
+    do {
+      const page = await repository.listAcceptedFriendships(socialUserId, { offset, limit: 50 })
+      rows.push.apply(rows, Array.isArray(page && page.items) ? page.items : [])
+      offset = page && page.nextOffset != null ? Number(page.nextOffset) : -1
+    } while (Number.isFinite(offset) && offset >= 0)
+    return rows
+  }
+
+  async function rankingProfile(record) {
+    const profile = record && record.profile || {}
+    const nickname = String(profile.nickname || '')
+    const avatarUrl = profile.avatarFileId && typeof config.avatarUrl === 'function'
+      ? await config.avatarUrl(profile.avatarFileId)
+      : ''
+    return {
+      socialUserId: String(record && record._id || ''),
+      nickname,
+      avatarUrl,
+      avatarText: String(profile.avatarText || nickname.slice(0, 1)),
+      title: String(record && record.title || '初来乍到')
+    }
+  }
   return {
     async sync_my_social_stats(event, actor) {
       const user = await repository.find(USER_COLLECTION, { ownerOpenId: actor.ownerOpenId })
@@ -162,8 +262,42 @@ function createRankingHandlers(repository, options) {
         updatedAt: Date.now()
       })
       return { title, totalDurationMinutes, totalRecordedHandCount, syncedDayCount: buckets.length }
+    },
+
+    async list_ranking(event, actor) {
+      const viewer = await repository.find(USER_COLLECTION, { ownerOpenId: actor.ownerOpenId })
+      if (!viewer) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
+      if (typeof repository.listAcceptedFriendships !== 'function' || typeof repository.listDailyStats !== 'function') {
+        throw new Error('social repository ranking support unavailable')
+      }
+      const rangeKey = normalizeRangeKey(event && event.rangeKey)
+      const friendships = await listAcceptedFriendships(viewer._id)
+      const candidateIds = Array.from(new Set([viewer._id].concat(friendships.map(row => {
+        if (row.userA === viewer._id) return row.userB
+        if (row.userB === viewer._id) return row.userA
+        return ''
+      })).filter(Boolean)))
+      const users = (await Promise.all(candidateIds.map(id => repository.get(USER_COLLECTION, id))))
+        .filter(user => user && user.statsVisible !== false && candidateIds.includes(user._id))
+      const visibleIds = users.map(user => user._id)
+      const dailyRows = await repository.listDailyStats(visibleIds)
+      const totals = aggregateDailyStats(dailyRows, visibleIds, rangeKey, now())
+      const profiles = await Promise.all(users.map(rankingProfile))
+      const profileById = new Map(profiles.map(profile => [profile.socialUserId, profile]))
+      return rankRows(totals.map(total => Object.assign({}, profileById.get(total.socialUserId), total)), viewer._id)
     }
   }
 }
 
-module.exports = { BEIJING_OFFSET_MINUTES, normalizePlayerId, parseTime, buildDailyBuckets, calculateTitle, createRankingHandlers }
+module.exports = {
+  BEIJING_OFFSET_MINUTES,
+  normalizePlayerId,
+  parseTime,
+  buildDailyBuckets,
+  calculateTitle,
+  normalizeRangeKey,
+  rangeStartDateKey,
+  aggregateDailyStats,
+  rankRows,
+  createRankingHandlers
+}

@@ -30,7 +30,9 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   SOCIAL_USER_NOT_FOUND: 'social user not found',
   QR_UNAVAILABLE: 'qr unavailable',
   INVITE_SECRET_UNAVAILABLE: 'invite unavailable',
-  INVALID_PAGINATION: 'invalid pagination'
+  INVALID_PAGINATION: 'invalid pagination',
+  INVALID_RANKING_RANGE: 'invalid ranking range',
+  INVALID_SOCIAL_SETTINGS: 'invalid social settings'
 })
 
 function publicError(error) {
@@ -51,7 +53,7 @@ function createSocialApp(deps) {
     ? createFriendshipHandlers(config.repository, Object.assign({}, config.friendship || {}, { avatarUrl: config.avatarUrl }))
     : {}
   const rankingHandlers = config.repository
-    ? createRankingHandlers(config.repository, config.ranking || {})
+    ? createRankingHandlers(config.repository, Object.assign({}, config.ranking || {}, { avatarUrl: config.avatarUrl || config.ranking && config.ranking.avatarUrl }))
     : {}
   const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'

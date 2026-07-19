@@ -73,6 +73,15 @@ function getFriendDetail(friendUserId) {
   return callSocialFunction('get_friend_detail', { friendUserId: String(friendUserId || '').trim() })
 }
 
+function listRanking(rangeKey) {
+  const key = String(rangeKey && rangeKey.rangeKey || rangeKey || 'week').trim()
+  return callSocialFunction('list_ranking', { rangeKey: key })
+}
+
+function updateSocialSettings(input) {
+  return write('update_social_settings', input)
+}
+
 module.exports = {
   initializeSocialProfile,
   getMySocialProfile,
@@ -85,6 +94,8 @@ module.exports = {
   removeFriend,
   listFriends,
   getFriendDetail,
+  listRanking,
+  updateSocialSettings,
   scheduleMyStatsSync,
   __test: { normalizePlayerId, socialStatsStorageKey }
 }

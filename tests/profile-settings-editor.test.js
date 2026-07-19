@@ -9,6 +9,7 @@ const originalLoad = Module._load
 let pageDefinition = null
 let updateSettingsPatch = null
 let lastToast = null
+let socialSettingsPatch = null
 
 function setByPath(target, keyPath, value) {
   const parts = String(keyPath).split('.')
@@ -39,6 +40,7 @@ function installProfilePage() {
   pageDefinition = null
   updateSettingsPatch = null
   lastToast = null
+  socialSettingsPatch = null
   global.wx = {
     showToast(options) { lastToast = options },
     showModal() {},
@@ -63,6 +65,17 @@ function installProfilePage() {
             blindPresets: ['100/200'],
             opponentTypes: ['tight']
           }, patch)
+        }
+      }
+    }
+    if (request.endsWith('../../services/social-service')) {
+      return {
+        async getMySocialProfile() {
+          return { statsVisible: true, defaultShareScope: 'friends' }
+        },
+        async updateSocialSettings(patch) {
+          socialSettingsPatch = patch
+          return { statsVisible: patch.statsVisible, defaultShareScope: patch.defaultShareScope }
         }
       }
     }
@@ -97,4 +110,27 @@ test('profile settings editor saves the typed draft row even when plus was not t
   assert.equal(page.data.settingsEditorVisible, false)
   assert.equal(page.data.settingsEditorNewValue, '')
   assert.equal(lastToast && lastToast.icon, 'success')
+})
+
+test('profile social privacy controls explain ranking removal and save supported defaults', async () => {
+  const page = installProfilePage()
+  await page.loadSocialSettings()
+  assert.equal(page.data.socialSettings.statsVisible, true)
+
+  await page.toggleSocialStatsVisible()
+  assert.equal(socialSettingsPatch.statsVisible, false)
+  assert.equal(socialSettingsPatch.defaultShareScope, 'friends')
+  assert.match(String(socialSettingsPatch.clientMutationId), /^social_settings_/)
+  assert.equal(page.data.socialSettings.statsVisible, false)
+
+  await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'selected' } } })
+  assert.equal(socialSettingsPatch.defaultShareScope, 'selected')
+  assert.equal(Object.prototype.hasOwnProperty.call(socialSettingsPatch, 'selectedFriendIds'), false)
+})
+
+test('profile markup clearly describes social privacy and all supported default scopes', () => {
+  const wxml = require('node:fs').readFileSync(path.resolve(__dirname, '../pages/profile/profile.wxml'), 'utf8')
+  assert.match(wxml, /好友统计可见/)
+  assert.match(wxml, /退出本周、月度和累计排行榜/)
+  assert.match(wxml, /广场[\s\S]*全部好友[\s\S]*指定好友/)
 })

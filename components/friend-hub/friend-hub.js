@@ -38,11 +38,31 @@ function buildFriendCard(remote, localNote) {
   }
 }
 
+function buildRankingRow(row, position) {
+  const source = row || {}
+  const rank = Math.max(1, Math.floor(Number(source.rank) || 1))
+  return {
+    socialUserId: String(source.socialUserId || ''),
+    nickname: String(source.nickname || '玩家'),
+    avatarUrl: String(source.avatarUrl || ''),
+    avatarText: String(source.avatarText || String(source.nickname || '玩').slice(0, 1)),
+    title: String(source.title || '初来乍到'),
+    rank,
+    rankText: String(rank).padStart(2, '0'),
+    durationLabel: formatDuration(source.durationMinutes) || '0.0h',
+    handCountLabel: Math.max(0, Math.floor(Number(source.recordedHandCount) || 0)) + ' 手牌',
+    podiumTone: position === 0 ? 'gold' : position === 1 ? 'silver' : 'bronze'
+  }
+}
+
 Component({
   properties: {
     activeSection: {
       type: String,
-      value: 'feed'
+      value: 'feed',
+      observer(value) {
+        if (value === 'ranking' && this._friendHubAttached === true) this.loadRanking(this.data.rankingRange)
+      }
     }
   },
 
@@ -52,13 +72,22 @@ Component({
     friends: [],
     nextOffset: null,
     loadingMore: false,
-    loadMoreError: ''
+    loadMoreError: '',
+    rankingRange: 'week',
+    rankingStatus: 'idle',
+    rankingError: '',
+    rankingRows: [],
+    rankingPodium: [],
+    rankingListRows: [],
+    rankingMyRank: null
   },
 
   lifetimes: {
     attached() {
       this._friendHubAttached = true
       this._friendLoadSequence = Number(this._friendLoadSequence) || 0
+      this._rankingLoadSequence = Number(this._rankingLoadSequence) || 0
+      if (this.data.activeSection === 'ranking') this.loadRanking(this.data.rankingRange)
     },
 
     detached() {
@@ -66,6 +95,7 @@ Component({
       this._friendLoadSequence = (Number(this._friendLoadSequence) || 0) + 1
       this._friendLoadPromise = null
       this._friendLoadMorePromise = null
+      this._rankingLoadSequence = (Number(this._rankingLoadSequence) || 0) + 1
     }
   },
 
@@ -154,6 +184,42 @@ Component({
       })
     },
 
+    async loadRanking(rangeKey) {
+      const range = ['week', 'month', 'all'].includes(rangeKey) ? rangeKey : 'week'
+      const sequence = (Number(this._rankingLoadSequence) || 0) + 1
+      this._rankingLoadSequence = sequence
+      this.setData({ rankingRange: range, rankingStatus: 'loading', rankingError: '', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null })
+      try {
+        const response = await socialService.listRanking({ rangeKey: range })
+        if (sequence !== this._rankingLoadSequence || this._friendHubAttached === false) return []
+        const rows = (Array.isArray(response && response.top10) ? response.top10 : []).map(buildRankingRow)
+        const myRank = response && response.myRank ? buildRankingRow(response.myRank) : null
+        const uniqueMyRank = myRank && !rows.some(row => row.socialUserId === myRank.socialUserId) ? myRank : null
+        this.setData({
+          rankingStatus: 'ready',
+          rankingRows: rows,
+          rankingPodium: rows.slice(0, 3),
+          rankingListRows: rows.slice(3),
+          rankingMyRank: uniqueMyRank,
+          rankingError: ''
+        })
+        return rows
+      } catch (error) {
+        if (sequence !== this._rankingLoadSequence || this._friendHubAttached === false) return []
+        this.setData({ rankingStatus: 'error', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null, rankingError: '排行榜暂时不可用，请稍后重试' })
+        return []
+      }
+    },
+
+    selectRankingRange(event) {
+      const range = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.range || 'week')
+      return this.loadRanking(range)
+    },
+
+    retryRanking() {
+      return this.loadRanking(this.data.rankingRange)
+    },
+
     selectSection(event) {
       const section = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.section || 'friends')
       this.triggerEvent('sectionchange', { section })
@@ -170,4 +236,4 @@ Component({
   }
 })
 
-module.exports = { buildFriendCard, formatDuration }
+module.exports = { buildFriendCard, buildRankingRow, formatDuration }

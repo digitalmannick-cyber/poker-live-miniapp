@@ -57,6 +57,17 @@ function createCloudSocialRepository(database) {
       return Object.assign({ _id: id }, data)
     },
 
+    async patchSocialSettings(id, patch) {
+      const source = patch || {}
+      const data = {
+        statsVisible: source.statsVisible !== false,
+        defaultShareScope: String(source.defaultShareScope || 'friends'),
+        updatedAt: Number(source.updatedAt) || Date.now()
+      }
+      await client.collection(SOCIAL_COLLECTIONS.SOCIAL_USERS).doc(id).update({ data })
+      return Object.assign({ _id: id }, data)
+    },
+
     async listPrivateOwned(collection, ownerOpenId, playerId) {
       const rows = []
       let offset = 0
@@ -94,6 +105,24 @@ function createCloudSocialRepository(database) {
           updatedAt: Date.now()
         })
       }
+    },
+
+    async listDailyStats(socialUserIds) {
+      const rows = []
+      for (const socialUserId of Array.from(new Set((socialUserIds || []).map(String).filter(Boolean)))) {
+        let offset = 0
+        while (true) {
+          let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_DAILY_STATS).where({ socialUserId })
+          if (typeof request.skip === 'function') request = request.skip(offset)
+          if (typeof request.limit === 'function') request = request.limit(PRIVATE_PAGE_SIZE)
+          const response = await request.get()
+          const batch = Array.isArray(response && response.data) ? response.data : []
+          rows.push.apply(rows, batch)
+          if (batch.length < PRIVATE_PAGE_SIZE) break
+          offset += batch.length
+        }
+      }
+      return rows
     },
 
     async listAcceptedFriendships(socialUserId, page) {

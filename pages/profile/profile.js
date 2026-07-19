@@ -5,6 +5,7 @@ const appVersion = require('../../config/app-version')
 const { AI_REMINDER_SUBSCRIBE_TEMPLATE_ID } = require('../../config/cloud')
 const onboardingGuide = require('../../utils/onboarding-guide')
 const releaseNotes = require('../../utils/release-notes')
+const socialService = require('../../services/social-service')
 
 const WECHAT_PROFILE_PROMPT_SEEN_KEY = 'pokerLiveWechatProfilePromptSeen'
 const OPEN_AI_REMINDER_EDITOR_KEY = 'pokerLiveOpenAiReminderEditor'
@@ -330,12 +331,16 @@ Page({
       { label: '¥', value: 'CNY' },
       { label: 'HK$', value: 'HKD' },
       { label: '$', value: 'USD' }
-    ]
+    ],
+    socialSettings: { statsVisible: true, defaultShareScope: 'friends' },
+    socialSettingsStatus: 'idle',
+    socialSettingsSaving: false
   },
 
   async onShow() {
     tabBar.syncCustomTabBar('/pages/profile/profile')
     await this.refresh()
+    this.loadSocialSettings()
     this.consumeOpenAiReminderEditorRequest()
     this.maybeShowReleaseNotes()
   },
@@ -357,6 +362,66 @@ Page({
       .catch(error => {
         console.warn('refresh profile stats failed', error)
       })
+  },
+
+  async loadSocialSettings() {
+    this.setData({ socialSettingsStatus: 'loading' })
+    try {
+      const profile = await socialService.getMySocialProfile()
+      this.setData({
+        socialSettings: {
+          statsVisible: profile.statsVisible !== false,
+          defaultShareScope: ['square', 'friends', 'selected'].includes(profile.defaultShareScope) ? profile.defaultShareScope : 'friends'
+        },
+        socialSettingsStatus: 'ready'
+      })
+      return this.data.socialSettings
+    } catch (error) {
+      this.setData({ socialSettingsStatus: 'error' })
+      return null
+    }
+  },
+
+  createSocialSettingsMutationId() {
+    return 'social_settings_' + Date.now() + '_' + Math.floor(Math.random() * 1000000)
+  },
+
+  async saveSocialSettings(nextSettings) {
+    if (this.data.socialSettingsSaving) return null
+    const current = this.data.socialSettings || { statsVisible: true, defaultShareScope: 'friends' }
+    const next = Object.assign({}, current, nextSettings || {})
+    this.setData({ socialSettingsSaving: true })
+    try {
+      const saved = await socialService.updateSocialSettings({
+        statsVisible: next.statsVisible !== false,
+        defaultShareScope: ['square', 'friends', 'selected'].includes(next.defaultShareScope) ? next.defaultShareScope : 'friends',
+        clientMutationId: this.createSocialSettingsMutationId()
+      })
+      this.setData({
+        socialSettings: {
+          statsVisible: saved.statsVisible !== false,
+          defaultShareScope: ['square', 'friends', 'selected'].includes(saved.defaultShareScope) ? saved.defaultShareScope : 'friends'
+        },
+        socialSettingsStatus: 'ready'
+      })
+      wx.showToast({ title: '社交设置已保存', icon: 'success' })
+      return saved
+    } catch (error) {
+      wx.showToast({ title: '保存失败，请重试', icon: 'none' })
+      return null
+    } finally {
+      this.setData({ socialSettingsSaving: false })
+    }
+  },
+
+  toggleSocialStatsVisible() {
+    return this.saveSocialSettings({ statsVisible: this.data.socialSettings.statsVisible === false })
+  },
+
+  selectDefaultShareScope(event) {
+    const scope = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.scope || '')
+    if (!['square', 'friends', 'selected'].includes(scope)) return null
+    return this.saveSocialSettings({ defaultShareScope: scope })
   },
 
   consumeOpenAiReminderEditorRequest() {

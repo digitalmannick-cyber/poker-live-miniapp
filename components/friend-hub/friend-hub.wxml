@@ -40,5 +40,65 @@
   </view>
 
   <view wx:elif="{{activeSection === 'feed'}}" class="friend-hub-state">动态功能后续开放</view>
-  <view wx:else class="friend-hub-state">排行榜将在好友统计同步后开放</view>
+  <view wx:else class="ranking-panel">
+    <view class="ranking-range-tabs">
+      <view class="ranking-range-tab {{rankingRange === 'week' ? 'active' : ''}}" data-range="week" bindtap="selectRankingRange">本周</view>
+      <view class="ranking-range-tab {{rankingRange === 'month' ? 'active' : ''}}" data-range="month" bindtap="selectRankingRange">本月</view>
+      <view class="ranking-range-tab {{rankingRange === 'all' ? 'active' : ''}}" data-range="all" bindtap="selectRankingRange">累计</view>
+    </view>
+
+    <view wx:if="{{rankingStatus === 'loading'}}" class="friend-hub-state ranking-state">正在计算好友排名…</view>
+    <view wx:elif="{{rankingStatus === 'error'}}" class="friend-hub-state friend-hub-error ranking-state">
+      <text>{{rankingError}}</text>
+      <view class="friend-retry" bindtap="retryRanking">重试</view>
+    </view>
+    <view wx:elif="{{rankingRows.length}}" class="ranking-board">
+      <view class="ranking-kicker">FRIEND LEAGUE · TOP 10</view>
+      <view class="ranking-podium">
+        <view wx:for="{{rankingPodium}}" wx:key="socialUserId" class="podium-card podium-{{item.podiumTone}} rank-slot-{{index + 1}}">
+          <view class="podium-medal">{{item.rank}}</view>
+          <view class="podium-avatar-wrap">
+            <image wx:if="{{item.avatarUrl}}" class="podium-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+            <view wx:else class="podium-avatar podium-avatar-text">{{item.avatarText}}</view>
+          </view>
+          <view class="podium-name">{{item.nickname}}</view>
+          <view class="podium-title">{{item.title}}</view>
+          <view class="podium-duration">{{item.durationLabel}}</view>
+          <view class="podium-hands">{{item.handCountLabel}}</view>
+          <view class="podium-plinth"><text>{{item.rankText}}</text></view>
+        </view>
+      </view>
+
+      <view class="ranking-list">
+        <view wx:for="{{rankingListRows}}" wx:key="socialUserId" class="ranking-row">
+          <view class="ranking-row-accent"></view>
+          <view class="ranking-number">{{item.rankText}}</view>
+          <view class="ranking-avatar-wrap">
+            <image wx:if="{{item.avatarUrl}}" class="ranking-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+            <view wx:else class="ranking-avatar ranking-avatar-text">{{item.avatarText}}</view>
+          </view>
+          <view class="ranking-copy">
+            <view class="ranking-name">{{item.nickname}}</view>
+            <view class="ranking-title">{{item.title}} · {{item.handCountLabel}}</view>
+          </view>
+          <view class="ranking-duration">{{item.durationLabel}}</view>
+        </view>
+      </view>
+
+      <view wx:if="{{rankingMyRank}}" class="ranking-my-card">
+        <view class="ranking-my-label">我的排名</view>
+        <view class="ranking-number">{{rankingMyRank.rankText}}</view>
+        <view class="ranking-avatar-wrap">
+          <image wx:if="{{rankingMyRank.avatarUrl}}" class="ranking-avatar" src="{{rankingMyRank.avatarUrl}}" mode="aspectFill"></image>
+          <view wx:else class="ranking-avatar ranking-avatar-text">{{rankingMyRank.avatarText}}</view>
+        </view>
+        <view class="ranking-copy">
+          <view class="ranking-name">{{rankingMyRank.nickname}}</view>
+          <view class="ranking-title">{{rankingMyRank.title}} · {{rankingMyRank.handCountLabel}}</view>
+        </view>
+        <view class="ranking-duration">{{rankingMyRank.durationLabel}}</view>
+      </view>
+    </view>
+    <view wx:else class="friend-hub-state ranking-state">这个范围还没有可参与排名的好友统计</view>
+  </view>
 </view>
