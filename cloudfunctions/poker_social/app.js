@@ -1,4 +1,5 @@
 const { createProfileHandlers } = require('./lib/profile')
+const { createFriendshipHandlers } = require('./lib/friendship')
 
 function withoutPrivateIdentifiers(value) {
   if (Array.isArray(value)) return value.map(withoutPrivateIdentifiers)
@@ -15,7 +16,17 @@ function withoutPrivateIdentifiers(value) {
 const PUBLIC_ERROR_MESSAGES = Object.freeze({
   FORBIDDEN: 'not allowed',
   UNAUTHENTICATED: 'identity unavailable',
-  SOCIAL_PROFILE_REQUIRED: 'social profile required'
+  SOCIAL_PROFILE_REQUIRED: 'social profile required',
+  INVALID_MUTATION: 'invalid mutation',
+  MUTATION_CONFLICT: 'mutation conflict',
+  INVALID_INVITE: 'invalid invite',
+  INVITE_UNAVAILABLE: 'invite unavailable',
+  FRIEND_REQUEST_COOLDOWN: 'friend request cooling down',
+  FRIENDSHIP_NOT_FOUND: 'friendship not found',
+  INVALID_FRIENDSHIP: 'invalid friendship',
+  INVALID_FRIENDSHIP_STATE: 'invalid friendship state',
+  SOCIAL_USER_NOT_FOUND: 'social user not found',
+  QR_UNAVAILABLE: 'qr unavailable'
 })
 
 function publicError(error) {
@@ -32,7 +43,10 @@ function createSocialApp(deps) {
   const profileHandlers = config.repository
     ? createProfileHandlers(config.repository, { avatarUrl: config.avatarUrl })
     : {}
-  const handlers = Object.assign({}, profileHandlers, config.handlers || {})
+  const friendshipHandlers = config.repository
+    ? createFriendshipHandlers(config.repository, Object.assign({}, config.friendship || {}, { avatarUrl: config.avatarUrl }))
+    : {}
+  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()

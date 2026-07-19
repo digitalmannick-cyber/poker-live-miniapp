@@ -15,10 +15,22 @@ async function avatarUrl(fileId) {
   return String(response && response.fileList && response.fileList[0] && response.fileList[0].tempFileURL || '')
 }
 
+async function uploadTempFile(payload) {
+  if (!payload || typeof cloud.uploadFile !== 'function' || typeof cloud.getTempFileURL !== 'function') return { url: '' }
+  const uploaded = await cloud.uploadFile({ cloudPath: payload.cloudPath, fileContent: payload.fileContent })
+  const fileId = uploaded && (uploaded.fileID || uploaded.fileId)
+  if (!fileId) return { url: '' }
+  return { url: await avatarUrl(fileId) }
+}
+
 const app = createSocialApp({
   identity,
   repository,
   avatarUrl,
+  friendship: {
+    qrCode: cloud.openapi && cloud.openapi.wxacode,
+    uploadTempFile
+  },
   requestId: () => 'social_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10)
 })
 
