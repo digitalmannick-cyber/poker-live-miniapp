@@ -86,11 +86,11 @@ function isValidNotificationDto(item) {
 }
 
 function normalizeListResult(result) {
-  if (!result || !Array.isArray(result.items) || typeof result.nextCursor !== 'string') throw serviceContractError()
+  if (!result || !Array.isArray(result.items) || (result.nextCursor !== null && typeof result.nextCursor !== 'string')) throw serviceContractError()
   const unreadCount = requireUnreadCount(result)
   const items = result.items.map(whitelistNotification)
   if (!items.every(isValidNotificationDto)) throw serviceContractError()
-  return { items, nextCursor: result.nextCursor, unreadCount }
+  return { items, nextCursor: result.nextCursor === null ? '' : result.nextCursor, unreadCount }
 }
 
 function formatTime(value) {

@@ -107,3 +107,32 @@ node tests/player-notes-store.test.js
 ```
 
 结果：focused 49/49；全部 social 182/182；player navigation/store 通过；social player hub 8/8。
+
+## Real handler cursor compatibility
+
+Status: DONE
+
+- 对齐通知 handler 的真实末页合同：`nextCursor` 可为 opaque string 或 `null`。
+- 客户端在统一响应边界把 `null` 规范化为 `''`；number、object 与缺失的 `undefined` 继续按服务端合同错误 fail closed。
+- 首屏不足 20 条可正常完成；多页列表在末页正常结束，不产生 `moreError`。
+- 首页缓存只接收规范化后的 string，因此末页仍保存 `nextCursor: ''`，缓存结构合同不变。
+
+Cursor RED evidence:
+
+```powershell
+node --test tests/social-message-center.test.js
+```
+
+结果：18 项中 3 项失败，分别复现首屏末页、陈旧刷新替换和末页缓存无法完成；非法游标类型保持拒绝。
+
+Cursor GREEN evidence:
+
+```powershell
+node --test tests/social-message-center.test.js tests/social-tab-unread.test.js tests/social-notifications.test.js tests/social-player-hub.test.js
+$socialTests = Get-ChildItem tests -Filter 'social-*.test.js' | ForEach-Object { $_.FullName }
+node --test $socialTests
+node tests/player-notes-navigation.test.js
+node tests/player-notes-store.test.js
+```
+
+结果：focused 50/50；全部 social 183/183；player navigation/store 通过；social player hub 8/8。

@@ -75,9 +75,9 @@ test('pagination is cursor based, single flight, deduplicated, and stale-safe', 
   assert.equal(loaded.calls.list.length, 2)
   assert.deepEqual(loaded.calls.list[1], { cursor: 'opaque:cursor', limit: 20 })
   const refresh = page.loadFirst()
-  fresh.resolve({ items: [notification('fresh')], nextCursor: '', unreadCount: 0 })
+  fresh.resolve({ items: [notification('fresh')], nextCursor: null, unreadCount: 0 })
   await refresh
-  more.resolve({ items: [notification('n1'), notification('old')], nextCursor: '', unreadCount: 4 })
+  more.resolve({ items: [notification('n1'), notification('old')], nextCursor: null, unreadCount: 4 })
   await firstMore
   assert.deepEqual(page.data.items.map(item => item.notificationId), ['fresh'])
   loaded.restore()
@@ -222,7 +222,7 @@ test('cache is exact, account-bound, authoritative offline, and storage failures
   const online = loadMessagePage({
     storage,
     playerId: 'WX-A',
-    listResponses: [{ items: [notification('cache-1')], nextCursor: 'opaque-next', unreadCount: 6 }]
+    listResponses: [{ items: [notification('cache-1')], nextCursor: null, unreadCount: 6 }]
   })
   const page = createInstance(online.definition)
   page.onLoad()
@@ -230,7 +230,7 @@ test('cache is exact, account-bound, authoritative offline, and storage failures
   const cached = storage.get('socialNotificationsFirstPage:WX-A')
   assert.deepEqual(Object.keys(cached).sort(), ['accountId', 'items', 'nextCursor', 'savedAt', 'unreadCount'])
   assert.equal(cached.accountId, 'WX-A')
-  assert.equal(cached.nextCursor, 'opaque-next')
+  assert.equal(cached.nextCursor, '')
   assert.equal(cached.unreadCount, 6)
   online.restore()
 
@@ -434,6 +434,42 @@ test('refresh clears load-more state and onShow does not duplicate the initial r
   assert.equal(page.data.moreError, false)
   assert.deepEqual(page.data.items.map(item => item.notificationId), ['fresh'])
   loaded.restore()
+})
+
+test('real handler null cursor ends first and later pages while invalid cursor types fail closed', async () => {
+  const firstPage = loadMessagePage({ listResponses: [{ items: [notification('single')], nextCursor: null, unreadCount: 0 }] })
+  const firstPageInstance = createInstance(firstPage.definition)
+  firstPageInstance.onLoad()
+  await firstPageInstance._firstFlight
+  assert.equal(firstPageInstance.data.firstError, '')
+  assert.equal(firstPageInstance.data.nextCursor, '')
+  assert.deepEqual(firstPageInstance.data.items.map(item => item.notificationId), ['single'])
+  firstPage.restore()
+
+  const paged = loadMessagePage({
+    listResponses: [
+      { items: [notification('page-1')], nextCursor: 'opaque-page-2', unreadCount: 1 },
+      { items: [notification('page-2')], nextCursor: null, unreadCount: 1 }
+    ]
+  })
+  const pagedInstance = createInstance(paged.definition)
+  pagedInstance.onLoad()
+  await pagedInstance._firstFlight
+  await pagedInstance.loadMore()
+  assert.equal(pagedInstance.data.nextCursor, '')
+  assert.equal(pagedInstance.data.moreError, false)
+  assert.deepEqual(pagedInstance.data.items.map(item => item.notificationId), ['page-1', 'page-2'])
+  paged.restore()
+
+  for (const nextCursor of [7, { cursor: 'bad' }, undefined]) {
+    const invalid = loadMessagePage({ listResponses: [{ items: [notification('invalid')], nextCursor, unreadCount: 0 }] })
+    const invalidInstance = createInstance(invalid.definition)
+    invalidInstance.onLoad()
+    await invalidInstance._firstFlight
+    assert.equal(invalidInstance.data.firstError, '好友功能暂时不可用')
+    assert.deepEqual(invalidInstance.data.items, [])
+    invalid.restore()
+  }
 })
 
 function deferred() {
