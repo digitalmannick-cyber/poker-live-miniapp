@@ -33,6 +33,9 @@
 - Produces actions: `share_player_card`、`get_player_card_share`、`withdraw_player_card_share`、`confirm_player_card_import`。
 - Produces pure mapper: `toCardShareDto(share, { viewerId, avatarUrl })`。
 - Snapshot DTO: `{ shareId, sender, card: { avatarUrl, name, type, leakTags, note }, expiresAt, imported }`。
+- `share_player_card` 只接收 `playerNoteId + targetUserId + clientMutationId`；源玩家记录必须由服务端按当前 `ownerOpenId + privatePlayerId + playerNoteId` 读取，且属于未归档的 `sourceKind: library`。客户端不得上传或覆盖快照字段。
+- 创建、读取与确认导入时接收双方必须仍是 accepted 好友；解除后未导入分享立即失权。已导入副本由接收方玩家库持久化，不依赖分享继续可读。
+- 分享者只能撤回自己的分享；接收者只能读取和确认导入发给自己的分享。所有写 action 都必须幂等。
 
 - [ ] **Step 1: 写五字段白名单与唯一接收人测试**
 
@@ -70,7 +73,7 @@ function canReadCardShare(viewerId, share, nowMs) {
 }
 ```
 
-`share_player_card` 只接受 `playerNoteId` 和 `targetUserId`，由云端按当前 `ownerOpenId + playerId` 读取源记录并构造快照；不接受客户端上传完整快照。响应把 `avatarAsset` 转为 `avatarUrl`，不返回云文件 ID。
+`share_player_card` 只接受 `playerNoteId` 和 `targetUserId`，由云端按当前 `ownerOpenId + privatePlayerId` 精确读取源记录并构造快照；不接受客户端上传完整快照。`avatarAsset` 仅允许服务端已有 `avatarFileId` 或安全的 HTTPS 资源，响应转换为临时 `avatarUrl`，不返回云文件 ID、本地路径或 data URI。
 
 - [ ] **Step 4: 运行名片权限测试**
 
