@@ -1,6 +1,7 @@
 const { createProfileHandlers } = require('./lib/profile')
 const { createFriendshipHandlers } = require('./lib/friendship')
 const { createRankingHandlers } = require('./lib/ranking')
+const { createPlayerCardHandlers } = require('./lib/player-card')
 
 function withoutPrivateIdentifiers(value) {
   if (typeof value === 'string' && value.includes('cloud://')) return null
@@ -32,7 +33,10 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   INVITE_SECRET_UNAVAILABLE: 'invite unavailable',
   INVALID_PAGINATION: 'invalid pagination',
   INVALID_RANKING_RANGE: 'invalid ranking range',
-  INVALID_SOCIAL_SETTINGS: 'invalid social settings'
+  INVALID_SOCIAL_SETTINGS: 'invalid social settings',
+  INVALID_CARD_TARGET: 'invalid card target',
+  PLAYER_CARD_SOURCE_NOT_FOUND: 'player card source not found',
+  PLAYER_CARD_UNAVAILABLE: 'player card unavailable'
 })
 
 function publicError(error) {
@@ -55,7 +59,10 @@ function createSocialApp(deps) {
   const rankingHandlers = config.repository
     ? createRankingHandlers(config.repository, Object.assign({}, config.ranking || {}, { avatarUrl: config.avatarUrl || config.ranking && config.ranking.avatarUrl }))
     : {}
-  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, config.handlers || {})
+  const playerCardHandlers = config.repository
+    ? createPlayerCardHandlers(config.repository, Object.assign({}, config.playerCard || {}, { avatarUrl: config.avatarUrl || config.playerCard && config.playerCard.avatarUrl }))
+    : {}
+  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()

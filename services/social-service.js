@@ -82,6 +82,22 @@ function updateSocialSettings(input) {
   return write('update_social_settings', input)
 }
 
+function sharePlayerCard(input) {
+  return write('share_player_card', input)
+}
+
+function getPlayerCardShare(shareId) {
+  return callSocialFunction('get_player_card_share', { shareId: String(shareId || '').trim() })
+}
+
+function withdrawPlayerCardShare(input) {
+  return write('withdraw_player_card_share', input)
+}
+
+function confirmPlayerCardImport(input) {
+  return write('confirm_player_card_import', input)
+}
+
 module.exports = {
   initializeSocialProfile,
   getMySocialProfile,
@@ -96,6 +112,10 @@ module.exports = {
   getFriendDetail,
   listRanking,
   updateSocialSettings,
+  sharePlayerCard,
+  getPlayerCardShare,
+  withdrawPlayerCardShare,
+  confirmPlayerCardImport,
   scheduleMyStatsSync,
   __test: { normalizePlayerId, socialStatsStorageKey }
 }

@@ -3,7 +3,8 @@ const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_FRIENDSHIPS: 'social_friendships',
   SOCIAL_INVITES: 'social_invites',
   SOCIAL_MUTATIONS: 'social_mutations',
-  SOCIAL_DAILY_STATS: 'social_daily_stats'
+  SOCIAL_DAILY_STATS: 'social_daily_stats',
+  SOCIAL_PLAYER_CARD_SHARES: 'social_player_card_shares'
 })
 
 const PRIVATE_PAGE_SIZE = 100
