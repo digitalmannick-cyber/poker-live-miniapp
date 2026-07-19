@@ -307,7 +307,10 @@ function createFriendshipHandlers(repository, options) {
       if (!friendUserId) throw socialError('INVALID_FRIENDSHIP', 'invalid friendship')
       const relationship = await requireAcceptedFriendship(repository, actorUser._id, friendUserId)
       const friend = await findUserById(repository, friendUserId)
-      return friendDto(relationship, friendUserId, friend, avatarUrl)
+      return Object.assign({
+        friendshipId: relationship._id,
+        acceptedAt: Number(relationship.acceptedAt) || 0
+      }, await friendDto(relationship, friendUserId, friend, avatarUrl))
     }
   }
 }

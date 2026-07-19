@@ -3,6 +3,8 @@ const cardUi = require('../../utils/card-ui')
 const display = require('../../utils/display')
 const handReplay = require('../../utils/hand-replay')
 const avatarCache = require('../../utils/player-avatar-cache')
+const socialService = require('../../services/social-service')
+const socialMutation = require('../../utils/social-mutation')
 
 const AVATAR_UPLOAD_MAX_BYTES = 2 * 1024 * 1024
 const AVATAR_COMPRESS_QUALITIES = [82, 68, 54, 42]
@@ -33,6 +35,32 @@ function buildForm(note) {
     leakTags: source.leakTags || [],
     note: source.note || '',
     battleHandIds: source.battleHandIds || []
+  }
+}
+
+function formatFriendDate(value) {
+  const timestamp = Number(value) || 0
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0')
+}
+
+function buildFriendView(remote) {
+  const source = remote || {}
+  const statsVisible = source.statsVisible !== false
+  const durationMinutes = Math.max(0, Number(source.durationMinutes) || 0)
+  return {
+    friendshipId: String(source.friendshipId || ''),
+    socialUserId: String(source.socialUserId || ''),
+    nickname: String(source.nickname || ''),
+    avatarUrl: String(source.avatarUrl || ''),
+    avatarText: String(source.avatarText || source.nickname || '').slice(0, 1),
+    title: String(source.title || ''),
+    statsVisible,
+    durationLabel: statsVisible ? (durationMinutes / 60).toFixed(1) + 'h' : '',
+    recordedHandCount: statsVisible ? Math.max(0, Math.floor(Number(source.recordedHandCount) || 0)) : 0,
+    friendshipDate: formatFriendDate(source.acceptedAt)
   }
 }
 
@@ -214,6 +242,15 @@ Page({
   data: {
     id: '',
     mode: 'view',
+    friendUserId: '',
+    friend: null,
+    detailState: 'ready',
+    loadError: '',
+    friendLoadedOnce: false,
+    friendShownOnce: false,
+    removingFriend: false,
+    detachPending: false,
+    detachError: '',
     editMode: false,
     note: null,
     form: buildForm(),
@@ -231,6 +268,19 @@ Page({
   },
 
   async onLoad(options) {
+    const friendUserId = decodeURIComponent(options && options.friendUserId || '').trim()
+    if (friendUserId) {
+      this.setData({
+        id: '',
+        mode: 'friend',
+        friendUserId,
+        editMode: false,
+        detailState: 'loading',
+        loadError: ''
+      })
+      await this.loadFriendMode(friendUserId)
+      return
+    }
     const id = decodeURIComponent(options && options.id || '')
     const isNew = options && options.mode === 'new'
     this.setData({
@@ -241,7 +291,69 @@ Page({
     await this.refresh()
   },
 
+  async onShow() {
+    if (this.data.mode !== 'friend' || !this.data.friendUserId || !this.data.friendLoadedOnce || this.data.removingFriend) return
+    if (!this.data.friendShownOnce) {
+      this.setData({ friendShownOnce: true })
+      return
+    }
+    if (this.data.mode === 'friend') {
+      await this.loadFriendMode(this.data.friendUserId, { preserveEdit: true })
+    }
+  },
+
+  async loadFriendMode(friendUserId, options) {
+    const target = String(friendUserId || '').trim()
+    if (!target) return
+    const config = options || {}
+    this.setData({ detailState: 'loading', loadError: '' })
+    try {
+      const [localNote, remote] = await Promise.all([
+        dataService.getFriendPlayerNote(target),
+        socialService.getFriendDetail(target)
+      ])
+      const note = localNote || await dataService.ensureFriendPlayerNote(remote)
+      const friend = buildFriendView(remote)
+      const settings = await dataService.getAppSettings()
+      const viewNote = note ? Object.assign({}, note, {
+        avatarDisplayUrl: avatarCache.getAvatarDisplayUrl(note.avatarFileId, note.avatarUrl)
+      }) : null
+      const form = config.preserveEdit && this.data.editMode
+        ? this.data.form
+        : buildForm(viewNote)
+      const battleHands = note && note._id ? await dataService.getPlayerNoteBattleHands(note._id) : []
+      this.setData({
+        id: note && note._id || '',
+        note: viewNote,
+        friend,
+        form,
+        settings,
+        typeOptions: buildTypeOptions(settings, form.type),
+        leakOptions: buildLeakOptions(settings, form.leakTags),
+        battleHands: battleHands.map(item => normalizeBattleHand(item, settings.chipUnit)),
+        detailState: 'ready',
+        loadError: '',
+        friendLoadedOnce: true
+      })
+    } catch (error) {
+      const code = String(error && error.code || '')
+      this.setData({
+        note: null,
+        friend: null,
+        detailState: code === 'FORBIDDEN' || code === 'FRIENDSHIP_NOT_FOUND' ? 'unavailable' : 'error',
+        loadError: code === 'FORBIDDEN' || code === 'FRIENDSHIP_NOT_FOUND'
+          ? '好友关系已解除或不可访问'
+          : '好友资料加载失败，请检查网络后重试'
+      })
+    }
+  },
+
+  retryFriendLoad() {
+    return this.loadFriendMode(this.data.friendUserId)
+  },
+
   async refresh() {
+    if (this.data.mode === 'friend') return this.loadFriendMode(this.data.friendUserId, { preserveEdit: true })
     const settings = await dataService.getAppSettings()
     const note = this.data.id ? await dataService.getPlayerNoteById(this.data.id) : null
     const viewNote = note ? Object.assign({}, note, {
@@ -447,6 +559,7 @@ Page({
   },
 
   async deleteNote() {
+    if (this.data.mode === 'friend') return
     if (!this.data.id) return
     wx.showModal({
       title: '删除玩家',
@@ -459,6 +572,63 @@ Page({
         wx.navigateBack()
       }
     })
+  },
+
+  confirmRemoveFriend() {
+    if (this.data.removingFriend || this.data.detachPending || !this.data.friend) return
+    wx.showModal({
+      title: '解除好友',
+      content: '解除后将立即失去好友资料、排行榜及好友范围分享的访问权限。本地玩家资料会保留在玩家库。',
+      confirmText: '解除好友',
+      confirmColor: '#e60012',
+      success: result => {
+        if (result && result.confirm) this.removeFriend()
+      }
+    })
+  },
+
+  async removeFriend() {
+    if (this.data.removingFriend || this.data.detachPending) return
+    const friend = this.data.friend || {}
+    const friendshipId = String(friend.friendshipId || '').trim()
+    const friendUserId = String(friend.socialUserId || this.data.friendUserId || '').trim()
+    if (!friendshipId || !friendUserId) {
+      this.setData({ detachError: '好友关系信息已失效，请返回列表刷新后重试' })
+      return
+    }
+    this.setData({ removingFriend: true, detachError: '' })
+    try {
+      await socialService.removeFriend({
+        friendshipId,
+        clientMutationId: socialMutation.createMutationId('remove_friend')
+      })
+    } catch (error) {
+      this.setData({
+        removingFriend: false,
+        detachError: '解除好友失败，请稍后重试'
+      })
+      return
+    }
+    this.setData({ removingFriend: false, detachPending: true })
+    await this.detachFriendNote(friendUserId)
+  },
+
+  async retryDetachFriendNote() {
+    if (!this.data.detachPending) return
+    await this.detachFriendNote(this.data.friendUserId)
+  },
+
+  async detachFriendNote(friendUserId) {
+    try {
+      await dataService.detachFriendPlayerNote(friendUserId)
+      this.setData({ detachPending: false, detachError: '' })
+      wx.switchTab({ url: '/pages/player-notes/player-notes' })
+    } catch (error) {
+      this.setData({
+        detachPending: true,
+        detachError: '好友关系已解除，但本地玩家资料暂未归档。请重试以保留资料。'
+      })
+    }
   },
 
   async openHandPicker() {

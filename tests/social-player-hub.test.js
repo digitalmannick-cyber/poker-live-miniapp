@@ -241,6 +241,7 @@ test('friend detail only returns an accepted relationship and rejects stale acce
   const handlers = createFriendshipHandlers(repository, { avatarUrl: async fileId => 'https://temp/' + fileId })
   const detail = await handlers.get_friend_detail({ friendUserId: 'su_b' }, { ownerOpenId: 'openid-a' })
   assert.deepEqual(detail, {
+    friendshipId: relationshipId,
     socialUserId: 'su_b',
     nickname: 'B at acceptance',
     avatarUrl: 'https://temp/b-snapshot',
@@ -248,7 +249,8 @@ test('friend detail only returns an accepted relationship and rejects stale acce
     title: '银狼',
     statsVisible: true,
     durationMinutes: 999,
-    recordedHandCount: 88
+    recordedHandCount: 88,
+    acceptedAt: 0
   })
   assert.equal(JSON.stringify(detail).match(/ownerOpenId|privatePlayerId|avatarFileId|profit|currentProfit|buyIn|cashOut/), null)
   repository.set('social_users', 'su_b', {
@@ -338,17 +340,17 @@ test('player page defaults to feed, loads friends only after the secondary switc
   assert.equal(loaded, 3, 'a ready friends section refreshes once on show')
 })
 
-test('player page preserves the detail event without navigating before friend detail mode exists', () => {
+test('player page opens the reused player detail in friend mode', () => {
   let pageDefinition = null
   global.Page = config => { pageDefinition = config }
   const pagePath = require.resolve('../pages/player-notes/player-notes')
   delete require.cache[pagePath]
   try { require(pagePath) } finally { delete global.Page }
   const calls = []
-  global.wx = { navigateTo(input) { calls.push(input) }, showToast(input) { calls.push(input) } }
+  global.wx = { navigateTo(input) { calls.push(input) } }
   try {
     pageDefinition.openFriend({ detail: { friendUserId: 'su_friend' } })
-    assert.deepEqual(calls, [{ title: '好友详情将在下一步开放', icon: 'none' }])
+    assert.deepEqual(calls, [{ url: '/pages/player-note-detail/player-note-detail?friendUserId=su_friend' }])
   } finally {
     delete global.wx
   }

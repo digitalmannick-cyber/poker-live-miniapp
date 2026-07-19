@@ -172,7 +172,7 @@ Page({
   openFriend(event) {
     const friendUserId = String(event && event.detail && event.detail.friendUserId || '')
     if (!friendUserId) return
-    if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '好友详情将在下一步开放', icon: 'none' })
+    wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?friendUserId=' + encodeURIComponent(friendUserId) })
   },
 
   openMessages() {

@@ -66,6 +66,10 @@ assert.match(playerDetailJs, /wx\.redirectTo\(\{\s*url:\s*'\/pages\/hand-detail\
 assert.match(playerDetailJs, /versusSummary/, 'player battle hands should normalize a compact hero-vs-opponent summary')
 assert.match(playerDetailWxml, /battle-vs-row/, 'player battle hand cards should render a one-line VS summary')
 assert.match(playerDetailWxml, /item\.versusSummary\.hasOpponentCards/, 'opponent cards should render only when showdown cards exist')
+assert.match(playerDetailJs, /options\.friendUserId/, 'player detail should support a friend-user query mode')
+assert.match(playerDetailJs, /socialService\.getFriendDetail/, 'friend mode should resolve accepted remote details through the social service')
+assert.match(playerDetailJs, /detachFriendPlayerNote/, 'friend removal should keep the current viewer local note in the library')
+assert.match(playerDetailWxml, /对方已隐藏统计数据/, 'hidden stats should render an explicit privacy message')
 assert.match(playerDetailWxss, /\.battle-vs-row\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+118rpx\s+minmax\(0,\s*1fr\)/, 'VS summary should reserve a narrow center column for VS and profit')
 
 console.log('player notes navigation tests passed')

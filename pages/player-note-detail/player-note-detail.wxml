@@ -2,11 +2,17 @@
 <view class="container player-detail-shell">
   <view class="player-detail-top">
     <view class="player-detail-back" bindtap="goBack">‹</view>
-    <view class="player-detail-title">{{editMode ? (mode === 'new' ? '新增玩家' : '编辑玩家') : note.name}}</view>
+    <view class="player-detail-title">{{editMode ? (mode === 'new' ? '新增玩家' : '编辑玩家') : (note && note.name || (mode === 'friend' ? '好友资料' : '玩家详情'))}}</view>
     <view wx:if="{{!editMode}}" class="player-detail-edit" bindtap="startEdit">编辑</view>
   </view>
 
-  <view wx:if="{{editMode}}" class="photo-editor">
+  <view wx:if="{{detailState === 'loading'}}" class="detail-state-card">好友资料加载中…</view>
+  <view wx:elif="{{detailState === 'unavailable' || detailState === 'error'}}" class="detail-state-card">
+    <view>{{loadError}}</view>
+    <view class="small-action detail-retry" bindtap="retryFriendLoad">重试</view>
+  </view>
+
+  <view wx:elif="{{editMode}}" class="photo-editor">
     <view class="photo-pick" bindtap="choosePlayerPhoto">
       <image wx:if="{{form.avatarDisplayUrl || form.avatarUrl}}" class="photo-pick-img" src="{{form.avatarDisplayUrl || form.avatarUrl}}" mode="aspectFill"></image>
       <view wx:else class="photo-placeholder">
@@ -74,6 +80,29 @@
     <view class="note-content">{{note.note || '暂无 note'}}</view>
   </view>
 
+  <view wx:if="{{!editMode && mode === 'friend' && note && friend}}" class="detail-card friend-public-card">
+    <view class="section-head">
+      <view>
+        <view class="section-title-main">好友公开资料</view>
+        <view class="section-sub">以下资料由好友授权展示，无法在本地编辑</view>
+      </view>
+      <view class="friend-title-badge">称号 · {{friend.title || '未设称号'}}</view>
+    </view>
+    <view wx:if="{{friend.statsVisible}}" class="friend-stats-grid">
+      <view class="friend-stat-item">
+        <view class="friend-stat-label">累计时长</view>
+        <view class="friend-stat-value">{{friend.durationLabel}}</view>
+      </view>
+      <view class="friend-stat-item">
+        <view class="friend-stat-label">记录手牌</view>
+        <view class="friend-stat-value">{{friend.recordedHandCount || 0}} 手</view>
+      </view>
+    </view>
+    <view wx:else class="friend-stats-hidden">对方已隐藏统计数据</view>
+    <view wx:if="{{friend.friendshipDate}}" class="friend-since">成为好友：{{friend.friendshipDate}}</view>
+    <view wx:if="{{friend.friendshipId}}" class="friend-since">关系编号：{{friend.friendshipId}}</view>
+  </view>
+
   <view wx:if="{{!editMode && note}}" class="detail-card battle-section">
     <view class="section-head">
       <view>
@@ -128,7 +157,12 @@
     <view wx:else class="battle-empty">还没有关联对战手牌。</view>
   </view>
 
-  <view wx:if="{{!editMode && note}}" class="danger-zone" bindtap="deleteNote">删除玩家 note</view>
+  <view wx:if="{{!editMode && note && mode !== 'friend'}}" class="danger-zone" bindtap="deleteNote">删除玩家 note</view>
+  <view wx:if="{{!editMode && note && mode === 'friend' && !detachPending}}" class="danger-zone" bindtap="confirmRemoveFriend">{{removingFriend ? '解除中…' : '解除好友'}}</view>
+  <view wx:if="{{detachPending}}" class="detail-card detach-retry-card">
+    <view class="save-error">{{detachError}}</view>
+    <view class="primary-action" bindtap="retryDetachFriendNote">重试本地归档</view>
+  </view>
 </view>
 
 <view wx:if="{{handPickerVisible}}" class="sheet">
