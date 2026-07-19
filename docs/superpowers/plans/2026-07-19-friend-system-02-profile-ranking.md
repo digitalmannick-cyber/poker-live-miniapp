@@ -337,6 +337,9 @@ git commit -m "feat: sync non-financial social statistics"
 **Interfaces:**
 - Produces `list_ranking({ rangeKey: 'week' | 'month' | 'all' }) -> { top10, myRank }`。
 - Produces `update_social_settings({ statsVisible, defaultShareScope }, clientMutationId)`。
+- 排名候选严格限定为当前用户和当前仍有效的好友；不得把全站用户加入好友排行榜。周/月边界按北京时间计算。
+- `statsVisible=false` 的用户从候选中剔除；本人关闭后返回空榜外本人，不得从旧日桶或缓存继续展示。
+- `defaultShareScope` 仅接受 `square | friends | selected`，默认 `friends`；选择 `selected` 只表示发布页默认进入好友选择器，不保存一组永久收件人。
 
 - [ ] **Step 1: 写并列、Top 10 与榜外本人失败测试**
 
@@ -372,7 +375,7 @@ function rankRows(rows, viewerId) {
 }
 ```
 
-前三名使用静态领奖台、光环与轻量 CSS 动效；第 4 至 10 名使用带排名色条的完整卡片。`prefers-reduced-motion: reduce` 下关闭光环旋转和浮动。设置关闭后云端立即把本人从排名候选剔除。
+前三名使用静态领奖台、较大头像、金银铜层级和克制的入场/呼吸动效；避免旋转扇叶、强光束等喧宾夺主的效果。第 4 至 10 名使用带排名色条的完整卡片。`prefers-reduced-motion: reduce` 下关闭光环和浮动。设置关闭后云端立即把本人从排名候选剔除。本人进入 Top 10 时不得重复渲染固定卡；榜外时固定展示实际名次。
 
 - [ ] **Step 4: 运行排行榜、设置与页面回归**
 
