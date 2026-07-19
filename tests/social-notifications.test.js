@@ -68,6 +68,25 @@ test('cursor decoding rejects coercible and non-canonical raw JSON field types',
   assert.throws(() => decodeCursor('x'.repeat(2049)), error => error.code === 'INVALID_PAGINATION')
 })
 
+test('notification writer rejects target types outside the canonical route contract', async () => {
+  const repository = createMemorySocialRepository({ social_users: users() })
+  const writer = createNotificationWriter({ now: () => 1_000 })
+  await assert.rejects(
+    repository.runTransaction(store => writer.write(store, {
+      recipientId: 'su_b', kind: 'friend_accepted', actor: actorSnapshot('su_a', 'Alice'),
+      targetType: 'social_user', targetId: 'su_a', sourceEventId: 'wrong-friend-route'
+    })),
+    error => error.code === 'INVALID_NOTIFICATION'
+  )
+  await assert.rejects(
+    repository.runTransaction(store => writer.write(store, {
+      recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
+      targetType: 'player_card', targetId: 'pcs_1', sourceEventId: 'wrong-card-route'
+    })),
+    error => error.code === 'INVALID_NOTIFICATION'
+  )
+})
+
 test('notification DTO is a safe navigation hint and list uses stable cursor pagination', async () => {
   const repository = createMemorySocialRepository({ social_users: users() })
   const writer = createNotificationWriter({ now: () => 1_000 })
@@ -76,7 +95,7 @@ test('notification DTO is a safe navigation hint and list uses stable cursor pag
       recipientId: 'su_b',
       kind: index === 0 ? 'friend_request' : 'player_card',
       actor: actorSnapshot(actorId, actorId === 'su_a' ? 'Alice' : 'Carol'),
-      targetType: index === 0 ? 'friendship' : 'player_card',
+      targetType: index === 0 ? 'friendship' : 'player_card_share',
       targetId: 'target_' + index,
       sourceEventId: 'event_' + index,
       actionState: index === 0 ? 'pending' : ''
@@ -84,9 +103,15 @@ test('notification DTO is a safe navigation hint and list uses stable cursor pag
   }
   await repository.runTransaction(store => writer.write(store, {
     recipientId: 'su_a', kind: 'player_card', actor: actorSnapshot('su_b', 'Bob'),
-    targetType: 'player_card', targetId: 'private-other-recipient', sourceEventId: 'other'
+    targetType: 'player_card_share', targetId: 'private-other-recipient', sourceEventId: 'other'
   }))
 
+  const listNotifications = repository.listNotifications
+  let listCalls = 0
+  repository.listNotifications = (...args) => {
+    listCalls += 1
+    return listNotifications(...args)
+  }
   const handlers = createNotificationHandlers(repository, { avatarUrl: async id => 'https://temp.example/' + id.slice(8) })
   const first = await handlers.list_notifications({ limit: 2, recipientId: 'su_a' }, { ownerOpenId: 'openid-b' })
   assert.equal(first.items.length, 2)
@@ -94,6 +119,7 @@ test('notification DTO is a safe navigation hint and list uses stable cursor pag
   const second = await handlers.list_notifications({ limit: 2, cursor: first.nextCursor }, { ownerOpenId: 'openid-b' })
   assert.equal(second.items.length, 1)
   assert.equal(second.nextCursor, null)
+  assert.equal(listCalls, 2, 'each stable page should use exactly one notification query')
   assert.equal(new Set(first.items.concat(second.items).map(row => row.notificationId)).size, 3)
   const dto = first.items.concat(second.items).find(row => row.kind === 'friend_request')
   assert.deepEqual(Object.keys(dto).sort(), [
@@ -112,18 +138,72 @@ test('notification DTO is a safe navigation hint and list uses stable cursor pag
   }
 })
 
+test('list retries one changed state snapshot and never returns unread false with authoritative zero', async () => {
+  const repository = createMemorySocialRepository({ social_users: users() })
+  const writer = createNotificationWriter({ now: () => 1_000 })
+  const row = await repository.runTransaction(store => writer.write(store, {
+    recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
+    targetType: 'player_card_share', targetId: 'pcs_race', sourceEventId: 'race'
+  }))
+  const mutations = createNotificationHandlers(repository, { now: () => 2_000 })
+  let injected = false
+  let listCalls = 0
+  const racingRepository = Object.assign({}, repository, {
+    async listNotifications(recipientId, page) {
+      listCalls += 1
+      const rows = await repository.listNotifications(recipientId, page)
+      if (!injected) {
+        injected = true
+        await mutations.mark_notification_read({ notificationId: row._id, clientMutationId: 'race-read' }, { ownerOpenId: 'openid-b' })
+      }
+      return rows
+    }
+  })
+
+  const listed = await createNotificationHandlers(racingRepository).list_notifications({}, { ownerOpenId: 'openid-b' })
+  assert.equal(listCalls, 2)
+  assert.equal(listed.unreadCount, 0)
+  assert.equal(listed.items[0].read, true)
+})
+
+test('list fails safely after bounded retries when notification state never stabilizes', async () => {
+  const repository = createMemorySocialRepository({ social_users: users() })
+  const writer = createNotificationWriter({ now: () => 1_000 })
+  await repository.runTransaction(store => writer.write(store, {
+    recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
+    targetType: 'player_card_share', targetId: 'pcs_busy', sourceEventId: 'busy'
+  }))
+  let listCalls = 0
+  const unstableRepository = Object.assign({}, repository, {
+    async listNotifications(recipientId, page) {
+      listCalls += 1
+      const rows = await repository.listNotifications(recipientId, page)
+      const id = stateDocumentId(recipientId)
+      const state = repository.get(COLLECTIONS.STATE, id)
+      repository.set(COLLECTIONS.STATE, id, Object.assign({}, state, { version: (Number(state.version) || 0) + 1 }))
+      return rows
+    }
+  })
+
+  await assert.rejects(
+    createNotificationHandlers(unstableRepository).list_notifications({}, { ownerOpenId: 'openid-b' }),
+    error => error.code === 'NOTIFICATION_STATE_UNSTABLE'
+  )
+  assert.equal(listCalls, 2)
+})
+
 test('individual and all-read mutations use an authoritative watermark and exact unread count', async () => {
   let now = 1_000
   const repository = createMemorySocialRepository({ social_users: users() })
   const writer = createNotificationWriter({ now: () => now })
   const first = await repository.runTransaction(store => writer.write(store, {
     recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
-    targetType: 'player_card', targetId: 'card_1', sourceEventId: 'card_1'
+    targetType: 'player_card_share', targetId: 'card_1', sourceEventId: 'card_1'
   }))
   now = 2_000
   await repository.runTransaction(store => writer.write(store, {
     recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
-    targetType: 'player_card', targetId: 'card_2', sourceEventId: 'card_2'
+    targetType: 'player_card_share', targetId: 'card_2', sourceEventId: 'card_2'
   }))
   const handlers = createNotificationHandlers(repository, { now: () => now })
   assert.deepEqual(await handlers.get_unread_count({}, { ownerOpenId: 'openid-b' }), { unreadCount: 2 })
@@ -143,7 +223,7 @@ test('individual and all-read mutations use an authoritative watermark and exact
   now = 3_000
   const after = await repository.runTransaction(store => writer.write(store, {
     recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
-    targetType: 'player_card', targetId: 'card_3', sourceEventId: 'card_3'
+    targetType: 'player_card_share', targetId: 'card_3', sourceEventId: 'card_3'
   }))
   assert.equal(isEffectivelyRead(after, repository.get(COLLECTIONS.STATE, stateDocumentId('su_b'))), false)
   assert.deepEqual(await handlers.get_unread_count({}, { ownerOpenId: 'openid-b' }), { unreadCount: 1 })
@@ -190,11 +270,11 @@ test('memory transactions serialize concurrent standalone notifications without 
   await Promise.all([
     repository.runTransaction(store => writer.write(store, {
       recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
-      targetType: 'player_card', targetId: 'card_a', sourceEventId: 'concurrent_a'
+      targetType: 'player_card_share', targetId: 'card_a', sourceEventId: 'concurrent_a'
     })),
     repository.runTransaction(store => writer.write(store, {
       recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_c', 'Carol'),
-      targetType: 'player_card', targetId: 'card_c', sourceEventId: 'concurrent_c'
+      targetType: 'player_card_share', targetId: 'card_c', sourceEventId: 'concurrent_c'
     }))
   ])
   assert.equal(repository.where(COLLECTIONS.NOTIFICATIONS, () => true).length, 2)
@@ -226,12 +306,12 @@ test('memory transaction invocation order precisely defines concurrent mark-all 
     const writer = createNotificationWriter({ now: () => 1_000 })
     const old = await repository.runTransaction(store => writer.write(store, {
       recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
-      targetType: 'player_card', targetId: 'old', sourceEventId: 'old'
+      targetType: 'player_card_share', targetId: 'old', sourceEventId: 'old'
     }))
     const handlers = createNotificationHandlers(repository, { now: () => 2_000 })
     const insert = () => repository.runTransaction(store => writer.write(store, {
       recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_c', 'Carol'),
-      targetType: 'player_card', targetId: 'new', sourceEventId: 'new', at: 3_000
+      targetType: 'player_card_share', targetId: 'new', sourceEventId: 'new', at: 3_000
     }))
     const markAll = () => handlers.mark_all_notifications_read({ clientMutationId: insertFirst ? 'all-after' : 'all-before' }, { ownerOpenId: 'openid-b' })
     let results
@@ -287,7 +367,9 @@ test('friend request, acceptance, rejection actionState, and card share notifica
   assert.equal(accepted.unreadCount, repository.get(COLLECTIONS.STATE, stateDocumentId('su_a')).unreadCount)
   const requestNotification = repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_request')[0]
   assert.equal(requestNotification.actionState, 'accepted')
-  assert.equal(repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_accepted').length, 1)
+  const acceptedNotification = repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_accepted')[0]
+  assert.equal(acceptedNotification.targetType, 'friend')
+  assert.equal(acceptedNotification.targetId, 'su_a')
   const acceptedAgain = await friendship.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'accept-a-new-id' }, { ownerOpenId: 'openid-a' })
   assert.equal(acceptedAgain.actionState, 'accepted')
   assert.equal(acceptedAgain.unreadCount, repository.get(COLLECTIONS.STATE, stateDocumentId('su_a')).unreadCount)
@@ -310,6 +392,7 @@ test('friend request, acceptance, rejection actionState, and card share notifica
   const shared = await card.share_player_card({ playerNoteId: 'note-a', targetUserId: 'su_b', clientMutationId: 'card-share' }, { ownerOpenId: 'openid-a' })
   const cardNotifications = repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'player_card')
   assert.equal(cardNotifications.length, 1)
+  assert.equal(cardNotifications[0].targetType, 'player_card_share')
   assert.equal(cardNotifications[0].targetId, shared.shareId)
 
   const cardCountBeforeFailure = repository.where('social_player_card_shares', () => true).length
@@ -370,7 +453,7 @@ test('social app routes notification actions while keeping target authorization 
   const writer = createNotificationWriter({ now: () => 1_000 })
   const row = await repository.runTransaction(store => writer.write(store, {
     recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
-    targetType: 'player_card', targetId: 'withdrawn-card', sourceEventId: 'withdrawn-card'
+    targetType: 'player_card_share', targetId: 'withdrawn-card', sourceEventId: 'withdrawn-card'
   }))
   const app = createSocialApp({
     repository,

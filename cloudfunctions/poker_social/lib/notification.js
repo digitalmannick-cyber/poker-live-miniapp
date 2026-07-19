@@ -19,10 +19,21 @@ const NOTIFICATION_KINDS = Object.freeze([
   'player_card'
 ])
 
+const NOTIFICATION_TARGET_TYPES = Object.freeze({
+  friend_request: 'friendship',
+  friend_accepted: 'friend',
+  selected_hand: 'hand_share',
+  comment: 'hand_share',
+  reply: 'hand_share',
+  like_aggregate: 'hand_share',
+  player_card: 'player_card_share'
+})
+
 const LIKE_WINDOW_MS = 10 * 60 * 1000
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 50
 const MAX_CURSOR_LENGTH = 2048
+const MAX_LIST_STATE_ATTEMPTS = 2
 
 function canonicalTuple(parts) {
   return JSON.stringify((parts || []).map(value => String(value == null ? '' : value)))
@@ -93,12 +104,17 @@ function emptyState(recipientId) {
     readThroughCreatedAt: 0,
     readThroughId: '',
     unreadCount: 0,
+    version: 0,
     updatedAt: 0
   }
 }
 
 function unreadCountOf(state) {
   return Math.max(0, Math.floor(Number(state && state.unreadCount) || 0))
+}
+
+function stateVersionOf(state) {
+  return Math.max(0, Math.floor(Number(state && state.version) || 0))
 }
 
 function isEffectivelyRead(notification, state) {
@@ -160,7 +176,7 @@ function validateWrite(input) {
   const targetType = String(source.targetType || '').trim()
   const targetId = String(source.targetId || '').trim()
   const sourceEventId = String(source.sourceEventId || '').trim()
-  if (!recipientId || !NOTIFICATION_KINDS.includes(kind) || !actor.socialUserId || !targetType || !targetId || !sourceEventId) {
+  if (!recipientId || !NOTIFICATION_KINDS.includes(kind) || !actor.socialUserId || targetType !== NOTIFICATION_TARGET_TYPES[kind] || !targetId || !sourceEventId) {
     throw socialError('INVALID_NOTIFICATION', 'invalid notification')
   }
   return { recipientId, kind, actor, targetType, targetId, sourceEventId }
@@ -203,6 +219,7 @@ function createNotificationWriter(options) {
       latestCreatedAt: createdAt,
       latestId: id,
       unreadCount: Math.max(0, Math.floor(Number(state.unreadCount) || 0)) + 1,
+      version: stateVersionOf(state) + 1,
       updatedAt: createdAt
     }))
     return row
@@ -312,18 +329,24 @@ function createNotificationHandlers(repository, options) {
       const actorUser = await findActorUser(repository, actor)
       const limit = parseLimit(event && event.limit)
       const cursor = event && event.cursor ? decodeCursor(event.cursor) : null
-      const rows = await repository.listNotifications(actorUser._id, { cursor, limit })
-      const hasMore = rows.length > limit
-      const pageRows = rows.slice(0, limit)
-      const state = await repository.get(COLLECTIONS.STATE, stateDocumentId(actorUser._id)) || emptyState(actorUser._id)
-      const items = []
-      for (const row of pageRows) items.push(await toNotificationDto(row, state, config))
-      const tail = pageRows[pageRows.length - 1]
-      return {
-        items,
-        nextCursor: hasMore && tail ? encodeCursor({ createdAt: tail.createdAt, id: tail._id }) : null,
-        unreadCount: unreadCountOf(state)
+      const stateId = stateDocumentId(actorUser._id)
+      for (let attempt = 0; attempt < MAX_LIST_STATE_ATTEMPTS; attempt += 1) {
+        const beforeState = await repository.get(COLLECTIONS.STATE, stateId) || emptyState(actorUser._id)
+        const rows = await repository.listNotifications(actorUser._id, { cursor, limit })
+        const state = await repository.get(COLLECTIONS.STATE, stateId) || emptyState(actorUser._id)
+        if (stateVersionOf(beforeState) !== stateVersionOf(state)) continue
+        const hasMore = rows.length > limit
+        const pageRows = rows.slice(0, limit)
+        const items = []
+        for (const row of pageRows) items.push(await toNotificationDto(row, state, config))
+        const tail = pageRows[pageRows.length - 1]
+        return {
+          items,
+          nextCursor: hasMore && tail ? encodeCursor({ createdAt: tail.createdAt, id: tail._id }) : null,
+          unreadCount: unreadCountOf(state)
+        }
       }
+      throw socialError('NOTIFICATION_STATE_UNSTABLE', 'notification state changed')
     },
 
     async mark_notification_read(event, actor) {
@@ -341,6 +364,7 @@ function createNotificationHandlers(repository, options) {
           await store.set(COLLECTIONS.NOTIFICATIONS, row._id, Object.assign({}, row, { readAt: at }))
           await store.set(COLLECTIONS.STATE, stateId, Object.assign({}, state, {
             unreadCount,
+            version: stateVersionOf(state) + 1,
             updatedAt: at
           }))
         }
@@ -358,6 +382,7 @@ function createNotificationHandlers(repository, options) {
           readThroughCreatedAt: Number(state.latestCreatedAt) || 0,
           readThroughId: String(state.latestId || ''),
           unreadCount: 0,
+          version: stateVersionOf(state) + 1,
           updatedAt: at
         }))
         return { unreadCount: 0 }
@@ -375,6 +400,7 @@ function createNotificationHandlers(repository, options) {
 module.exports = {
   COLLECTIONS,
   NOTIFICATION_KINDS,
+  NOTIFICATION_TARGET_TYPES,
   LIKE_WINDOW_MS,
   stableDocumentId,
   notificationDocumentId,

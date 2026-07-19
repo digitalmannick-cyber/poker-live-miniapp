@@ -289,7 +289,7 @@ function createFriendshipHandlers(repository, options) {
             recipientId: record.requesterId,
             kind: 'friend_accepted',
             actor: actorUser,
-            targetType: 'social_user',
+            targetType: 'friend',
             targetId: actorUser._id,
             sourceEventId: friendAcceptedEventId(next),
             actionState: 'accepted',

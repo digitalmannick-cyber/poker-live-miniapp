@@ -91,3 +91,65 @@ node --test $socialTests
 ## 偏差
 
 无 UI 改动。相对最初 blocker 摘要额外修复了 Task 5 brief 明确要求的通知 DTO 精确白名单；这是启动 Task 5 必需的同一上游合同，不是功能扩展。
+
+---
+
+## Task 4 复审 Important 修复
+
+### 修复内容
+
+1. 通知 writer 现在统一强制 Task 5 canonical route target 合同：
+   - `friend_request -> friendship`
+   - `friend_accepted -> friend`
+   - `selected_hand/comment/reply/like_aggregate -> hand_share`
+   - `player_card -> player_card_share`
+2. 已修正现有生产者：好友接受通知使用 `friend`，玩家名片通知使用 `player_card_share`；`targetId` 语义不变。
+3. `social_notification_state` 增加内部单调 `version`。新增通知、mark-one 和 mark-all 每次影响 read/count 时均在原事务中递增版本。
+4. `list_notifications` 在通知查询前后读取 state version：稳定时正常返回；检测到变化时只重试一次；连续两次变化时抛出 `NOTIFICATION_STATE_UNSTABLE`，绝不返回内部矛盾 DTO。
+5. 稳定正常路径每页仍只执行一次通知列表查询；没有 UI 兼容旧 targetType。
+
+### RED 证据
+
+仅修改测试后运行：
+
+```powershell
+node --test tests/social-notifications.test.js
+```
+
+结果：11 通过、4 失败，失败准确覆盖：
+
+- writer 未拒绝旧的 `social_user` / `player_card` targetType；
+- query 与 state read 之间注入 mark-one 后只查询一次，复现 `read=false / unreadCount=0`；
+- state 持续变化时没有安全失败；
+- 生产 `friend_accepted` 仍返回 `social_user`。
+
+### GREEN 证据
+
+```powershell
+node --test tests/social-notifications.test.js
+```
+
+结果：15/15 通过。
+
+```powershell
+node --test tests/social-notifications.test.js tests/social-friendship.test.js tests/social-player-card.test.js
+```
+
+结果：43/43 通过。
+
+```powershell
+$socialTests = Get-ChildItem tests -Filter 'social-*.test.js' | ForEach-Object { $_.FullName }
+node --test $socialTests
+```
+
+结果：156/156 通过。
+
+### 本轮改动文件
+
+- `cloudfunctions/poker_social/lib/notification.js`
+- `cloudfunctions/poker_social/lib/friendship.js`
+- `cloudfunctions/poker_social/lib/player-card.js`
+- `tests/social-notifications.test.js`
+- `.superpowers/sdd/plan03-task-4-report.md`
+
+本轮不新增集合或索引，也未修改任何页面、路由或 UI 文件。

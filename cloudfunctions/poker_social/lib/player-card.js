@@ -176,7 +176,7 @@ function createPlayerCardHandlers(repository, options) {
           recipientId: targetUserId,
           kind: 'player_card',
           actor: sender,
-          targetType: 'player_card',
+          targetType: 'player_card_share',
           targetId: share._id,
           sourceEventId: 'player_card:' + share._id,
           actionState: 'available',
