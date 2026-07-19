@@ -194,7 +194,7 @@ git commit -m "feat: integrate friend hub into player tab"
 - Consumes: query `friendUserId`、`getFriendPlayerNote()`、`socialService.getFriendDetail(friendUserId)`。
 - Produces: existing player editing plus `removeFriend(friendUserId, clientMutationId)`。
 
-- [ ] **Step 1: 写私人/公开字段边界测试**
+- [x] **Step 1: 写私人/公开字段边界测试**
 
 ```js
 assert.match(detailJs, /options\.friendUserId/)
@@ -206,13 +206,13 @@ assert.match(detailJs, /updatePlayerNote/)
 assert.doesNotMatch(detailJs, /updateFriend.*leakTags|updateFriend.*note/)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-friend-detail.test.js`
 
 Expected: FAIL because friend mode is absent。
 
-- [ ] **Step 3: 实现双模式加载与解除保留**
+- [x] **Step 3: 实现双模式加载与解除保留**
 
 ```js
 const socialMutation = require('../../utils/social-mutation')
@@ -232,7 +232,7 @@ async confirmRemoveFriend() {
 
 当 `statsVisible=false` 时只显示“对方已隐藏统计数据”；不渲染占位数字。私人编辑继续走现有 `updatePlayerNote`，不走社交 API。
 
-- [ ] **Step 4: 运行详情回归**
+- [x] **Step 4: 运行详情回归**
 
 Run:
 
@@ -246,7 +246,7 @@ node tests/player-notes-store.test.js
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交好友详情**
+- [x] **Step 5: 提交好友详情**
 
 ```powershell
 git add pages/player-note-detail cloudfunctions/poker_social/lib/friendship.js services/social-service.js tests/social-friend-detail.test.js tests/social-player-hub.test.js tests/player-notes-navigation.test.js
