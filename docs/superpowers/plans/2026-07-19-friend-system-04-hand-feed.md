@@ -120,9 +120,13 @@ git commit -m "feat: build privacy-safe bb hand snapshots"
 - Modify: `cloudfunctions/poker_social/lib/repository.js`
 - Modify: `cloudfunctions/poker_social/app.js`
 - Modify: `cloudfunctions/poker_social/database-indexes.md`
+- Modify: `cloudfunctions/poker_data/index.js`
+- Modify: `services/cloud-repo.js`
 - Modify: `services/social-api.js`
 - Modify: `services/social-service.js`
 - Modify: `tests/helpers/social-fixture.js`
+- Test: `tests/poker-data-hand-action-revision.test.js`
+- Test: `tests/cloud-repo-hand-action-revision.test.js`
 - Test: `tests/social-hand-share-policy.test.js`
 - Test: `tests/social-notifications.test.js`
 
@@ -134,8 +138,13 @@ git commit -m "feat: build privacy-safe bb hand snapshots"
 
 **Approved contract:**
 
-- `loadOwnedHandBundle` resolves the current `social_users` by OpenID, then point-reads `hands` and `sessions` and queries `hand_actions` under the exact same `ownerOpenId + privatePlayerId + handId`, ordered by `sequence ASC, _id ASC`; cross-owner/player/missing ownership returns `FORBIDDEN` without existence disclosure.
-- Preview and publish call the same bundle loader and Task 1 builder. SHA-256 stable serialization of `{ version: 1, handId, handUpdatedAt: Number(hand.updatedAt) || 0, actionRevision: actions.map(a => [a._id, a.sequence, a.updatedAt || 0]), snapshot }`. Publish must supply the server preview hash, rebuild everything, and return `HAND_PREVIEW_STALE` with zero writes on any difference.
+- Do **not** copy-on-write hands or action collections. `cloudfunctions/poker_data/index.js` and `services/cloud-repo.js` must route every current and future action-set writer through one two-phase in-place protocol. A writer creates a non-empty server revision token, first persists `hand.actionRevisionPending = token`, then removes/replaces that hand's action rows with every row carrying `action.actionRevision = token`, and only after every action write succeeds commits the hand with `hand.actionRevision = token` and removes `actionRevisionPending`. The final commit also advances `hand.updatedAt`; clients cannot submit either revision field.
+- The protocol is mandatory for `create_hand`、`update_hand`、`upsert_hand`、`replaceHandActionsCloud`、`services/cloud-repo.js` `createHand/updateHand/replaceActions`, and any sync/import path that can write `hand_actions`. New action writers must call the shared protocol instead of directly mutating action rows. Hand-only updates may preserve the committed revision, but must never clear a pending revision they do not own.
+- A failure after pending is set remains fail-closed: readers reject while `actionRevisionPending` is non-empty, no partial action set may be previewed/published, and the failed mutation is not recorded as successfully idempotent. A retry with the canonical requested action list generates and persists a fresh pending token, removes any partial rows, rewrites the complete set with that token and commits it. Repair is writer-driven and idempotent; there is no background best-effort that clears pending without rebuilding the full action set.
+- `loadOwnedHandBundle` resolves current `social_users` by OpenID, then point-reads hand/session and queries `hand_actions` outside any transaction under exact `ownerOpenId + privatePlayerId + handId`, ordered `sequence ASC, _id ASC`. It point-reads the same hand/session again after the query. Both hand reads and both session reads must preserve ownership and the evidence fields below; any pending revision, mismatch, cross-owner/player/missing row or inconsistent read fails closed without existence disclosure.
+- For revisioned hands, `hand.actionRevision` must be non-empty, `actionRevisionPending` must be absent, and every returned action must carry exactly the committed revision. Mixed/missing row revisions are unavailable, never repaired by the reader. For legacy hands where both committed and pending revision are absent, the hand/session double point-read encloses the action query; all future writers setting pending before their first action mutation makes a concurrent new writer observable. Legacy rows may be shared without a migration write only when both enclosing reads are stable.
+- Preview and publish use the same Task 1 builder and canonical evidence object. SHA-256 stable serialization covers exactly `{ version: 1, handId, sessionId, sessionUpdatedAt: Number(session.updatedAt) || 0, bigBlind, handUpdatedAt: Number(hand.updatedAt) || 0, committedActionRevision: hand.actionRevision || '', rowActionRevision: actions.map(a => [String(a._id), Number(a.sequence), Number(a.updatedAt) || 0, a.actionRevision || '']), snapshot }`; actions are ordered `sequence ASC, _id ASC`, object keys are recursively stable and array order is preserved.
+- `preview_hand_share` returns the hash/snapshot only after the enclosing consistency checks. `publish_hand` may query/build the same candidate bundle before entering its business transaction, but the transaction itself may use only deterministic `get/set/remove`: it point-reads the exact hand and session and verifies ownership, no pending revision, `sessionId/session.updatedAt/bigBlind`、`hand.updatedAt/actionRevision` and the candidate evidence. Any mismatch returns `HAND_PREVIEW_STALE` with zero share/slot/rate/outbox/mutation writes. No `where/find/orderBy/limit` is permitted inside a production transaction.
 - Scope is exactly `square | friends | selected`. `square` and `friends` require an empty target array; square requires explicit public confirmation. Friends publish requires at least one accepted friend. Selected accepts a deduplicated 1–50 string IDs and point-reads every deterministic friendship again inside the write transaction; any invalid target aborts the whole write.
 - Extend `runIdempotent` with an optional SHA-256 of stable serialization over `{ action, handId, shareId, previewHash, scope, targetUserIds: sortedUniqueTargets, publicShareConfirmed: scope === 'square' && confirmed }`. Same actor/action/mutation/fingerprint restores; a different action or fingerprint returns `MUTATION_CONFLICT` before callback. Existing callers without fingerprints retain their behavior.
 - Enforce one active share with `social_hand_share_slots`, ID `shs_ + sha256(JSON.stringify([publisherId, handId]))`. The transaction repairs stale pointers, increments generation, creates a new random share ID and stores an immutable snapshot. Withdraw soft-deletes and clears the slot only if it still points to that share. Republish never reuses a share ID; scope update never changes snapshot, creation time or ID.
@@ -151,59 +160,71 @@ social_hand_shares: targetUserIds ARRAY, status ASC, createdAt DESC, _id DESC
 social_hand_share_slots: point-read only by deterministic _id
 social_rate_limits: point-read only by deterministic _id
 social_notification_outbox: status ASC, targetUserIds ARRAY, createdAt ASC, _id ASC
+hand_actions: ownerOpenId ASC, playerId ASC, handId ASC, sequence ASC, _id ASC
 ```
+- Split the repository surface by capability. The normal database store may expose the exact indexed action/friend/outbox queries required by this task; the transaction store/fake exposes only deterministic `get/set/remove`. A test must make transaction `find/where/orderBy/limit` unavailable so an implementation that passes the permissive in-memory fixture cannot ship.
 - Use one `canReadShare(viewerId, share, friendship)` for detail/feed/interaction policy: publisher reads active own shares; square is public to initialized users; friends/selected additionally require a current accepted friendship and selected membership. Withdrawn, unauthorized and source-deleted reads return `CONTENT_UNAVAILABLE`.
 - Visibility never replaces source existence. Detail and future interaction must point-read the share's exact private source tuple first. Task 2 data/index design must support Task 4's four-stream `(createdAt DESC, _id DESC)` keyset merge and authoritative source filtering without offset or private DTO fields.
 - Task 1–3 do not implement feed/cache, but their DTOs must support a later first-page-only five-minute cache keyed by public `socialUserId`, shown only on network failure with `readOnly: true`; no OpenID, private player/source field, raw hand/session/action row or writable permission result may be cached.
-- Add fixed public messages and preserve `error.code` end-to-end for `HAND_PREVIEW_STALE`、`HAND_ALREADY_SHARED`、`INVALID_SHARE_SCOPE`、`RATE_LIMITED`、`CONTENT_UNAVAILABLE`, plus all Task 1 codes. Public errors expose no source identifiers or raw database details.
+- Add fixed public messages and preserve `error.code` end-to-end for `HAND_SOURCE_UPDATING`、`HAND_PREVIEW_STALE`、`HAND_ALREADY_SHARED`、`INVALID_SHARE_SCOPE`、`RATE_LIMITED`、`CONTENT_UNAVAILABLE`, plus all Task 1 codes. Pending/mixed revision returns `HAND_SOURCE_UPDATING` for the owner preview path and remains `CONTENT_UNAVAILABLE` on public read paths; public errors expose no source identifiers or raw database details.
 
-- [ ] **Step 1: Write ownership, preview hash, scope, slot, limiter, fingerprint, outbox, visibility and leak tests**
+- [ ] **Step 1: Write two-phase writer, ownership, preview evidence, transaction-shape, scope, slot, limiter, outbox, visibility and leak tests**
 
-Include 1/50/51 selected boundaries, transaction-time friendship changes, stale preview zero writes, concurrent unique-active publish, stale slot repair, generation/republish, exact rolling boundaries and concurrent 20/21, rollback, mutation conflicts, 50-target single-outbox, partial delivery compensation, relationship removal skip, repository/index shape and recursive public-response scans.
+`tests/poker-data-hand-action-revision.test.js` and `tests/cloud-repo-hand-action-revision.test.js` must inject a failure after pending and after a partial row set, assert the hand remains pending and unreadable, retry from the canonical input, then assert one committed revision shared by the hand and every row with no pending marker. Cover create/update/upsert, cloud sync/import action writes, metadata-only hand updates preserving revision, and rejection of client-supplied revision fields.
+
+`tests/social-hand-share-policy.test.js` must cover revisioned stable reads, mixed/missing row revision rejection, legacy no-revision double-read success, hand/session change on either side of the action query, pending before/during/after query, sessionId/session.updatedAt/bigBlind/hand.updatedAt/committed/row revision hash changes, and publish-time point-read evidence mismatch with zero writes. Its production transaction fake exposes only `get/set/remove` and throws if code attempts `find/where/orderBy/limit`.
+
+Also include 1/50/51 selected boundaries, transaction-time friendship changes, concurrent unique-active publish, stale slot repair, generation/republish, exact rolling boundaries and concurrent 20/21, rollback, mutation conflicts, 50-target single-outbox, partial delivery compensation, relationship removal skip, repository/index shape and recursive public-response scans.
 
 - [ ] **Step 2: Run the Task 2 gate and confirm RED**
 
 ```powershell
-node --test tests/social-hand-share-policy.test.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js tests/social-notifications.test.js
+node --test tests/poker-data-hand-action-revision.test.js tests/cloud-repo-hand-action-revision.test.js tests/social-hand-share-policy.test.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js tests/social-notifications.test.js
 ```
 
-Expected: FAIL for missing hand-share contracts, not fixture/import mistakes.
+Expected: FAIL for missing two-phase action revision and hand-share contracts, not fixture/import mistakes.
 
-- [ ] **Step 3: Implement authoritative bundle loading, preview hash and typed routes/services**
+- [ ] **Step 3: Implement and repair the two-phase action revision protocol in both private writers**
 
-Do not accept client playerId/snapshot fields. Preview and publish must share the exact loader/builder/hash functions, and every typed error must survive the app/service boundary.
+Modify `cloudfunctions/poker_data/index.js` and `services/cloud-repo.js` first. Keep actions in `hand_actions`; set pending before the first removal/write, stamp every new row, commit the hand only after the complete set succeeds, and preserve pending on failure. Route every current action writer and sync/import path through the protocol. A retry must rebuild the complete set before clearing pending; never clear pending merely because a timeout elapsed.
 
-- [ ] **Step 4: Implement scope validation, fingerprint idempotency, active slot and rolling limiter**
+- [ ] **Step 4: Implement authoritative bundle loading, preview evidence and typed routes/services**
+
+Do not accept client playerId/snapshot/revision fields. Preview and publish share the exact loader/builder/evidence/hash functions. Query actions only outside a transaction, enclose it with hand/session point reads, and make the publish business transaction revalidate exact evidence with point reads only. Every typed error must survive the app/service boundary.
+
+- [ ] **Step 5: Implement scope validation, fingerprint idempotency, active slot and rolling limiter**
 
 All selected relationship checks and share/slot/rate/outbox mutations belong to the same business transaction. Do not implement query-then-insert uniqueness or an out-of-transaction limiter.
 
-- [ ] **Step 5: Implement deterministic outbox delivery, visibility/source checks and repository/index declarations**
+- [ ] **Step 6: Implement deterministic outbox delivery, visibility/source checks and repository/index declarations**
 
-Inject the single existing `notificationWriter` from `app.js`. Keep delivery bounded and compensatable; never write a 50-recipient notification batch inside the publish transaction.
+Inject the single existing `notificationWriter` from `app.js`. Keep delivery bounded and compensatable; never write a 50-recipient notification batch inside the publish transaction. Separate normal query-capable repository APIs from the `get/set/remove`-only transaction surface and add the exact `hand_actions` index declaration.
 
-- [ ] **Step 6: Run focused, complete social regressions and static checks**
+- [ ] **Step 7: Run focused private-writer, complete social regressions and static checks**
 
 ```powershell
-node --test tests/social-hand-share-policy.test.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js tests/social-notifications.test.js
+node --test tests/poker-data-hand-action-revision.test.js tests/cloud-repo-hand-action-revision.test.js tests/social-hand-share-policy.test.js tests/social-hand-snapshot.test.js tests/social-hand-snapshot-security.test.js tests/social-notifications.test.js
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 $socialTests = Get-ChildItem tests -Filter 'social-*.test.js' | ForEach-Object { $_.FullName }
 node --test $socialTests
+node --check cloudfunctions/poker_data/index.js
 node --check cloudfunctions/poker_social/lib/hand-share.js
 node --check cloudfunctions/poker_social/lib/idempotency.js
 node --check cloudfunctions/poker_social/lib/notification.js
 node --check cloudfunctions/poker_social/lib/repository.js
 node --check cloudfunctions/poker_social/app.js
+node --check services/cloud-repo.js
 node --check services/social-api.js
 node --check services/social-service.js
 git diff --check <task-base>..<task-head>
 ```
 
-Expected: all commands exit `0`; responses contain no OpenID, private player/source fields, original amounts or profit/EV.
+Expected: all commands exit `0`; failed partial writes remain pending until a successful retry repair; production transaction tests execute with only `get/set/remove`; responses contain no OpenID, private player/source fields, original amounts or profit/EV.
 
-- [ ] **Step 7: Submit Task 2 for specification review, then code review, then commit**
+- [ ] **Step 8: Submit Task 2 for specification review, then code review, then commit**
 
 ```powershell
-git add cloudfunctions/poker_social/lib/hand-share.js cloudfunctions/poker_social/lib/visibility.js cloudfunctions/poker_social/lib/idempotency.js cloudfunctions/poker_social/lib/notification.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/app.js cloudfunctions/poker_social/database-indexes.md services/social-api.js services/social-service.js tests/helpers/social-fixture.js tests/social-hand-share-policy.test.js tests/social-notifications.test.js
+git add cloudfunctions/poker_data/index.js services/cloud-repo.js cloudfunctions/poker_social/lib/hand-share.js cloudfunctions/poker_social/lib/visibility.js cloudfunctions/poker_social/lib/idempotency.js cloudfunctions/poker_social/lib/notification.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/app.js cloudfunctions/poker_social/database-indexes.md services/social-api.js services/social-service.js tests/helpers/social-fixture.js tests/poker-data-hand-action-revision.test.js tests/cloud-repo-hand-action-revision.test.js tests/social-hand-share-policy.test.js tests/social-notifications.test.js
 git commit -m "feat: publish social hands to three scopes"
 ```
 
