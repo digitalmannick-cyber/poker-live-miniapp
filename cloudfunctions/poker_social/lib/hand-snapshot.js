@@ -189,7 +189,9 @@ function validateActions(actions, options) {
     const actorLabel = parseActorLabel(action.actorLabel)
     const isHero = seat === options.heroSeat
     if (actorLabel.hero !== isHero) throw invalidSnapshot()
-    const actorPosition = actorLabel.position || options.heroPosition
+    let actorPosition = actorLabel.position
+    if (!options.fullSeats && actorLabel.hero && actorPosition === null) actorPosition = options.heroPosition
+    if (!actorPosition) throw invalidSnapshot()
 
     if (options.fullSeats) {
       const player = options.fullSeats.get(seat)

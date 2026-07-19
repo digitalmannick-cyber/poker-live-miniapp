@@ -203,6 +203,12 @@ test('bare non-Hero actor labels remain invalid', () => {
   expectCode(() => buildHandSnapshot(source), 'INVALID_HAND_SNAPSHOT')
 })
 
+test('full-ledger bare Hero label is invalid without its persisted position evidence', () => {
+  const source = fullLedgerFixture(6)
+  source.actions[1].actorLabel = 'Hero'
+  expectCode(() => buildHandSnapshot(source), 'INVALID_HAND_SNAPSHOT')
+})
+
 test('constructs an exact whitelist snapshot and drops recursive private keys and canary values', () => {
   const source = fullLedgerFixture(6)
   source.hand.board = { flop: '2s3h4d', turn: '5c', river: '9s', ownerOpenId: 'CANARY-board' }

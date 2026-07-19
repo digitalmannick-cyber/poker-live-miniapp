@@ -101,3 +101,11 @@ node --test $handTests
 - action street 接受大小写安全规范化后的 canonical `showdown`，其它未知 street 继续 fail closed。
 
 审查修复提交信息：`fix: harden bb hand snapshot compatibility`；最终哈希以 Git 提交记录为准。
+
+## 最终 Important 修复
+
+新增真实 full-ledger fixture，把 Hero action 的 `actorLabel` 设为裸 `Hero`。修复前安全测试 `10` 项中该项为唯一 RED，证明 full-ledger 错误继承了 legacy position fallback。
+
+最小修复仅允许在 `!options.fullSeats && actorLabel.hero && actorLabel.position === null` 时回填 `hand.heroPosition`；full-ledger bare `Hero` 返回 `INVALID_HAND_SNAPSHOT`，显式 `Hero CO` 继续合法。
+
+修复后证据：focused `22/22`、全部 social `210/210`、hand/ledger/agent-export/store-full-entry `63/63`。提交信息：`fix: require full-ledger Hero position evidence`。
