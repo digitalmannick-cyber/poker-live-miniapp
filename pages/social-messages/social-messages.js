@@ -8,10 +8,41 @@ const PAGE_SIZE = 20
 const CACHE_TTL_MS = 5 * 60 * 1000
 const CACHE_PREFIX = 'socialNotificationsFirstPage:'
 const ALLOWED_KINDS = new Set(['friend_request', 'friend_accepted', 'selected_hand', 'comment', 'reply', 'like_aggregate', 'player_card'])
+const DTO_KEYS = ['actionState', 'actor', 'aggregateCount', 'createdAt', 'kind', 'notificationId', 'read', 'targetId', 'targetType']
+const ACTOR_KEYS = ['avatarText', 'avatarUrl', 'nickname', 'socialUserId']
+const TERMINAL_ACTION_STATES = new Set(['accepted', 'rejected', 'unavailable'])
 
-function cacheKey() {
-  const playerId = String(dataService.getCurrentPlayerId() || '').trim().toUpperCase()
-  return playerId ? CACHE_PREFIX + encodeURIComponent(playerId) : ''
+function serviceContractError() {
+  return Object.assign(new Error('invalid social notification response'), { code: 'SOCIAL_ERROR' })
+}
+
+function invokeAsPromise(operation) {
+  try { return Promise.resolve(operation()) } catch (error) { return Promise.reject(error) }
+}
+
+function isValidUnreadCount(value) {
+  return Number.isFinite(value) && Number.isInteger(value) && value >= 0
+}
+
+function requireUnreadCount(result) {
+  const value = result && result.unreadCount
+  if (!isValidUnreadCount(value)) throw serviceContractError()
+  return value
+}
+
+function getActiveAccountKey() {
+  try {
+    if (typeof dataService.isAccountLoggedOut === 'function' && dataService.isAccountLoggedOut()) return ''
+    if (typeof dataService.getCurrentPlayerId !== 'function') return ''
+    return String(dataService.getCurrentPlayerId() || '').trim().toUpperCase()
+  } catch (error) {
+    return ''
+  }
+}
+
+function cacheKey(accountId) {
+  const normalized = String(accountId || '').trim().toUpperCase()
+  return normalized ? CACHE_PREFIX + encodeURIComponent(normalized) : ''
 }
 
 function whitelistActor(actor) {
@@ -39,6 +70,29 @@ function whitelistNotification(item) {
   }
 }
 
+function hasExactKeys(value, keys) {
+  return !!value && typeof value === 'object' && !Array.isArray(value) &&
+    JSON.stringify(Object.keys(value).sort()) === JSON.stringify(keys)
+}
+
+function isValidNotificationDto(item) {
+  if (!hasExactKeys(item, DTO_KEYS) || !hasExactKeys(item.actor, ACTOR_KEYS)) return false
+  if (!item.notificationId || !ALLOWED_KINDS.has(item.kind)) return false
+  if (typeof item.targetType !== 'string' || typeof item.targetId !== 'string') return false
+  if (!Number.isFinite(item.aggregateCount) || item.aggregateCount < 0 || typeof item.actionState !== 'string' || typeof item.read !== 'boolean') return false
+  if (!ACTOR_KEYS.every(key => typeof item.actor[key] === 'string')) return false
+  if (!['string', 'number'].includes(typeof item.createdAt) || Number.isNaN(new Date(item.createdAt).getTime())) return false
+  return true
+}
+
+function normalizeListResult(result) {
+  if (!result || !Array.isArray(result.items) || typeof result.nextCursor !== 'string') throw serviceContractError()
+  const unreadCount = requireUnreadCount(result)
+  const items = result.items.map(whitelistNotification)
+  if (!items.every(isValidNotificationDto)) throw serviceContractError()
+  return { items, nextCursor: result.nextCursor, unreadCount }
+}
+
 function formatTime(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -64,12 +118,13 @@ function decorate(item) {
   const safe = whitelistNotification(item)
   const copy = displayCopy(safe)
   const actionLabels = { accepted: '已接受', rejected: '已拒绝', unavailable: '内容已不可访问' }
+  const isFriendRequest = safe.kind === 'friend_request'
   return Object.assign(safe, {
     title: copy[0],
     summary: copy[1],
     timeLabel: formatTime(safe.createdAt),
-    isFriendRequest: safe.kind === 'friend_request',
-    canAct: safe.kind === 'friend_request' && safe.actionState === 'pending',
+    isFriendRequest,
+    canAct: isFriendRequest && safe.targetType === 'friendship' && !!safe.targetId && safe.actionState === 'pending',
     actionLabel: actionLabels[safe.actionState] || '',
     unavailable: false,
     acting: false
@@ -80,18 +135,38 @@ function isNetworkError(error) {
   return ['NETWORK_ERROR', 'CLOUD_UNAVAILABLE'].includes(String(error && error.code || ''))
 }
 
-function readFreshCache() {
-  const key = cacheKey()
+function readFreshCache(accountId) {
+  const key = cacheKey(accountId)
   if (!key || typeof wx === 'undefined' || typeof wx.getStorageSync !== 'function') return null
-  const cached = wx.getStorageSync(key)
-  if (!cached || !Array.isArray(cached.items) || Date.now() - Number(cached.savedAt || 0) > CACHE_TTL_MS) return null
-  return cached.items.map(decorate)
+  try {
+    const cached = wx.getStorageSync(key)
+    const now = Date.now()
+    if (!hasExactKeys(cached, ['accountId', 'items', 'nextCursor', 'savedAt', 'unreadCount'])) return null
+    if (cached.accountId !== accountId || !Number.isFinite(cached.savedAt) || cached.savedAt <= 0 || cached.savedAt > now || now - cached.savedAt > CACHE_TTL_MS) return null
+    if (!Array.isArray(cached.items) || !cached.items.every(isValidNotificationDto) || typeof cached.nextCursor !== 'string' || !isValidUnreadCount(cached.unreadCount)) return null
+    return {
+      accountId: cached.accountId,
+      items: cached.items.map(decorate),
+      nextCursor: cached.nextCursor,
+      unreadCount: cached.unreadCount,
+      savedAt: cached.savedAt
+    }
+  } catch (error) {
+    return null
+  }
 }
 
-function writeFirstPageCache(items) {
-  const key = cacheKey()
+function writeFirstPageCache(accountId, result) {
+  const key = cacheKey(accountId)
   if (!key || typeof wx === 'undefined' || typeof wx.setStorageSync !== 'function') return
-  wx.setStorageSync(key, { savedAt: Date.now(), items: (items || []).map(whitelistNotification) })
+  const cached = {
+    accountId,
+    items: result.items.map(whitelistNotification),
+    nextCursor: result.nextCursor,
+    unreadCount: result.unreadCount,
+    savedAt: Date.now()
+  }
+  try { wx.setStorageSync(key, cached) } catch (error) {}
 }
 
 function mergeUnique(previous, incoming) {
@@ -119,30 +194,100 @@ Page({
 
   onLoad() {
     this._alive = true
+    this._hidden = false
     this._generation = 0
-    this._actionFlights = Object.create(null)
-    this._openFlights = Object.create(null)
-    this._mutationIds = Object.create(null)
+    this._accountKey = getActiveAccountKey()
+    this.resetRequestMaps()
     this.bindUnread()
-    unreadState.setAccountKey(dataService.getCurrentPlayerId())
-    this.loadFirst()
+    unreadState.setAccountKey(this._accountKey)
+    if (this._accountKey) this.loadFirst()
+    else this.showUnavailableAccount()
   },
 
   onShow() {
+    const wasHidden = !!this._hidden
+    const nextAccountKey = getActiveAccountKey()
+    const accountChanged = nextAccountKey !== this._accountKey
     this._alive = true
+    this._hidden = false
     this.bindUnread()
-    unreadState.setAccountKey(dataService.getCurrentPlayerId())
+    if (accountChanged) {
+      this.invalidateAsyncWork(true)
+      this._accountKey = nextAccountKey
+      this.setData({
+        items: [],
+        hasLoaded: false,
+        loading: false,
+        loadingMore: false,
+        markingAll: false,
+        nextCursor: '',
+        firstError: '',
+        moreError: false,
+        offline: false
+      })
+    }
+    unreadState.setAccountKey(nextAccountKey)
+    if (!nextAccountKey) {
+      this.showUnavailableAccount()
+      return
+    }
+    if (wasHidden || accountChanged) this.loadFirst()
+    else if (!this._firstFlight && !this.data.hasLoaded) this.loadFirst()
     unreadState.refresh().catch(() => {})
   },
 
   onHide() {
+    this._alive = false
+    this._hidden = true
+    this.invalidateAsyncWork(true)
     this.unbindUnread()
   },
 
   onUnload() {
     this._alive = false
-    this._generation += 1
+    this._hidden = true
+    this.invalidateAsyncWork(true)
     this.unbindUnread()
+  },
+
+  resetRequestMaps() {
+    this._actionFlights = Object.create(null)
+    this._openFlights = Object.create(null)
+    this._friendMutationIds = Object.create(null)
+    this._readMutationIds = Object.create(null)
+    this._markAllMutationId = ''
+  },
+
+  invalidateAsyncWork(resetMutations) {
+    this._generation += 1
+    this._firstFlight = null
+    this._moreFlight = null
+    this._actionFlights = Object.create(null)
+    this._openFlights = Object.create(null)
+    if (resetMutations) {
+      this._friendMutationIds = Object.create(null)
+      this._readMutationIds = Object.create(null)
+      this._markAllMutationId = ''
+    }
+  },
+
+  isRequestCurrent(generation, accountKey) {
+    return !!this._alive && generation === this._generation && accountKey === this._accountKey && accountKey === getActiveAccountKey()
+  },
+
+  showUnavailableAccount() {
+    if (!this._alive) return
+    this.setData({
+      items: [],
+      hasLoaded: true,
+      loading: false,
+      loadingMore: false,
+      markingAll: false,
+      nextCursor: '',
+      firstError: '好友功能暂时不可用',
+      moreError: false,
+      offline: false
+    })
   },
 
   bindUnread() {
@@ -158,33 +303,47 @@ Page({
     this._unsubscribeUnread = null
   },
 
-  async loadFirst() {
+  loadFirst() {
+    if (!this._alive) return Promise.resolve()
+    const accountKey = getActiveAccountKey()
+    if (!accountKey || accountKey !== this._accountKey) {
+      this._accountKey = accountKey
+      unreadState.setAccountKey(accountKey)
+      this.invalidateAsyncWork(true)
+      this.showUnavailableAccount()
+      return Promise.resolve()
+    }
     if (this._firstFlight) return this._firstFlight
     const generation = ++this._generation
-    this.setData({ loading: true, firstError: '', moreError: false, offline: false })
-    const request = socialService.listNotifications({ cursor: '', limit: PAGE_SIZE })
-      .then(result => {
-        if (!this._alive || generation !== this._generation) return
-        const items = (result && result.items || []).map(decorate)
-        writeFirstPageCache(items)
-        unreadState.applyAuthoritativeCount(result && result.unreadCount)
+    this._moreFlight = null
+    this.setData({ loading: true, loadingMore: false, markingAll: false, firstError: '', moreError: false, offline: false })
+    const request = invokeAsPromise(() => socialService.listNotifications({ cursor: '', limit: PAGE_SIZE }))
+      .then(rawResult => {
+        if (!this.isRequestCurrent(generation, accountKey)) return
+        const result = normalizeListResult(rawResult)
+        if (!this.isRequestCurrent(generation, accountKey)) return
+        writeFirstPageCache(accountKey, result)
+        unreadState.applyAuthoritativeCount(result.unreadCount)
         this.setData({
-          items,
-          nextCursor: String(result && result.nextCursor || ''),
+          items: result.items.map(decorate),
+          nextCursor: result.nextCursor,
           hasLoaded: true,
           loading: false,
+          loadingMore: false,
           offline: false,
-          firstError: ''
+          firstError: '',
+          moreError: false
         })
       })
       .catch(error => {
-        if (!this._alive || generation !== this._generation) return
-        const cached = isNetworkError(error) ? readFreshCache() : null
+        if (!this.isRequestCurrent(generation, accountKey)) return
+        const cached = isNetworkError(error) ? readFreshCache(accountKey) : null
         if (cached) {
-          this.setData({ items: cached, nextCursor: '', hasLoaded: true, loading: false, offline: true, firstError: '' })
+          unreadState.applyAuthoritativeCount(cached.unreadCount)
+          this.setData({ items: cached.items, nextCursor: '', hasLoaded: true, loading: false, loadingMore: false, offline: true, firstError: '', moreError: false })
           return
         }
-        this.setData({ hasLoaded: true, loading: false, firstError: notificationRoute.describeNotificationError(error) })
+        this.setData({ hasLoaded: true, loading: false, loadingMore: false, firstError: notificationRoute.describeNotificationError(error), moreError: false })
       })
       .finally(() => {
         if (this._firstFlight === request) this._firstFlight = null
@@ -197,24 +356,26 @@ Page({
     return this.loadFirst()
   },
 
-  async loadMore() {
-    if (this.data.offline || !this.data.nextCursor || this._moreFlight) return this._moreFlight
+  loadMore() {
+    if (!this._alive || this.data.offline || !this.data.nextCursor || this._moreFlight) return this._moreFlight
     const generation = this._generation
+    const accountKey = this._accountKey
     const cursor = this.data.nextCursor
     this.setData({ loadingMore: true, moreError: false })
-    const request = socialService.listNotifications({ cursor, limit: PAGE_SIZE })
-      .then(result => {
-        if (!this._alive || generation !== this._generation) return
+    const request = invokeAsPromise(() => socialService.listNotifications({ cursor, limit: PAGE_SIZE }))
+      .then(rawResult => {
+        if (!this.isRequestCurrent(generation, accountKey)) return
+        const result = normalizeListResult(rawResult)
         this.setData({
-          items: mergeUnique(this.data.items, (result && result.items || []).map(decorate)),
-          nextCursor: String(result && result.nextCursor || ''),
+          items: mergeUnique(this.data.items, result.items.map(decorate)),
+          nextCursor: result.nextCursor,
           loadingMore: false,
           moreError: false
         })
-        unreadState.applyAuthoritativeCount(result && result.unreadCount)
+        unreadState.applyAuthoritativeCount(result.unreadCount)
       })
       .catch(() => {
-        if (this._alive && generation === this._generation) this.setData({ loadingMore: false, moreError: true })
+        if (this.isRequestCurrent(generation, accountKey)) this.setData({ loadingMore: false, moreError: true })
       })
       .finally(() => {
         if (this._moreFlight === request) this._moreFlight = null
@@ -232,57 +393,71 @@ Page({
   },
 
   patchItem(notificationId, patch) {
+    if (!this._alive) return
     this.setData({ items: this.data.items.map(item => item.notificationId === notificationId ? Object.assign({}, item, patch) : item) })
   },
 
-  async actOnFriendRequest(event) {
+  actOnFriendRequest(event) {
     const dataset = event && event.currentTarget && event.currentTarget.dataset || {}
     const notificationId = String(dataset.id || '')
     const decision = dataset.decision === 'reject' ? 'reject' : 'accept'
-    const item = this.findItem(notificationId)
-    if (!item || !item.canAct || item.acting || this.data.offline) return
     if (this._actionFlights[notificationId]) return this._actionFlights[notificationId]
+    const item = this.findItem(notificationId)
+    if (!this._alive || !item || !item.canAct || item.acting || this.data.offline || item.kind !== 'friend_request' || item.targetType !== 'friendship' || !item.targetId || item.actionState !== 'pending') return
+    const generation = this._generation
+    const accountKey = this._accountKey
     const mutationKey = `${notificationId}:${decision}`
-    const clientMutationId = this._mutationIds[mutationKey] || createMutationId('friend_request_' + decision)
-    this._mutationIds[mutationKey] = clientMutationId
+    const clientMutationId = this._friendMutationIds[mutationKey] || createMutationId('friend_request_' + decision)
+    this._friendMutationIds[mutationKey] = clientMutationId
     this.patchItem(notificationId, { acting: true })
     const serviceMethod = decision === 'accept' ? socialService.acceptFriendRequest : socialService.rejectFriendRequest
-    const request = serviceMethod({ friendshipId: item.targetId, clientMutationId })
+    const request = invokeAsPromise(() => serviceMethod({ friendshipId: item.targetId, clientMutationId }))
       .then(result => {
-        if (!this._alive) return
-        const actionState = String(result && result.actionState || (decision === 'accept' ? 'accepted' : 'rejected'))
-        unreadState.applyAuthoritativeCount(result && result.unreadCount)
-        this.patchItem(notificationId, { acting: false, canAct: false, actionState, actionLabel: actionState === 'accepted' ? '已接受' : '已拒绝', read: true })
-        delete this._mutationIds[mutationKey]
+        if (!this.isRequestCurrent(generation, accountKey)) return
+        const actionState = String(result && result.actionState || '')
+        const unreadCount = requireUnreadCount(result)
+        if (!TERMINAL_ACTION_STATES.has(actionState)) throw serviceContractError()
+        unreadState.applyAuthoritativeCount(unreadCount)
+        const labels = { accepted: '已接受', rejected: '已拒绝', unavailable: '内容已不可访问' }
+        this.patchItem(notificationId, { acting: false, canAct: false, actionState, actionLabel: labels[actionState] })
+        delete this._friendMutationIds[mutationKey]
       })
       .catch(error => {
-        if (!this._alive) return
+        if (!this.isRequestCurrent(generation, accountKey)) return
         this.patchItem(notificationId, { acting: false })
         if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: notificationRoute.describeNotificationError(error), icon: 'none' })
       })
-      .finally(() => { delete this._actionFlights[notificationId] })
+      .finally(() => {
+        if (this._actionFlights[notificationId] === request) delete this._actionFlights[notificationId]
+      })
     this._actionFlights[notificationId] = request
     return request
   },
 
   openNotification(event) {
     const notificationId = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.id || '')
-    const item = this.findItem(notificationId)
-    if (!item || item.canAct || item.acting || this.data.offline) return
     if (this._openFlights[notificationId]) return this._openFlights[notificationId]
+    const item = this.findItem(notificationId)
+    if (!this._alive || !item || item.canAct || item.acting || this.data.offline) return
+    const generation = this._generation
+    const accountKey = this._accountKey
     const request = (async () => {
       if (!item.read) {
+        const clientMutationId = this._readMutationIds[notificationId] || createMutationId('notification_read')
+        this._readMutationIds[notificationId] = clientMutationId
         try {
-          const result = await socialService.markNotificationRead({ notificationId, clientMutationId: createMutationId('notification_read') })
-          if (!this._alive) return
-          unreadState.applyAuthoritativeCount(result && result.unreadCount)
+          const result = await socialService.markNotificationRead({ notificationId, clientMutationId })
+          if (!this.isRequestCurrent(generation, accountKey)) return
+          const unreadCount = requireUnreadCount(result)
+          unreadState.applyAuthoritativeCount(unreadCount)
           this.patchItem(notificationId, { read: true })
+          delete this._readMutationIds[notificationId]
         } catch (error) {
-          if (this._alive && typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: notificationRoute.describeNotificationError(error), icon: 'none' })
+          if (this.isRequestCurrent(generation, accountKey) && typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: notificationRoute.describeNotificationError(error), icon: 'none' })
           return
         }
       }
-      if (!this._alive) return
+      if (!this.isRequestCurrent(generation, accountKey)) return
       const target = notificationRoute.resolveNotificationTarget(item)
       if (target.type === 'inline') return
       if (target.type !== 'navigate') {
@@ -290,22 +465,30 @@ Page({
         return
       }
       if (typeof wx !== 'undefined' && wx.navigateTo) wx.navigateTo({ url: target.url })
-    })().finally(() => { delete this._openFlights[notificationId] })
+    })().finally(() => {
+      if (this._openFlights[notificationId] === request) delete this._openFlights[notificationId]
+    })
     this._openFlights[notificationId] = request
     return request
   },
 
   async markAllRead() {
-    if (this.data.offline || this.data.markingAll || !this.data.unread.hasUnread) return
+    if (!this._alive || this.data.offline || this.data.markingAll || !this.data.unread.hasUnread) return
+    const generation = this._generation
+    const accountKey = this._accountKey
+    const clientMutationId = this._markAllMutationId || createMutationId('notifications_read_all')
+    this._markAllMutationId = clientMutationId
     this.setData({ markingAll: true })
     try {
-      const result = await socialService.markAllNotificationsRead({ clientMutationId: createMutationId('notifications_read_all') })
-      if (!this._alive) return
-      unreadState.applyAuthoritativeCount(result && result.unreadCount)
+      const result = await socialService.markAllNotificationsRead({ clientMutationId })
+      if (!this.isRequestCurrent(generation, accountKey)) return
+      const unreadCount = requireUnreadCount(result)
+      unreadState.applyAuthoritativeCount(unreadCount)
+      this._markAllMutationId = ''
       this.setData({ items: this.data.items.map(item => Object.assign({}, item, { read: true })), markingAll: false })
       unreadState.refresh({ force: true }).catch(() => {})
     } catch (error) {
-      if (!this._alive) return
+      if (!this.isRequestCurrent(generation, accountKey)) return
       this.setData({ markingAll: false })
       if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: notificationRoute.describeNotificationError(error), icon: 'none' })
     }

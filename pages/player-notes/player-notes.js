@@ -5,7 +5,12 @@ const onboardingGuide = require('../../utils/onboarding-guide')
 const socialUnreadState = require('../../utils/social-unread-state')
 
 function getSocialAccountKey() {
-  return typeof dataService.getCurrentPlayerId === 'function' ? dataService.getCurrentPlayerId() : ''
+  try {
+    if (typeof dataService.isAccountLoggedOut === 'function' && dataService.isAccountLoggedOut()) return ''
+    return typeof dataService.getCurrentPlayerId === 'function' ? dataService.getCurrentPlayerId() : ''
+  } catch (error) {
+    return ''
+  }
 }
 
 function buildTypeFilters(settings, selectedType) {
@@ -72,8 +77,9 @@ Page({
 
   async onShow() {
     this.bindSocialUnread()
-    socialUnreadState.setAccountKey(getSocialAccountKey())
-    socialUnreadState.refresh().catch(() => {})
+    const socialAccountKey = getSocialAccountKey()
+    socialUnreadState.setAccountKey(socialAccountKey)
+    if (socialAccountKey) socialUnreadState.refresh().catch(() => {})
     tabBar.syncCustomTabBar('/pages/player-notes/player-notes')
     if (this.data.playerSection === 'library') await this.refresh()
     if (this.data.playerSection === 'friends' && this.data.friendSection === 'friends' && this.data.friendsLoaded) {

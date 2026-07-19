@@ -1,5 +1,15 @@
 const tabState = require('../utils/tab-state')
 const socialUnreadState = require('../utils/social-unread-state')
+const dataService = require('../services/data-service')
+
+function getSocialAccountKey() {
+  try {
+    if (typeof dataService.isAccountLoggedOut === 'function' && dataService.isAccountLoggedOut()) return ''
+    return typeof dataService.getCurrentPlayerId === 'function' ? dataService.getCurrentPlayerId() : ''
+  } catch (error) {
+    return ''
+  }
+}
 
 Component({
   data: {
@@ -9,6 +19,7 @@ Component({
   },
   lifetimes: {
     attached() {
+      this.syncSocialAccount()
       this.subscribeSocialUnread()
       this.startRoutePolling()
     },
@@ -19,6 +30,7 @@ Component({
   },
   pageLifetimes: {
     show() {
+      this.syncSocialAccount()
       this.subscribeSocialUnread()
       this.startRoutePolling()
     },
@@ -28,6 +40,9 @@ Component({
     }
   },
   methods: {
+    syncSocialAccount() {
+      socialUnreadState.setAccountKey(getSocialAccountKey())
+    },
     subscribeSocialUnread() {
       if (this._unsubscribeSocialUnread) return
       this._unsubscribeSocialUnread = socialUnreadState.subscribe(snapshot => {

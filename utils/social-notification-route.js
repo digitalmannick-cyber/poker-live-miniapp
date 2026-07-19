@@ -31,9 +31,8 @@ function resolveNotificationTarget(notification) {
 
 function describeNotificationError(error) {
   const code = String(error && error.code || '')
-  if (code === 'NETWORK_ERROR' || code === 'CLOUD_UNAVAILABLE') return '好友功能暂时不可用'
   if (UNAVAILABLE_CODES.has(code)) return '内容已不可访问'
-  return '内容已不可访问'
+  return '好友功能暂时不可用'
 }
 
 module.exports = { resolveNotificationTarget, describeNotificationError }

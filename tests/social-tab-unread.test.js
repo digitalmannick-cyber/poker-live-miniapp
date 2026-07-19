@@ -83,6 +83,8 @@ test('custom tab stores unread separately and route polling does not fetch it', 
   const wxml = fs.readFileSync(path.join(root, 'custom-tab-bar/index.wxml'), 'utf8')
   assert.match(js, /socialUnread:/)
   assert.match(js, /subscribe/)
+  assert.match(js, /isAccountLoggedOut/)
+  assert.match(js, /setAccountKey/)
   assert.doesNotMatch(js, /routePollTimer[\s\S]{0,240}getUnreadNotificationCount/)
   assert.match(wxml, /socialUnread[^\n]+player-notes/)
 })
@@ -92,4 +94,10 @@ test('player library core markup and library source filter remain intact', () =>
   const wxml = fs.readFileSync(path.join(root, 'pages/player-notes/player-notes.wxml'), 'utf8')
   ;['player-search', 'player-type-scroll', 'player-card', 'player-empty'].forEach(className => assert.match(wxml, new RegExp('class="[^"]*' + className)))
   assert.match(js, /sourceKind:\s*'library'/)
+})
+
+test('player unread account key honors an explicit logout and tolerates older mocks', () => {
+  const js = fs.readFileSync(path.join(root, 'pages/player-notes/player-notes.js'), 'utf8')
+  assert.match(js, /isAccountLoggedOut/)
+  assert.match(js, /typeof dataService\.isAccountLoggedOut === 'function'/)
 })

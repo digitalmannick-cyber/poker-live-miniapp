@@ -43,6 +43,9 @@ test('notification errors distinguish network from unavailable content', () => {
   assert.equal(route.describeNotificationError({ code: 'NETWORK_ERROR' }), '好友功能暂时不可用')
   assert.equal(route.describeNotificationError({ code: 'FORBIDDEN' }), '内容已不可访问')
   assert.equal(route.describeNotificationError({ code: 'PLAYER_CARD_UNAVAILABLE' }), '内容已不可访问')
+  assert.equal(route.describeNotificationError({ code: 'SOCIAL_ERROR' }), '好友功能暂时不可用')
+  assert.equal(route.describeNotificationError({ code: 'NOTIFICATION_STATE_UNSTABLE' }), '好友功能暂时不可用')
+  assert.equal(route.describeNotificationError({ code: 'SOMETHING_NEW' }), '好友功能暂时不可用')
 })
 
 test('first-page cache is account scoped, five minutes, and DTO-whitelisted', () => {
@@ -214,6 +217,225 @@ test('mark all changes nothing on failure and uses the authoritative count on su
   loaded.restore()
 })
 
+test('cache is exact, account-bound, authoritative offline, and storage failures are harmless', async () => {
+  const storage = new Map()
+  const online = loadMessagePage({
+    storage,
+    playerId: 'WX-A',
+    listResponses: [{ items: [notification('cache-1')], nextCursor: 'opaque-next', unreadCount: 6 }]
+  })
+  const page = createInstance(online.definition)
+  page.onLoad()
+  await page._firstFlight
+  const cached = storage.get('socialNotificationsFirstPage:WX-A')
+  assert.deepEqual(Object.keys(cached).sort(), ['accountId', 'items', 'nextCursor', 'savedAt', 'unreadCount'])
+  assert.equal(cached.accountId, 'WX-A')
+  assert.equal(cached.nextCursor, 'opaque-next')
+  assert.equal(cached.unreadCount, 6)
+  online.restore()
+
+  const offline = loadMessagePage({ storage, playerId: 'WX-A', listResponses: [Promise.reject(networkError())] })
+  const offlinePage = createInstance(offline.definition)
+  offlinePage.onLoad()
+  await offlinePage._firstFlight
+  assert.equal(offlinePage.data.offline, true)
+  assert.equal(offline.unread.applied.at(-1), 6)
+  offline.restore()
+
+  const throwingStorage = {
+    get() { throw new Error('storage read failed') },
+    set() { throw new Error('storage write failed') }
+  }
+  const storageFailure = loadMessagePage({ storage: throwingStorage, listResponses: [{ items: [notification('online')], nextCursor: '', unreadCount: 0 }] })
+  const storageFailurePage = createInstance(storageFailure.definition)
+  storageFailurePage.onLoad()
+  await storageFailurePage._firstFlight
+  assert.deepEqual(storageFailurePage.data.items.map(item => item.notificationId), ['online'])
+  assert.equal(storageFailurePage.data.firstError, '')
+  storageFailure.restore()
+})
+
+test('cache rejects future, malformed, cross-account, logged-out, and missing-id records', async () => {
+  const cases = [
+    { accountId: 'WX-A', savedAt: Date.now() + 10000, items: [], nextCursor: '', unreadCount: 0 },
+    { accountId: 'WX-A', savedAt: Date.now() - (5 * 60 * 1000) - 1, items: [], nextCursor: '', unreadCount: 0 },
+    { accountId: 'WX-A', savedAt: Date.now(), items: 'bad', nextCursor: '', unreadCount: 0 },
+    { accountId: 'WX-B', savedAt: Date.now(), items: [], nextCursor: '', unreadCount: 0 },
+    { accountId: 'WX-A', savedAt: Date.now(), items: [], nextCursor: '', unreadCount: Number.NaN }
+  ]
+  for (const cached of cases) {
+    const storage = new Map([['socialNotificationsFirstPage:WX-A', cached]])
+    const loaded = loadMessagePage({ storage, playerId: 'WX-A', listResponses: [Promise.reject(networkError())] })
+    const page = createInstance(loaded.definition)
+    page.onLoad()
+    await page._firstFlight
+    assert.equal(page.data.offline, false)
+    assert.equal(page.data.firstError, '好友功能暂时不可用')
+    loaded.restore()
+  }
+
+  const valid = { accountId: 'WX-A', savedAt: Date.now(), items: [], nextCursor: '', unreadCount: 2 }
+  const storage = new Map([['socialNotificationsFirstPage:WX-A', valid]])
+  const loggedOut = loadMessagePage({ storage, playerId: 'WX-A', loggedOut: true, listResponses: [{ items: [], nextCursor: '', unreadCount: 0 }] })
+  const loggedOutPage = createInstance(loggedOut.definition)
+  loggedOutPage.onLoad()
+  if (loggedOutPage._firstFlight) await loggedOutPage._firstFlight
+  assert.equal(loggedOutPage.data.offline, false)
+  assert.deepEqual(loggedOutPage.data.items, [])
+  assert.equal(loggedOut.calls.list.length, 0)
+  loggedOut.restore()
+
+  const missingId = loadMessagePage({ storage, playerId: '', listResponses: [{ items: [], nextCursor: '', unreadCount: 0 }] })
+  const missingIdPage = createInstance(missingId.definition)
+  missingIdPage.onLoad()
+  if (missingIdPage._firstFlight) await missingIdPage._firstFlight
+  assert.equal(missingIdPage.data.offline, false)
+  assert.equal(missingId.calls.list.length, 0)
+  missingId.restore()
+})
+
+test('account changes and hide invalidate old requests, cache writes, state writes, and toasts', async () => {
+  let playerId = 'WX-A'
+  const oldRequest = deferred()
+  const storage = new Map()
+  const loaded = loadMessagePage({
+    storage,
+    playerId: () => playerId,
+    listResponses: [oldRequest.promise, { items: [notification('account-b')], nextCursor: '', unreadCount: 2 }]
+  })
+  const page = createInstance(loaded.definition)
+  page.onLoad()
+  playerId = 'WX-B'
+  page.onHide()
+  page.onShow()
+  assert.deepEqual(page.data.items, [])
+  if (loaded.calls.list.length < 2) {
+    oldRequest.resolve({ items: [notification('account-a')], nextCursor: '', unreadCount: 9 })
+    await page._firstFlight
+    loaded.restore()
+    assert.equal(loaded.calls.list.length, 2)
+    return
+  }
+  await page._firstFlight
+  oldRequest.resolve({ items: [notification('account-a')], nextCursor: '', unreadCount: 9 })
+  await oldRequest.promise
+  await Promise.resolve()
+  assert.deepEqual(page.data.items.map(item => item.notificationId), ['account-b'])
+  assert.equal(storage.has('socialNotificationsFirstPage:WX-A'), false)
+  assert.equal(storage.has('socialNotificationsFirstPage:WX-B'), true)
+
+  const mark = deferred()
+  loaded.service.markNotificationRead = input => { loaded.calls.markRead.push(input); return mark.promise }
+  page.setData({ items: [Object.assign(notification('late'), { title: 'late', summary: '', timeLabel: '', canAct: false, acting: false, unavailable: false })], offline: false })
+  const open = page.openNotification({ currentTarget: { dataset: { id: 'late' } } })
+  page.onHide()
+  mark.reject(Object.assign(new Error('unknown'), { code: 'SOCIAL_ERROR' }))
+  await open
+  assert.equal(loaded.calls.toast.length, 0)
+  assert.equal(page.data.items[0].read, false)
+  loaded.restore()
+})
+
+test('friend action is strict and incomplete authoritative results remain pending', async () => {
+  const invalidTargets = [
+    { targetType: 'friend', targetId: 'friendship-1' },
+    { targetType: 'friendship', targetId: '' },
+    { targetType: 'friendship', targetId: 'friendship-1', actionState: 'accepted' }
+  ]
+  for (let index = 0; index < invalidTargets.length; index += 1) {
+    const loaded = loadMessagePage({ listResponses: [{ items: [notification('bad-' + index, Object.assign({ kind: 'friend_request', actionState: 'pending' }, invalidTargets[index]))], nextCursor: '', unreadCount: 1 }] })
+    const page = createInstance(loaded.definition)
+    page.onLoad()
+    await page._firstFlight
+    assert.equal(page.data.items[0].canAct, false)
+    await page.actOnFriendRequest({ currentTarget: { dataset: { id: 'bad-' + index, decision: 'accept' } } })
+    assert.equal(loaded.calls.accept.length, 0)
+    loaded.restore()
+  }
+
+  const responses = [{ actionState: '', unreadCount: 0 }, { actionState: 'accepted', unreadCount: Number.NaN }]
+  const loaded = loadMessagePage({
+    listResponses: [{ items: [notification('request', { kind: 'friend_request', targetType: 'friendship', targetId: 'friendship-1', actionState: 'pending' })], nextCursor: '', unreadCount: 1 }],
+    accept: async () => responses.shift()
+  })
+  const page = createInstance(loaded.definition)
+  page.onLoad()
+  await page._firstFlight
+  const event = { currentTarget: { dataset: { id: 'request', decision: 'accept' } } }
+  await page.actOnFriendRequest(event)
+  assert.equal(page.data.items[0].actionState, 'pending')
+  assert.equal(page.data.items[0].canAct, true)
+  assert.equal(page.data.items[0].read, false)
+  await page.actOnFriendRequest(event)
+  assert.equal(page.data.items[0].actionState, 'pending')
+  assert.equal(page.data.items[0].read, false)
+  assert.equal(loaded.calls.accept[0].clientMutationId, loaded.calls.accept[1].clientMutationId)
+  loaded.restore()
+})
+
+test('mark-one and mark-all reuse mutation ids across failed retry chains', async () => {
+  let readAttempts = 0
+  let allAttempts = 0
+  const loaded = loadMessagePage({
+    listResponses: [{ items: [notification('card', { kind: 'player_card', targetType: 'player_card_share', targetId: 'share-1' })], nextCursor: '', unreadCount: 2 }],
+    markRead: async () => {
+      readAttempts += 1
+      if (readAttempts === 1) throw networkError()
+      return { unreadCount: 1 }
+    },
+    markAll: async () => {
+      allAttempts += 1
+      if (allAttempts === 1) throw networkError()
+      return { unreadCount: 0 }
+    }
+  })
+  const page = createInstance(loaded.definition)
+  page.onLoad()
+  await page._firstFlight
+  const event = { currentTarget: { dataset: { id: 'card' } } }
+  await page.openNotification(event)
+  await page.openNotification(event)
+  assert.equal(loaded.calls.markRead[0].clientMutationId, loaded.calls.markRead[1].clientMutationId)
+  page.data.unread = { count: 1, label: '1', hasUnread: true }
+  await page.markAllRead()
+  await page.markAllRead()
+  assert.equal(loaded.calls.markAll[0].clientMutationId, loaded.calls.markAll[1].clientMutationId)
+  loaded.restore()
+})
+
+test('refresh clears load-more state and onShow does not duplicate the initial request', async () => {
+  const first = deferred()
+  const more = deferred()
+  const refreshed = deferred()
+  const loaded = loadMessagePage({ listResponses: [first.promise, more.promise, refreshed.promise] })
+  const page = createInstance(loaded.definition)
+  page.onLoad()
+  page.onShow()
+  assert.equal(loaded.calls.list.length, 1)
+  first.resolve({ items: [notification('first')], nextCursor: 'more', unreadCount: 1 })
+  await page._firstFlight
+  const oldMore = page.loadMore()
+  page.onHide()
+  page.onShow()
+  if (loaded.calls.list.length < 3) {
+    more.resolve({ items: [notification('old-more')], nextCursor: '', unreadCount: 1 })
+    await oldMore
+    loaded.restore()
+    assert.equal(loaded.calls.list.length, 3)
+    return
+  }
+  assert.equal(page.data.loadingMore, false)
+  assert.equal(page.data.moreError, false)
+  refreshed.resolve({ items: [notification('fresh')], nextCursor: '', unreadCount: 0 })
+  await page._firstFlight
+  more.reject(networkError())
+  await oldMore
+  assert.equal(page.data.loadingMore, false)
+  assert.equal(page.data.moreError, false)
+  assert.deepEqual(page.data.items.map(item => item.notificationId), ['fresh'])
+  loaded.restore()
+})
+
 function deferred() {
   let resolve
   let reject
@@ -267,7 +489,10 @@ function loadMessagePage(options = {}) {
   Module._load = function (request, parent, isMain) {
     if (parent && /pages[\\/]social-messages[\\/]social-messages\.js$/.test(parent.filename || '')) {
       if (request === '../../services/social-service') return service
-      if (request === '../../services/data-service') return { getCurrentPlayerId: () => options.playerId || 'WX-A' }
+      if (request === '../../services/data-service') return {
+        getCurrentPlayerId: () => typeof options.playerId === 'function' ? options.playerId() : (options.playerId === undefined ? 'WX-A' : options.playerId),
+        isAccountLoggedOut: () => typeof options.loggedOut === 'function' ? options.loggedOut() : !!options.loggedOut
+      }
       if (request === '../../utils/social-unread-state') return unread
       if (request === '../../utils/social-mutation') return { createMutationId: prefix => `${prefix}:${++mutation}` }
     }
@@ -284,7 +509,7 @@ function loadMessagePage(options = {}) {
   const file = require.resolve('../pages/social-messages/social-messages')
   delete require.cache[file]
   try { require(file) } finally { Module._load = originalLoad; delete global.Page }
-  return { definition, calls, unread, restore() { delete require.cache[file]; delete global.wx } }
+  return { definition, calls, unread, service, restore() { delete require.cache[file]; delete global.wx } }
 }
 
 function createInstance(definition) {
