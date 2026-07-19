@@ -258,7 +258,7 @@ git commit -m "feat: publish social hands to three scopes"
 - Every transition into square requires a fresh public confirmation at publish time. Cancel does not set confirmation. Changing hand, refreshing preview, leaving the page or switching away invalidates it.
 - Only one publish call may be in flight. A failed retry with unchanged hand/hash/scope/targets reuses the same mutation ID; any such input change creates a new mutation ID.
 - Page decisions use `error.code`, never message text. Stale triggers re-preview; validation errors remain actionable; unavailable/network errors do not fabricate success.
-- Unload, hand change and preview retry invalidate old preview/publish completions. Stale requests cannot call `setData` or navigate. Success navigation uses only server `shareId`.
+- Unload, hand change and preview retry invalidate old preview/publish completions. Stale requests cannot call `setData` or navigate. Until Task 4 registers the share-detail route, Task 3 shows an in-page success state keyed only by the server `shareId`; once that route exists, success navigation may use only that server `shareId`.
 - WXML states clearly that values are uniformly BB, offers exactly `广场 / 全部好友 / 指定好友`, includes the public-sharing warning, and contains no real-money/profit/EV toggle or output.
 
 - [ ] **Step 1: Write route, server-preview, scope, confirmation, mutation and stale-lifecycle tests**

@@ -10,6 +10,7 @@
     "pages/social-invite/social-invite",
     "pages/social-card-preview/social-card-preview",
     "pages/social-messages/social-messages",
+    "pages/social-hand-publish/social-hand-publish",
     "pages/stats/stats",
     "pages/profile/profile",
     "pages/home/home",
