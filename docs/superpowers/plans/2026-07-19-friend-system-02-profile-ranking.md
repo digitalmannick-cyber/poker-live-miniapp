@@ -341,7 +341,7 @@ git commit -m "feat: sync non-financial social statistics"
 - `statsVisible=false` 的用户从候选中剔除；本人关闭后返回空榜外本人，不得从旧日桶或缓存继续展示。
 - `defaultShareScope` 仅接受 `square | friends | selected`，默认 `friends`；选择 `selected` 只表示发布页默认进入好友选择器，不保存一组永久收件人。
 
-- [ ] **Step 1: 写并列、Top 10 与榜外本人失败测试**
+- [x] **Step 1: 写并列、Top 10 与榜外本人失败测试**
 
 ```js
 const output = ranking.rankRows(rows, 'su_me')
@@ -352,13 +352,13 @@ assert.ok(output.myRank.rank > 10)
 assert.equal(JSON.stringify(output).includes('profit'), false)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-ranking.test.js tests/social-ranking-ui.test.js`
 
 Expected: FAIL because ranking action and UI do not exist。
 
-- [ ] **Step 3: 实现排行榜 DTO、领奖台与隐私开关**
+- [x] **Step 3: 实现排行榜 DTO、领奖台与隐私开关**
 
 ```js
 function rankRows(rows, viewerId) {
@@ -377,7 +377,7 @@ function rankRows(rows, viewerId) {
 
 前三名使用静态领奖台、较大头像、金银铜层级和克制的入场/呼吸动效；避免旋转扇叶、强光束等喧宾夺主的效果。第 4 至 10 名使用带排名色条的完整卡片。`prefers-reduced-motion: reduce` 下关闭光环和浮动。设置关闭后云端立即把本人从排名候选剔除。本人进入 Top 10 时不得重复渲染固定卡；榜外时固定展示实际名次。
 
-- [ ] **Step 4: 运行排行榜、设置与页面回归**
+- [x] **Step 4: 运行排行榜、设置与页面回归**
 
 Run:
 
@@ -389,7 +389,7 @@ node tests/player-notes-navigation.test.js
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交排行榜与设置**
+- [x] **Step 5: 提交排行榜与设置**
 
 ```powershell
 git add cloudfunctions/poker_social/lib/ranking.js cloudfunctions/poker_social/app.js components/friend-hub pages/profile tests/social-ranking.test.js tests/social-ranking-ui.test.js tests/profile-settings-editor.test.js
