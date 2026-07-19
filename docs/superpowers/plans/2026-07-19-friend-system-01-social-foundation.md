@@ -281,10 +281,12 @@ git commit -m "feat: implement social friendship lifecycle"
 - Create: `pages/social-invite/social-invite.wxml`
 - Create: `pages/social-invite/social-invite.wxss`
 - Create: `pages/social-invite/social-invite.json`
+- Modify: `cloudfunctions/poker_social/lib/friendship.js`
 - Modify: `app.json`
 - Modify: `pages/player-notes/player-notes.js`
 - Modify: `pages/player-notes/player-notes.wxml`
 - Test: `tests/social-invite-page.test.js`
+- Test: `tests/social-friendship.test.js`
 
 **Interfaces:**
 - Consumes: `socialService.createInvite()`、`createInviteQr(code)`、`inspectInvite(code)`、`sendFriendRequest(code, clientMutationId)`。
@@ -353,7 +355,7 @@ Expected: PASS。
 - [ ] **Step 5: 提交页面**
 
 ```powershell
-git add pages/social-invite app.json pages/player-notes/player-notes.js pages/player-notes/player-notes.wxml tests/social-invite-page.test.js
+git add pages/social-invite cloudfunctions/poker_social/lib/friendship.js app.json pages/player-notes/player-notes.js pages/player-notes/player-notes.wxml tests/social-invite-page.test.js tests/social-friendship.test.js
 git commit -m "feat: add in-app friend invitation flow"
 ```
 
