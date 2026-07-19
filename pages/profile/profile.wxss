@@ -3195,6 +3195,22 @@
   background: var(--profile-panel);
 }
 
+.profile-command-page .profile-preference-list .setting-block {
+  padding: 20rpx 0 20rpx 54rpx;
+}
+
+.profile-command-page .profile-preference-list .setting-block::before {
+  content: '';
+  position: absolute;
+  left: 22rpx;
+  top: 36rpx;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 0 8rpx rgba(255, 255, 255, 0.03);
+}
+
 .profile-command-page .profile-command-list .setting-row {
   min-height: 88rpx;
   margin: 0;

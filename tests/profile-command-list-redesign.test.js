@@ -51,14 +51,14 @@ test('page scope and all six logged-in modules keep their visibility and command
     const modulePattern = new RegExp(
       `<view wx:if="\\{\\{!accountLoggedOut\\}\\}" class="section-label profile-command-label">${title}</view>` +
       `\\s*<view wx:if="\\{\\{!accountLoggedOut\\}\\}" class="profile-command-section(?: [^"]*)?">` +
-      `\\s*<view class="profile-command-list">`
+      `\\s*<view class="profile-command-list(?: [^"]*)?">`
     )
     assert.match(wxml, modulePattern, `${title} should keep a guarded label, section, and command list`)
   }
 
   assert.equal((wxml.match(/class="section-label profile-command-label"/g) || []).length, 5)
   assert.equal((wxml.match(/class="profile-command-section(?: [^"]*)?"/g) || []).length, 5)
-  assert.equal((wxml.match(/class="profile-command-list"/g) || []).length, 5)
+  assert.equal((wxml.match(/class="profile-command-list(?: [^"]*)?"/g) || []).length, 5)
 })
 
 test('logged-in profile follows the approved command-list order', () => {
@@ -219,4 +219,25 @@ test('hero stats use layered wine surfaces instead of black command panels', () 
   assert.match(profit, /linear-gradient\(135deg, rgba\(82, 14, 42, 0\.88\), rgba\(52, 7, 28, 0\.84\)\)/)
   assert.doesNotMatch(hands, /#(?:000|000000)|rgba\(0,\s*0,\s*0/)
   assert.doesNotMatch(profit, /#(?:000|000000)|rgba\(0,\s*0,\s*0/)
+})
+
+test('preference blocks use command-row dots and a shared content inset', () => {
+  const preferences = commandModuleMarkup('偏好设置')
+  const block = cssBlock('.profile-command-page .profile-preference-list .setting-block')
+  const dot = cssBlock('.profile-command-page .profile-preference-list .setting-block::before')
+
+  assert.match(preferences, /class="profile-command-list profile-preference-list"/)
+  assert.equal((preferences.match(/class="setting-block"/g) || []).length, 4)
+  assert.match(block, /padding:\s*20rpx 0 20rpx 54rpx/)
+  assert.match(dot, /content:\s*''/)
+  assert.match(dot, /position:\s*absolute/)
+  assert.match(dot, /left:\s*22rpx/)
+  assert.match(dot, /top:\s*36rpx/)
+  assert.match(dot, /width:\s*10rpx/)
+  assert.match(dot, /height:\s*10rpx/)
+  assert.match(dot, /border-radius:\s*50%/)
+  assert.match(dot, /background:\s*rgba\(255,\s*255,\s*255,\s*0\.22\)/)
+  assert.match(dot, /box-shadow:\s*0 0 0 8rpx rgba\(255,\s*255,\s*255,\s*0\.03\)/)
+  assert.match(cssBlock('.setting-block'), /border-bottom:\s*1rpx solid rgba\(255,255,255,0\.08\)/)
+  assert.match(cssBlock('.profile-command-page .profile-action-hit'), /min-height:\s*88rpx/)
 })

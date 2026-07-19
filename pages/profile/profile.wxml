@@ -135,7 +135,7 @@
 
   <view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">偏好设置</view>
   <view wx:if="{{!accountLoggedOut}}" class="profile-command-section">
-    <view class="profile-command-list">
+    <view class="profile-command-list profile-preference-list">
       <view class="setting-block">
         <view class="setting-head">
           <view>
