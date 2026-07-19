@@ -64,6 +64,15 @@ function buildFriendView(remote) {
   }
 }
 
+function safeDecodeQueryValue(value) {
+  const source = String(value || '')
+  try {
+    return decodeURIComponent(source).trim()
+  } catch (error) {
+    return source.trim()
+  }
+}
+
 function buildHandCandidate(hand, linkedIds, chipUnit) {
   const item = hand || {}
   const linked = linkedIds.indexOf(item._id) > -1
@@ -249,6 +258,7 @@ Page({
     friendLoadedOnce: false,
     friendShownOnce: false,
     removingFriend: false,
+    removeError: '',
     detachPending: false,
     detachError: '',
     editMode: false,
@@ -268,7 +278,8 @@ Page({
   },
 
   async onLoad(options) {
-    const friendUserId = decodeURIComponent(options && options.friendUserId || '').trim()
+    this._friendPageAttached = true
+    const friendUserId = safeDecodeQueryValue(options && options.friendUserId)
     if (friendUserId) {
       this.setData({
         id: '',
@@ -281,7 +292,7 @@ Page({
       await this.loadFriendMode(friendUserId)
       return
     }
-    const id = decodeURIComponent(options && options.id || '')
+    const id = safeDecodeQueryValue(options && options.id)
     const isNew = options && options.mode === 'new'
     this.setData({
       id,
@@ -302,19 +313,42 @@ Page({
     }
   },
 
+  onUnload() {
+    this._friendPageAttached = false
+    this.invalidateFriendRequests()
+  },
+
+  nextFriendRequest() {
+    this._friendRequestSequence = (Number(this._friendRequestSequence) || 0) + 1
+    return this._friendRequestSequence
+  },
+
+  invalidateFriendRequests() {
+    this._friendRequestSequence = (Number(this._friendRequestSequence) || 0) + 1
+  },
+
+  isFriendRequestCurrent(sequence) {
+    return this._friendPageAttached !== false && this._friendRequestSequence === sequence
+  },
+
   async loadFriendMode(friendUserId, options) {
     const target = String(friendUserId || '').trim()
     if (!target) return
     const config = options || {}
+    const requestSequence = this.nextFriendRequest()
+    if (!this.isFriendRequestCurrent(requestSequence)) return
     this.setData({ detailState: 'loading', loadError: '' })
     try {
       const [localNote, remote] = await Promise.all([
         dataService.getFriendPlayerNote(target),
         socialService.getFriendDetail(target)
       ])
+      if (!this.isFriendRequestCurrent(requestSequence)) return
       const note = localNote || await dataService.ensureFriendPlayerNote(remote)
+      if (!this.isFriendRequestCurrent(requestSequence)) return
       const friend = buildFriendView(remote)
       const settings = await dataService.getAppSettings()
+      if (!this.isFriendRequestCurrent(requestSequence)) return
       const viewNote = note ? Object.assign({}, note, {
         avatarDisplayUrl: avatarCache.getAvatarDisplayUrl(note.avatarFileId, note.avatarUrl)
       }) : null
@@ -322,6 +356,7 @@ Page({
         ? this.data.form
         : buildForm(viewNote)
       const battleHands = note && note._id ? await dataService.getPlayerNoteBattleHands(note._id) : []
+      if (!this.isFriendRequestCurrent(requestSequence)) return
       this.setData({
         id: note && note._id || '',
         note: viewNote,
@@ -336,6 +371,7 @@ Page({
         friendLoadedOnce: true
       })
     } catch (error) {
+      if (!this.isFriendRequestCurrent(requestSequence)) return
       const code = String(error && error.code || '')
       this.setData({
         note: null,
@@ -404,6 +440,7 @@ Page({
   },
 
   startEdit() {
+    if (this.data.detailState !== 'ready' || !this.data.note) return
     this.setData({ editMode: true, form: buildForm(this.data.note) })
     this.refresh()
   },
@@ -526,6 +563,8 @@ Page({
 
   async saveNote() {
     if (this.data.saving) return
+    const isNew = this.data.mode === 'new'
+    if (!isNew && (this.data.detailState !== 'ready' || !this.data.note || !this.data.id)) return
     const payload = Object.assign({}, this.data.form, {
       name: String(this.data.form.name || '').trim()
     })
@@ -543,7 +582,7 @@ Page({
         : await dataService.updatePlayerNote(this.data.id, payload)
       this.setData({
         id: saved._id,
-        mode: 'view',
+        mode: this.data.mode === 'friend' ? 'friend' : 'view',
         editMode: false,
         note: saved,
         saving: false
@@ -596,7 +635,8 @@ Page({
       this.setData({ detachError: '好友关系信息已失效，请返回列表刷新后重试' })
       return
     }
-    this.setData({ removingFriend: true, detachError: '' })
+    this.invalidateFriendRequests()
+    this.setData({ removingFriend: true, detachError: '', removeError: '' })
     try {
       await socialService.removeFriend({
         friendshipId,
@@ -605,10 +645,12 @@ Page({
     } catch (error) {
       this.setData({
         removingFriend: false,
-        detachError: '解除好友失败，请稍后重试'
+        removeError: '解除好友失败，请稍后重试'
       })
+      wx.showToast({ title: '解除好友失败，请稍后重试', icon: 'none' })
       return
     }
+    this.invalidateFriendRequests()
     this.setData({ removingFriend: false, detachPending: true })
     await this.detachFriendNote(friendUserId)
   },

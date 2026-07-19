@@ -68,9 +68,94 @@ test('friend mode loads remote data, ensures the local note, and only local edit
     assert.equal(calls.updatePlayerNote.length, 1)
     assert.equal(calls.updatePlayerNote[0].id, 'note_b')
     assert.equal(calls.updatePlayerNote[0].patch.name, '新备注')
+    assert.equal(instance.data.mode, 'friend')
   } finally {
     restore()
   }
+})
+
+test('friend loading ignores stale success and failure responses and ignores completion after unload', async () => {
+  const olderSuccess = deferred()
+  const newerForbidden = deferred()
+  const firstReplies = [olderSuccess.promise, newerForbidden.promise]
+  const first = loadDetailPage({
+    localNote: { _id: 'note_b', sourceKind: 'friend', linkedFriendUserId: 'su_b', name: '本地备注', type: '常客', leakTags: [], note: '', battleHandIds: [] },
+    getFriendDetail() { return firstReplies.shift() }
+  })
+  try {
+    const instance = createInstance(first.definition)
+    instance.setData({ mode: 'friend', friendUserId: 'su_b' })
+    const oldRequest = instance.loadFriendMode('su_b')
+    const newRequest = instance.loadFriendMode('su_b')
+    newerForbidden.reject(Object.assign(new Error('removed'), { code: 'FORBIDDEN' }))
+    await newRequest
+    olderSuccess.resolve(friendDto())
+    await oldRequest
+    assert.equal(instance.data.detailState, 'unavailable')
+    assert.equal(instance.data.friend, null)
+  } finally { first.restore() }
+
+  const olderFailure = deferred()
+  const newerSuccess = deferred()
+  const secondReplies = [olderFailure.promise, newerSuccess.promise]
+  const second = loadDetailPage({
+    localNote: { _id: 'note_b', sourceKind: 'friend', linkedFriendUserId: 'su_b', name: '本地备注', type: '常客', leakTags: [], note: '', battleHandIds: [] },
+    getFriendDetail() { return secondReplies.shift() }
+  })
+  try {
+    const instance = createInstance(second.definition)
+    instance.setData({ mode: 'friend', friendUserId: 'su_b' })
+    const oldRequest = instance.loadFriendMode('su_b')
+    const newRequest = instance.loadFriendMode('su_b')
+    newerSuccess.resolve(friendDto())
+    await newRequest
+    olderFailure.reject(new Error('offline'))
+    await oldRequest
+    assert.equal(instance.data.detailState, 'ready')
+    assert.equal(instance.data.friend.socialUserId, 'su_b')
+  } finally { second.restore() }
+
+  const pending = deferred()
+  const unloaded = loadDetailPage({
+    localNote: { _id: 'note_b', sourceKind: 'friend', linkedFriendUserId: 'su_b', name: '本地备注', type: '常客', leakTags: [], note: '', battleHandIds: [] },
+    getFriendDetail() { return pending.promise }
+  })
+  try {
+    const instance = createInstance(unloaded.definition)
+    instance.setData({ mode: 'friend', friendUserId: 'su_b' })
+    const request = instance.loadFriendMode('su_b')
+    instance.onUnload()
+    pending.resolve(friendDto())
+    await request
+    assert.equal(instance.data.note, null)
+    assert.equal(instance.data.friend, null)
+  } finally { unloaded.restore() }
+})
+
+test('non-ready friend states cannot enter edit or save and a cloud removal failure remains visible without detaching', async () => {
+  const loaded = loadDetailPage({
+    localNote: { _id: 'note_b', sourceKind: 'friend', linkedFriendUserId: 'su_b', name: '本地备注', type: '常客', leakTags: [], note: '', battleHandIds: [] },
+    remote: friendDto(),
+    removeError: new Error('cloud unavailable')
+  })
+  try {
+    const instance = createInstance(loaded.definition)
+    instance.setData({ mode: 'friend', friendUserId: 'su_b', detailState: 'loading', note: null, id: '' })
+    instance.startEdit()
+    await instance.saveNote()
+    assert.equal(loaded.calls.updatePlayerNote.length, 0)
+    assert.equal(instance.data.editMode, false)
+    instance.setData({ detailState: 'unavailable' })
+    instance.startEdit()
+    await instance.saveNote()
+    assert.equal(loaded.calls.updatePlayerNote.length, 0)
+
+    await instance.onLoad({ friendUserId: 'su_b' })
+    await instance.removeFriend()
+    assert.equal(loaded.calls.detachFriendPlayerNote.length, 0)
+    assert.match(instance.data.removeError, /解除好友失败/)
+    assert.equal(loaded.calls.toasts.length, 1)
+  } finally { loaded.restore() }
 })
 
 test('remove friend calls cloud before detaching the local note and keeps a retry when local detach fails', async () => {
@@ -125,14 +210,14 @@ test('friend detail refreshes remote access on return and renders relationship l
 
 function loadDetailPage(options) {
   let definition = null
-  const calls = { updatePlayerNote: [], removeFriend: [], detachFriendPlayerNote: [], switchTab: [], detachError: options.detachError, getFriendDetail: 0 }
+  const calls = { updatePlayerNote: [], removeFriend: [], detachFriendPlayerNote: [], switchTab: [], detachError: options.detachError, getFriendDetail: 0, toasts: [] }
   const originalLoad = Module._load
   Module._load = function load(request, parent, isMain) {
     if (parent && /pages[\\/]player-note-detail[\\/]player-note-detail\.js$/.test(parent.filename || '')) {
       if (request === '../../services/data-service') return {
         async getAppSettings() { return { opponentTypes: ['常客'], playerLeakTags: [], chipUnit: 'BB' } },
         async getPlayerNoteById() { return null },
-        async getFriendPlayerNote() { return options.localNote },
+        async getFriendPlayerNote() { return typeof options.getFriendPlayerNote === 'function' ? options.getFriendPlayerNote() : options.localNote },
         async ensureFriendPlayerNote() { return options.ensuredNote },
         async getPlayerNoteBattleHands() { return [] },
         async updatePlayerNote(id, patch) { calls.updatePlayerNote.push({ id, patch }); return Object.assign({}, options.localNote || options.ensuredNote, patch) },
@@ -140,8 +225,8 @@ function loadDetailPage(options) {
         async updateSettings() { return {} }
       }
       if (request === '../../services/social-service') return {
-        async getFriendDetail() { calls.getFriendDetail += 1; if (options.remoteError) throw options.remoteError; return options.remote },
-        async removeFriend(input) { calls.removeFriend.push(input); return { friendshipId: input.friendshipId, status: 'removed' } }
+        async getFriendDetail() { calls.getFriendDetail += 1; if (options.remoteError) throw options.remoteError; if (typeof options.getFriendDetail === 'function') return options.getFriendDetail(); return options.remote },
+        async removeFriend(input) { calls.removeFriend.push(input); if (options.removeError) throw options.removeError; return { friendshipId: input.friendshipId, status: 'removed' } }
       }
       if (request === '../../utils/social-mutation') return { createMutationId() { return 'remove_friend:test-mutation' } }
       if (request === '../../utils/player-avatar-cache') return { getAvatarDisplayUrl(fileId, url) { return url || fileId || '' }, warmPlayerAvatar() { return Promise.resolve('') } }
@@ -149,11 +234,22 @@ function loadDetailPage(options) {
     return originalLoad.call(this, request, parent, isMain)
   }
   global.Page = config => { definition = config }
-  global.wx = { showToast() {}, switchTab(input) { calls.switchTab.push(input) }, navigateBack() {}, showModal(input) { input.success({ confirm: true }) } }
+  global.wx = { showToast(input) { calls.toasts.push(input) }, switchTab(input) { calls.switchTab.push(input) }, navigateBack() {}, showModal(input) { input.success({ confirm: true }) } }
   const pagePath = require.resolve('../pages/player-note-detail/player-note-detail')
   delete require.cache[pagePath]
   try { require(pagePath) } finally { Module._load = originalLoad; delete global.Page }
   return { definition, calls, restore() { delete require.cache[pagePath]; delete global.wx } }
+}
+
+function friendDto() {
+  return { friendshipId: 'fr_1', socialUserId: 'su_b', nickname: 'Remote Wolf', avatarText: '狼', title: '银狼', statsVisible: true, durationMinutes: 30, recordedHandCount: 2 }
+}
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((nextResolve, nextReject) => { resolve = nextResolve; reject = nextReject })
+  return { promise, resolve, reject }
 }
 
 function createInstance(definition) {
