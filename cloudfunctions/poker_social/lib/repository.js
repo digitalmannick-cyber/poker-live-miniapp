@@ -14,12 +14,15 @@ const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_HAND_SHARES: 'social_hand_shares',
   SOCIAL_HAND_SHARE_SLOTS: 'social_hand_share_slots',
   SOCIAL_RATE_LIMITS: 'social_rate_limits',
-  SOCIAL_NOTIFICATION_OUTBOX: 'social_notification_outbox'
+  SOCIAL_NOTIFICATION_OUTBOX: 'social_notification_outbox',
+  SOCIAL_LIKES: 'social_likes',
+  SOCIAL_COMMENTS: 'social_comments'
 })
 
 const ACCOUNT_CLEAR_SOCIAL_COLLECTIONS = Object.freeze(Object.values(SOCIAL_COLLECTIONS))
 
 const PRIVATE_PAGE_SIZE = 100
+const FRIEND_ID_QUERY_CHUNK_SIZE = 10
 
 function isDocumentNotFound(error) {
   const code = String(error && (error.errCode || error.code) || '')
@@ -32,6 +35,39 @@ function createCloudSocialRepository(database) {
   }
 
   function createStore(client, transactionMode) {
+    function requireCommand(methods) {
+      const command = database.command
+      for (const method of methods) {
+        if (!command || typeof command[method] !== 'function') throw new Error('cloud database command unavailable')
+      }
+      return command
+    }
+
+    function shareKeysetFilter(base, cursor) {
+      if (!cursor) return base
+      const command = requireCommand(['and', 'or', 'lt', 'eq'])
+      return command.and([
+        base,
+        command.or([
+          { createdAt: command.lt(Number(cursor.createdAt)) },
+          command.and([
+            { createdAt: command.eq(Number(cursor.createdAt)) },
+            { _id: command.lt(String(cursor.id || '')) }
+          ])
+        ])
+      ])
+    }
+
+    async function listShareCandidates(base, page) {
+      const limit = Math.min(100, Math.max(1, Number(page && page.limit) || 20))
+      let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_HAND_SHARES)
+        .where(shareKeysetFilter(base, page && page.cursor))
+      if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('feed share query unavailable')
+      request = request.orderBy('createdAt', 'desc').orderBy('_id', 'desc').limit(limit)
+      const response = await request.get()
+      return Array.isArray(response && response.data) ? response.data : []
+    }
+
     const store = {
     async get(collection, id) {
       try {
@@ -109,6 +145,62 @@ function createCloudSocialRepository(database) {
       request = request.orderBy('createdAt', 'asc').orderBy('_id', 'asc').limit(Math.min(5, Math.max(1, Number(limit) || 5)))
       const response = await request.get()
       return Array.isArray(response && response.data) ? response.data : []
+    },
+
+    async listSquareShareCandidates(page) {
+      return listShareCandidates({ status: 'active', scope: 'square' }, page)
+    },
+
+    async listSelfShareCandidates(viewerId, page) {
+      return listShareCandidates({ publisherId: String(viewerId || ''), status: 'active' }, page)
+    },
+
+    async listFriendShareCandidates(publisherIds, page) {
+      const values = Array.from(new Set((Array.isArray(publisherIds) ? publisherIds : []).map(String).filter(Boolean)))
+      if (!values.length || values.length > FRIEND_ID_QUERY_CHUNK_SIZE) throw new Error('feed friend chunk unavailable')
+      const command = requireCommand(['in'])
+      return listShareCandidates({ publisherId: command.in(values), status: 'active' }, page)
+    },
+
+    async listSelectedShareCandidates(viewerId, page) {
+      return listShareCandidates({ targetUserIds: String(viewerId || ''), status: 'active' }, page)
+    },
+
+    async listAcceptedFriendshipsBySideKeyset(viewerId, side, page) {
+      if (side !== 'userA' && side !== 'userB') throw new Error('feed friendship side unavailable')
+      const cursor = page && page.cursor
+      let filters = { [side]: String(viewerId || ''), status: 'accepted' }
+      if (cursor) {
+        const command = requireCommand(['and', 'or', 'lt', 'eq', 'gt'])
+        filters = command.and([
+          filters,
+          command.or([
+            { acceptedAt: command.lt(Number(cursor.acceptedAt)) },
+            command.and([
+              { acceptedAt: command.eq(Number(cursor.acceptedAt)) },
+              { _id: command.gt(String(cursor.id || '')) }
+            ])
+          ])
+        ])
+      }
+      const limit = Math.min(100, Math.max(1, Number(page && page.limit) || 100))
+      let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_FRIENDSHIPS).where(filters)
+      if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('feed friendship query unavailable')
+      request = request.orderBy('acceptedAt', 'desc').orderBy('_id', 'asc').limit(limit)
+      const response = await request.get()
+      return Array.isArray(response && response.data) ? response.data : []
+    },
+
+    async getSourceHandById(handId) {
+      return store.get('hands', String(handId || ''))
+    },
+
+    async getHandShareById(shareId) {
+      return store.get(SOCIAL_COLLECTIONS.SOCIAL_HAND_SHARES, String(shareId || ''))
+    },
+
+    async getLikeById(likeId) {
+      return store.get(SOCIAL_COLLECTIONS.SOCIAL_LIKES, String(likeId || ''))
     },
 
     async set(collection, id, value) {
@@ -277,4 +369,9 @@ function createCloudSocialRepository(database) {
   })
 }
 
-module.exports = { SOCIAL_COLLECTIONS, ACCOUNT_CLEAR_SOCIAL_COLLECTIONS, createCloudSocialRepository }
+module.exports = {
+  SOCIAL_COLLECTIONS,
+  ACCOUNT_CLEAR_SOCIAL_COLLECTIONS,
+  FRIEND_ID_QUERY_CHUNK_SIZE,
+  createCloudSocialRepository
+}

@@ -4,6 +4,7 @@ const { createRankingHandlers } = require('./lib/ranking')
 const { createPlayerCardHandlers } = require('./lib/player-card')
 const { createNotificationWriter, createNotificationHandlers } = require('./lib/notification')
 const { createHandShareHandlers, compensateRecipientOutboxes } = require('./lib/hand-share')
+const { createHandFeedHandlers } = require('./lib/hand-feed')
 
 function withoutPrivateIdentifiers(value) {
   if (typeof value === 'string' && value.includes('cloud://')) return null
@@ -78,6 +79,11 @@ function createSocialApp(deps) {
   const handShareHandlers = config.repository
     ? createHandShareHandlers(config.repository, Object.assign({}, config.handShare || {}, { notificationWriter }))
     : {}
+  const handFeedHandlers = config.repository
+    ? createHandFeedHandlers(config.repository, Object.assign({}, config.handFeed || {}, {
+      avatarUrl: config.avatarUrl || config.handFeed && config.handFeed.avatarUrl
+    }))
+    : {}
   const compensateSelectedHands = config.repository
     ? (recipientId, limits) => compensateRecipientOutboxes(config.repository, recipientId, Object.assign({}, config.handShare || {}, limits || {}, { notificationWriter }))
     : async () => {}
@@ -87,7 +93,8 @@ function createSocialApp(deps) {
       compensateRecipientOutboxes: compensateSelectedHands
     }))
     : {}
-  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers, handShareHandlers, notificationHandlers, config.handlers || {})
+  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers,
+    handShareHandlers, handFeedHandlers, notificationHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()

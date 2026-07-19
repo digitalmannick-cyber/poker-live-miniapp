@@ -18,9 +18,12 @@ All social collections are server-only. Configure CloudBase client permissions t
 - `social_hand_share_slots`: deterministic `_id` point-read only
 - `social_rate_limits`: deterministic `_id` point-read only
 - `social_notification_outbox`: `status ASC, targetUserIds ARRAY, createdAt ASC, _id ASC`
+- `social_likes`: deterministic `_id` point-read only
+- `social_comments`: registered server-only in Task 4; Task 5 adds its list index
+- `hands`: deterministic source `handId` point-read followed by exact owner/player tuple comparison
 
 `social_hand_shares`, `social_hand_share_slots`, `social_rate_limits`, and
-`social_notification_outbox` must all deny direct client reads and writes. Action,
+`social_notification_outbox`, `social_likes`, and `social_comments` must all deny direct client reads and writes. Action,
 friend witness, and outbox queries are exact indexed server queries outside
 transactions; transaction stores support deterministic document point reads and
 writes only.

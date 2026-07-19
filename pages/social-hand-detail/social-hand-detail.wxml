@@ -1,0 +1,90 @@
+<view class="container hand-share-page">
+  <view wx:if="{{status === 'loading'}}" class="state-card loading-state">
+    <view class="state-mark">P5</view>
+    <view class="state-title">正在读取分享</view>
+    <view class="state-copy">正在重新确认分享状态与阅读权限。</view>
+  </view>
+
+  <view wx:elif="{{status === 'unavailable'}}" class="state-card unavailable-state">
+    <view class="state-mark">×</view>
+    <view class="state-title">内容已不可访问</view>
+    <view class="state-copy">分享可能已撤回、范围已变化，或你已不在可见范围内。</view>
+  </view>
+
+  <view wx:elif="{{status === 'error'}}" class="state-card error-state">
+    <view class="state-mark">!</view>
+    <view class="state-title">读取失败</view>
+    <view class="state-copy">{{errorMessage}}</view>
+    <view class="state-action" bindtap="retry">重新加载</view>
+  </view>
+
+  <view wx:elif="{{status === 'ready' && detail}}" class="ready-state">
+    <view class="share-head-card">
+      <view class="head-slash"></view>
+      <view class="publisher-avatar">
+        <image wx:if="{{detail.publisher.avatarUrl}}" src="{{detail.publisher.avatarUrl}}" mode="aspectFill"></image>
+        <text wx:else>{{detail.publisher.avatarText}}</text>
+      </view>
+      <view class="publisher-main">
+        <view class="publisher-name">{{detail.publisher.nickname}}</view>
+        <view class="share-meta">{{detail.scopeLabel}} · BB 匿名手牌</view>
+      </view>
+      <view class="scope-stamp">{{detail.scopeLabel}}</view>
+    </view>
+
+    <view class="hand-card">
+      <view class="section-kicker">HAND SNAPSHOT</view>
+      <view class="hero-row">
+        <view>
+          <view class="hero-title">Hero · {{detail.handSnapshot.hero.position}}</view>
+          <view class="hero-stack" wx:if="{{detail.handSnapshot.hero.stackBb !== undefined}}">{{detail.handSnapshot.hero.stackBb}} BB</view>
+        </view>
+        <view class="card-row">
+          <view wx:for="{{detail.handSnapshot.hero.cards}}" wx:key="*this" class="poker-card">{{item}}</view>
+        </view>
+      </view>
+
+      <view class="metric-grid">
+        <view class="metric-item"><view class="metric-value">{{detail.handSnapshot.potBb === undefined ? '--' : detail.handSnapshot.potBb}}</view><view class="metric-label">底池 BB</view></view>
+        <view class="metric-item"><view class="metric-value">{{detail.handSnapshot.effectiveStackBb === undefined ? '--' : detail.handSnapshot.effectiveStackBb}}</view><view class="metric-label">有效筹码 BB</view></view>
+        <view class="metric-item"><view class="metric-value">{{detail.handSnapshot.players.length + 1}}</view><view class="metric-label">玩家数</view></view>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-label">公共牌</view>
+        <view class="board-row">
+          <view wx:for="{{detail.handSnapshot.board.flop}}" wx:key="*this" class="board-card">{{item}}</view>
+          <view wx:for="{{detail.handSnapshot.board.turn}}" wx:key="*this" class="board-card turn-card">{{item}}</view>
+          <view wx:for="{{detail.handSnapshot.board.river}}" wx:key="*this" class="board-card river-card">{{item}}</view>
+          <text wx:if="{{!detail.handSnapshot.board.flop.length}}" class="empty-board">暂无公共牌</text>
+        </view>
+      </view>
+
+      <view class="detail-section" wx:if="{{detail.handSnapshot.players.length}}">
+        <view class="detail-label">匿名玩家</view>
+        <view class="player-row">
+          <view wx:for="{{detail.handSnapshot.players}}" wx:key="seat" class="player-chip">{{item.label}} · {{item.position}}<text wx:if="{{item.stackBb !== undefined}}"> · {{item.stackBb}} BB</text></view>
+        </view>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-label">行动线</view>
+        <view class="action-list">
+          <view wx:for="{{detail.handSnapshot.actions}}" wx:key="index" class="action-item">
+            <text class="action-street">{{item.street}}</text>
+            <text class="action-actor">{{item.actor}}</text>
+            <text class="action-type">{{item.type}}</text>
+            <text wx:if="{{item.amountBb !== undefined}}" class="action-amount">{{item.amountBb}} BB</text>
+          </view>
+          <view wx:if="{{!detail.handSnapshot.actions.length}}" class="empty-actions">暂无行动记录</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="engagement-card">
+      <view class="engagement-item"><text class="engagement-icon">♥</text><text>{{detail.likeCount}}</text></view>
+      <view class="engagement-item"><text class="engagement-icon">◌</text><text>{{detail.commentCount}}</text></view>
+      <view class="read-only-label">互动将在后续版本开放</view>
+    </view>
+  </view>
+</view>

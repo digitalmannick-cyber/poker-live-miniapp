@@ -89,6 +89,7 @@
     "social_rate_limits",
     "social_notification_state",
     "social_notification_heads",
-    "social_notification_actors"
+    "social_notification_actors",
+    "social_likes"
   ]
 }

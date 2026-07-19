@@ -118,6 +118,35 @@ function markAllNotificationsRead(input) {
   return write('mark_all_notifications_read', input)
 }
 
+function invalidPagination() {
+  const error = new Error('invalid pagination')
+  error.code = 'INVALID_PAGINATION'
+  return error
+}
+
+function contentUnavailable() {
+  const error = new Error('content unavailable')
+  error.code = 'CONTENT_UNAVAILABLE'
+  return error
+}
+
+function listFeed(input) {
+  const source = input || {}
+  const cursor = source.cursor === undefined ? '' : source.cursor
+  const limit = source.limit === undefined ? 20 : source.limit
+  if (typeof cursor !== 'string' || cursor.length > 2048 || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return Promise.reject(invalidPagination())
+  }
+  return callSocialFunction('list_feed', { cursor, limit })
+}
+
+function getHandShare(shareId) {
+  if (typeof shareId !== 'string') return Promise.reject(contentUnavailable())
+  const value = shareId.trim()
+  if (!value || value.length > 128) return Promise.reject(contentUnavailable())
+  return callSocialFunction('get_hand_share', { shareId: value })
+}
+
 function previewHandShare(input) {
   return callSocialFunction('preview_hand_share', { handId: String(input && input.handId || '').trim() })
 }
@@ -183,6 +212,8 @@ module.exports = {
   getUnreadNotificationCount,
   markNotificationRead,
   markAllNotificationsRead,
+  listFeed,
+  getHandShare,
   previewHandShare,
   publishHand,
   updateHandShareScope,

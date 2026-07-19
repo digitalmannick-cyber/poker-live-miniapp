@@ -3,6 +3,8 @@ const tabBar = require('../../utils/tab-bar')
 const avatarCache = require('../../utils/player-avatar-cache')
 const onboardingGuide = require('../../utils/onboarding-guide')
 const socialUnreadState = require('../../utils/social-unread-state')
+const socialService = require('../../services/social-service')
+const socialCache = require('../../utils/social-cache')
 
 function getSocialAccountKey() {
   try {
@@ -52,6 +54,7 @@ Page({
     playerSection: 'friends',
     friendSection: 'feed',
     friendsLoaded: false,
+    socialUserId: '',
     query: '',
     selectedType: '',
     typeFilters: [],
@@ -66,8 +69,11 @@ Page({
   },
 
   async onLoad() {
+    this._socialProfileAttached = true
     this.bindSocialUnread()
-    socialUnreadState.setAccountKey(getSocialAccountKey())
+    const socialAccountKey = getSocialAccountKey()
+    socialUnreadState.setAccountKey(socialAccountKey)
+    await this.ensureSocialProfile(socialAccountKey)
     if (this.data.playerSection === 'library') await this.refresh()
   },
 
@@ -76,10 +82,12 @@ Page({
   },
 
   async onShow() {
+    this._socialProfileAttached = true
     this.bindSocialUnread()
     const socialAccountKey = getSocialAccountKey()
     socialUnreadState.setAccountKey(socialAccountKey)
     if (socialAccountKey) socialUnreadState.refresh().catch(() => {})
+    await this.ensureSocialProfile(socialAccountKey)
     tabBar.syncCustomTabBar('/pages/player-notes/player-notes')
     if (this.data.playerSection === 'library') await this.refresh()
     if (this.data.playerSection === 'friends' && this.data.friendSection === 'friends' && this.data.friendsLoaded) {
@@ -89,11 +97,63 @@ Page({
   },
 
   onHide() {
+    this._socialProfileAttached = false
+    this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
+    this._socialProfileFlight = null
     this.unbindSocialUnread()
   },
 
   onUnload() {
+    this._socialProfileAttached = false
+    this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
+    this._socialProfileFlight = null
     this.unbindSocialUnread()
+  },
+
+  async onPullDownRefresh() {
+    try {
+      if (this.data.playerSection !== 'friends' || this.data.friendSection !== 'feed') return
+      const friendHub = this.selectComponent && this.selectComponent('#friendHub')
+      if (friendHub && typeof friendHub.refreshFeed === 'function') await friendHub.refreshFeed()
+    } finally {
+      if (typeof wx !== 'undefined' && typeof wx.stopPullDownRefresh === 'function') wx.stopPullDownRefresh()
+    }
+  },
+
+  ensureSocialProfile(accountKey) {
+    const currentAccountKey = String(accountKey === undefined ? getSocialAccountKey() : accountKey || '')
+    const previousAccountKey = String(this._socialProfileAccountKey || '')
+    if (previousAccountKey !== currentAccountKey) {
+      const previousSocialUserId = String(this.data.socialUserId || '')
+      if (previousSocialUserId) socialCache.removeFeedFirstPage(previousSocialUserId)
+      this._socialProfileAccountKey = currentAccountKey
+      this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
+      this._socialProfileFlight = null
+      this.setData({ socialUserId: '' })
+    }
+    if (!currentAccountKey || this._socialProfileAttached !== true) return Promise.resolve('')
+    if (this.data.socialUserId) return Promise.resolve(this.data.socialUserId)
+    if (this._socialProfileFlight) return this._socialProfileFlight
+    const generation = Number(this._socialProfileGeneration) || 0
+    const promise = Promise.resolve()
+      .then(() => socialService.getMySocialProfile())
+      .then(profile => {
+        const socialUserId = String(profile && profile.socialUserId || '')
+        if (this._socialProfileAttached !== true || generation !== this._socialProfileGeneration || currentAccountKey !== this._socialProfileAccountKey) return ''
+        this.setData({ socialUserId })
+        return socialUserId
+      })
+      .catch(() => {
+        if (this._socialProfileAttached === true && generation === this._socialProfileGeneration && currentAccountKey === this._socialProfileAccountKey) {
+          this.setData({ socialUserId: '' })
+        }
+        return ''
+      })
+    this._socialProfileFlight = promise
+    promise.finally(() => {
+      if (this._socialProfileFlight === promise) this._socialProfileFlight = null
+    })
+    return promise
   },
 
   bindSocialUnread() {
@@ -211,6 +271,12 @@ Page({
     const friendUserId = String(event && event.detail && event.detail.friendUserId || '')
     if (!friendUserId) return
     wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?friendUserId=' + encodeURIComponent(friendUserId) })
+  },
+
+  openHand(event) {
+    const shareId = String(event && event.detail && event.detail.shareId || '')
+    if (!shareId) return
+    wx.navigateTo({ url: '/pages/social-hand-detail/social-hand-detail?shareId=' + encodeURIComponent(shareId) })
   },
 
   openMessages() {

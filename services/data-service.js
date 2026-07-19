@@ -10,6 +10,7 @@ const pbtNotesImport = require('../utils/pbt-notes-import')
 const pbtBankrollImport = require('../utils/pbt-bankroll-import')
 const cloudDataApi = require('./cloud-data-api')
 const socialService = require('./social-service')
+const socialCache = require('../utils/social-cache')
 const { AUTO_CLOUD_BOOTSTRAP, AI_REMINDER_SUBSCRIBE_TEMPLATE_ID } = require('../config/cloud')
 
 let bootstrapPromise = null
@@ -1446,6 +1447,7 @@ function updateProfile(patch) {
 async function logoutAccount() {
   const localBackup = store.exportBackup()
   wx.setStorageSync(ACCOUNT_LOGGED_OUT_KEY, true)
+  socialCache.clearAllFeedCaches()
   resetCloudBootstrapState()
   clearStatsDataCache()
   if (localBackupHasBusinessData(localBackup)) {
@@ -1518,6 +1520,7 @@ async function clearAllData() {
   const previousPlayerId = getCurrentPlayerId()
   clearStatsDataCache()
   const result = store.clearAllData()
+  socialCache.clearAllFeedCaches()
   const playerId = previousPlayerId || (result.profile && result.profile.playerId) || getCurrentPlayerId()
   if (playerId && cloudUtils.canUseCloud()) {
     try {

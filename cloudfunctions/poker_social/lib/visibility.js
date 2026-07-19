@@ -39,7 +39,10 @@ function canReadShare(viewerId, share, friendship) {
   if (share.scope === 'square') return true
   if (!hasAcceptedPair(friendship, viewer, publisherId)) return false
   if (share.scope === 'friends') return true
-  return share.scope === 'selected' && Array.isArray(share.targetUserIds) && share.targetUserIds.includes(viewer)
+  return share.scope === 'selected' && Array.isArray(share.targetUserIds) &&
+    share.targetUserIds.length >= 1 && share.targetUserIds.length <= 50 &&
+    new Set(share.targetUserIds.map(String)).size === share.targetUserIds.length &&
+    share.targetUserIds.includes(viewer)
 }
 
 module.exports = { requireAcceptedFriendship, isReadableCardShare, hasAcceptedPair, canReadShare }

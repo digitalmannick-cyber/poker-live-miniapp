@@ -15,6 +15,8 @@
     "social_hand_share_slots": { "read": false, "write": false },
     "social_rate_limits": { "read": false, "write": false },
     "social_notification_outbox": { "read": false, "write": false },
+    "social_likes": { "read": false, "write": false },
+    "social_comments": { "read": false, "write": false },
     "player_card_import_receipts": { "read": false, "write": false }
   }
 }

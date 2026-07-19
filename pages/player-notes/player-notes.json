@@ -1,4 +1,5 @@
 {
+  "enablePullDownRefresh": true,
   "usingComponents": {
     "friend-hub": "/components/friend-hub/friend-hub"
   }

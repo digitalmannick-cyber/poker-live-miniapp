@@ -20,8 +20,16 @@ test('message center is registered once and exposes the required states', () => 
   assert.match(wxss, /min-height:\s*(8[0-9]|[9-9][0-9])rpx/)
 })
 
-test('notification routing uses only kind, canonical target type, and target id', () => {
+test('notification routing enables canonical hand-share targets only after detail registration', () => {
   const route = require('../utils/social-notification-route')
+  const detailRoute = 'pages/social-hand-detail/social-hand-detail'
+  const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'))
+  const beforeRegistration = app.pages.filter(item => item !== detailRoute)
+  const resolveWithManifest = (pages, notification) => pages.includes(detailRoute)
+    ? route.resolveNotificationTarget(notification)
+    : { type: 'unavailable' }
+
+  assert.equal(app.pages.filter(item => item === detailRoute).length, 1, 'detail must be registered exactly once before hand-share routes are enabled')
   assert.deepEqual(route.resolveNotificationTarget({ kind: 'friend_request', targetType: 'friendship', targetId: 'f-1' }), { type: 'inline' })
   assert.deepEqual(route.resolveNotificationTarget({ kind: 'friend_accepted', targetType: 'friend', targetId: 'u-1' }), {
     type: 'navigate',
@@ -32,8 +40,16 @@ test('notification routing uses only kind, canonical target type, and target id'
     url: '/pages/social-card-preview/social-card-preview?shareId=s%2F1'
   })
   ;['selected_hand', 'comment', 'reply', 'like_aggregate'].forEach(kind => {
-    assert.deepEqual(route.resolveNotificationTarget({ kind, targetType: 'hand_share', targetId: 'h-1' }), { type: 'unavailable' })
+    const notification = { kind, targetType: 'hand_share', targetId: 'h/1', url: '/evil', path: '/also-evil' }
+    assert.deepEqual(resolveWithManifest(beforeRegistration, notification), { type: 'unavailable' })
+    assert.deepEqual(resolveWithManifest(app.pages, notification), {
+      type: 'navigate',
+      url: '/pages/social-hand-detail/social-hand-detail?shareId=h%2F1'
+    })
   })
+  assert.deepEqual(route.resolveNotificationTarget({ kind: 'selected_hand', targetType: 'hand_share', targetId: '', url: '/evil' }), { type: 'unavailable' })
+  assert.deepEqual(route.resolveNotificationTarget({ kind: 'unknown', targetType: 'hand_share', targetId: 'h-1', path: '/evil' }), { type: 'unavailable' })
+  assert.deepEqual(route.resolveNotificationTarget({ kind: 'comment', targetType: 'player_card_share', targetId: 'h-1', path: '/evil' }), { type: 'unavailable' })
   assert.deepEqual(route.resolveNotificationTarget({ kind: 'friend_accepted', targetType: 'friend', targetId: '', url: '/evil' }), { type: 'unavailable' })
   assert.deepEqual(route.resolveNotificationTarget({ kind: 'unknown', targetType: 'friend', targetId: 'u', path: '/evil' }), { type: 'unavailable' })
 })

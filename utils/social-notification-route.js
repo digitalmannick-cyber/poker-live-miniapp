@@ -24,8 +24,9 @@ function resolveNotificationTarget(notification) {
   if (kind === 'player_card' && targetType === 'player_card_share') {
     return { type: 'navigate', url: '/pages/social-card-preview/social-card-preview?shareId=' + encodeURIComponent(targetId) }
   }
-  // The hand-share detail page is intentionally not registered in this release.
-  if (['selected_hand', 'comment', 'reply', 'like_aggregate'].includes(kind) && targetType === 'hand_share') return unavailable()
+  if (['selected_hand', 'comment', 'reply', 'like_aggregate'].includes(kind) && targetType === 'hand_share') {
+    return { type: 'navigate', url: '/pages/social-hand-detail/social-hand-detail?shareId=' + encodeURIComponent(targetId) }
+  }
   return unavailable()
 }
 

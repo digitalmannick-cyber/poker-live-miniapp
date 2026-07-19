@@ -135,6 +135,7 @@ test('deployment index manifest preserves exact compound field order and array s
     'social_rate_limits',
     'social_notification_state',
     'social_notification_heads',
-    'social_notification_actors'
+    'social_notification_actors',
+    'social_likes'
   ])
 })

@@ -107,6 +107,33 @@ test('social app treats inherited constructor as an unknown action', async () =>
   })
 })
 
+test('repository-backed social app registers get_hand_share as a canonical action', async () => {
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const { createMemorySocialRepository } = require('./helpers/social-fixture')
+  const repository = createMemorySocialRepository({
+    social_users: [{
+      _id: 'su-viewer',
+      ownerOpenId: 'openid-viewer',
+      privatePlayerId: 'P5-VIEWER',
+      profile: { nickname: '夜鸦', avatarText: '鸦', avatarFileId: '' }
+    }]
+  })
+  const app = createSocialApp({
+    repository,
+    identity: { resolve: openId => ({ ownerOpenId: openId }) },
+    requestId: () => 'request-hand-detail'
+  })
+
+  const result = await app.handle({ action: 'get_hand_share', shareId: 'missing-share' }, { openId: 'openid-viewer' })
+
+  assert.deepEqual(result, {
+    code: 'CONTENT_UNAVAILABLE',
+    data: null,
+    message: 'content unavailable',
+    requestId: 'request-hand-detail'
+  })
+})
+
 test('social app maps public error messages by code and never returns an internal identifier', async () => {
   const { createSocialApp } = require('../cloudfunctions/poker_social/app')
   const internalOpenId = 'openid-real-value-should-not-leak'

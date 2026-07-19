@@ -24,7 +24,7 @@
     <view class="player-section-tab {{playerSection === 'library' ? 'active' : ''}}" data-section="library" bindtap="selectPlayerSection">玩家库</view>
   </view>
 
-  <friend-hub wx:if="{{playerSection === 'friends'}}" id="friendHub" active-section="{{friendSection}}" bindsectionchange="selectFriendSection" bindopenfriend="openFriend" bindopenmessages="openMessages" />
+  <friend-hub wx:if="{{playerSection === 'friends'}}" id="friendHub" active-section="{{friendSection}}" social-user-id="{{socialUserId}}" bindsectionchange="selectFriendSection" bindopenfriend="openFriend" bindopenhand="openHand" bindopenmessages="openMessages" />
 
   <block wx:if="{{playerSection === 'library'}}">
   <view class="player-search">

@@ -1,5 +1,50 @@
 const socialService = require('../../services/social-service')
 const dataService = require('../../services/data-service')
+const socialCache = require('../../utils/social-cache')
+
+const FEED_PAGE_SIZE = 20
+const FEED_SCOPE_LABELS = Object.freeze({ square: '广场', friends: '全部好友', selected: '指定好友' })
+
+function isNetworkError(error) {
+  return !!error && (error.code === 'NETWORK_ERROR' || error.code === 'CLOUD_UNAVAILABLE')
+}
+
+function feedContractError() {
+  const error = new Error('invalid feed response')
+  error.code = 'SOCIAL_CONTRACT_ERROR'
+  return error
+}
+
+function requireFeedResponse(response) {
+  const copied = socialCache.copyFeedResponse(response)
+  if (!copied) throw feedContractError()
+  return copied
+}
+
+function formatFeedTime(createdAt) {
+  const value = Number(createdAt)
+  if (!Number.isFinite(value) || value <= 0) return ''
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  const pad = number => String(number).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function decorateFeedItem(item) {
+  const source = item || {}
+  const summary = source.summary || {}
+  const board = summary.board || {}
+  const cards = value => Array.isArray(value) ? value.filter(card => typeof card === 'string').join(' ') : ''
+  const boardLabel = [cards(board.flop), cards(board.turn), cards(board.river)].filter(Boolean).join('  ·  ')
+  return Object.assign({}, source, {
+    scopeLabel: FEED_SCOPE_LABELS[source.scope] || String(source.scopeLabel || ''),
+    heroCardsLabel: cards(summary.heroCards) || '--',
+    boardLabel: boardLabel || '公共牌未记录',
+    potBbLabel: Number.isFinite(summary.potBb) ? `${summary.potBb} BB` : '--',
+    stackBbLabel: Number.isFinite(summary.effectiveStackBb) ? `${summary.effectiveStackBb} BB` : '--',
+    timeLabel: formatFeedTime(source.createdAt)
+  })
+}
 
 function formatDuration(minutes) {
   const value = Number(minutes)
@@ -62,6 +107,18 @@ Component({
       value: 'feed',
       observer(value) {
         if (value === 'ranking' && this._friendHubAttached === true) this.loadRanking(this.data.rankingRange)
+        if (value === 'feed' && this._friendHubAttached === true && this.data.socialUserId) this.loadFeed()
+      }
+    },
+    socialUserId: {
+      type: String,
+      value: '',
+      observer(value, oldValue) {
+        const next = String(value || '')
+        const previous = String(oldValue || '')
+        if (next === previous) return
+        this.invalidateFeed({ clear: true })
+        if (this._friendHubAttached === true && this.data.activeSection === 'feed' && next) this.loadFeed()
       }
     }
   },
@@ -79,7 +136,15 @@ Component({
     rankingRows: [],
     rankingPodium: [],
     rankingListRows: [],
-    rankingMyRank: null
+    rankingMyRank: null,
+    feedStatus: 'idle',
+    feedError: '',
+    feedItems: [],
+    feedNextCursor: '',
+    feedLoadingMore: false,
+    feedMoreError: '',
+    feedOffline: false,
+    feedReadOnly: false
   },
 
   lifetimes: {
@@ -87,7 +152,9 @@ Component({
       this._friendHubAttached = true
       this._friendLoadSequence = Number(this._friendLoadSequence) || 0
       this._rankingLoadSequence = Number(this._rankingLoadSequence) || 0
+      this._feedGeneration = Number(this._feedGeneration) || 0
       if (this.data.activeSection === 'ranking') this.loadRanking(this.data.rankingRange)
+      if (this.data.activeSection === 'feed' && this.data.socialUserId) this.loadFeed()
     },
 
     detached() {
@@ -96,10 +163,184 @@ Component({
       this._friendLoadPromise = null
       this._friendLoadMorePromise = null
       this._rankingLoadSequence = (Number(this._rankingLoadSequence) || 0) + 1
+      this.invalidateFeed({ clear: true })
     }
   },
 
   methods: {
+    invalidateFeed(options) {
+      const config = options || {}
+      this._feedGeneration = (Number(this._feedGeneration) || 0) + 1
+      this._feedFirstFlight = null
+      this._feedMoreFlight = null
+      if (config.clear) {
+        this.setData({
+          feedStatus: this.data.socialUserId ? 'idle' : 'unavailable',
+          feedError: '',
+          feedItems: [],
+          feedNextCursor: '',
+          feedLoadingMore: false,
+          feedMoreError: '',
+          feedOffline: false,
+          feedReadOnly: false
+        })
+      } else {
+        this.setData({ feedLoadingMore: false, feedMoreError: '' })
+      }
+    },
+
+    isCurrentFeedRequest(generation, socialUserId, cursor) {
+      if (this._friendHubAttached !== true || generation !== this._feedGeneration) return false
+      if (String(this.data.socialUserId || '') !== socialUserId) return false
+      return cursor === undefined || String(this.data.feedNextCursor || '') === cursor
+    },
+
+    mergeFeedItems(existing, incoming) {
+      const merged = []
+      const seen = new Set()
+      ;(existing || []).concat(incoming || []).forEach(item => {
+        const shareId = String(item && item.shareId || '')
+        if (!shareId || seen.has(shareId)) return
+        seen.add(shareId)
+        merged.push(item)
+      })
+      return merged
+    },
+
+    requestFeedFirstPage() {
+      const socialUserId = String(this.data.socialUserId || '')
+      if (!socialUserId || this._friendHubAttached !== true) return Promise.resolve([])
+      const generation = Number(this._feedGeneration) || 0
+      this.setData({ feedStatus: 'loading', feedError: '', feedMoreError: '', feedOffline: false, feedReadOnly: false })
+      let request
+      try {
+        request = socialService.listFeed({ cursor: '', limit: FEED_PAGE_SIZE })
+      } catch (error) {
+        request = Promise.reject(error)
+      }
+      return Promise.resolve(request)
+        .then(response => {
+          if (!this.isCurrentFeedRequest(generation, socialUserId)) return this.data.feedItems
+          const copied = requireFeedResponse(response)
+          const items = copied.items
+          const nextCursor = copied.nextCursor === null ? '' : copied.nextCursor
+          socialCache.writeFeedFirstPage(socialUserId, { items, nextCursor })
+          if (!this.isCurrentFeedRequest(generation, socialUserId)) return this.data.feedItems
+          const cards = items.map(decorateFeedItem)
+          this.setData({
+            feedStatus: 'ready',
+            feedError: '',
+            feedItems: cards,
+            feedNextCursor: nextCursor,
+            feedLoadingMore: false,
+            feedMoreError: '',
+            feedOffline: false,
+            feedReadOnly: false
+          })
+          return cards
+        })
+        .catch(error => {
+          if (!this.isCurrentFeedRequest(generation, socialUserId)) return this.data.feedItems
+          const cached = isNetworkError(error) ? socialCache.readFeedFirstPage(socialUserId) : null
+          if (cached) {
+            const cards = cached.items.map(decorateFeedItem)
+            this.setData({
+              feedStatus: 'ready',
+              feedError: '',
+              feedItems: cards,
+              feedNextCursor: '',
+              feedLoadingMore: false,
+              feedMoreError: '',
+              feedOffline: true,
+              feedReadOnly: true
+            })
+            return cards
+          }
+          this.setData({
+            feedStatus: 'error',
+            feedError: '动态暂时不可用，请稍后重试',
+            feedItems: [],
+            feedNextCursor: '',
+            feedLoadingMore: false,
+            feedMoreError: '',
+            feedOffline: false,
+            feedReadOnly: false
+          })
+          return []
+        })
+    },
+
+    loadFeed(force) {
+      if (force) this.invalidateFeed({ clear: false })
+      if (!force && this._feedFirstFlight) return this._feedFirstFlight
+      if (!force && this.data.feedStatus === 'ready') return Promise.resolve(this.data.feedItems)
+      const promise = this.requestFeedFirstPage()
+      this._feedFirstFlight = promise
+      promise.finally(() => {
+        if (this._feedFirstFlight === promise) this._feedFirstFlight = null
+      })
+      return promise
+    },
+
+    refreshFeed() {
+      if (this._feedFirstFlight) return this._feedFirstFlight
+      this.setData({ feedItems: [], feedNextCursor: '', feedStatus: 'idle', feedError: '', feedOffline: false, feedReadOnly: false })
+      return this.loadFeed(true)
+    },
+
+    requestFeedMore(cursor) {
+      const socialUserId = String(this.data.socialUserId || '')
+      const generation = Number(this._feedGeneration) || 0
+      this.setData({ feedLoadingMore: true, feedMoreError: '' })
+      let request
+      try {
+        request = socialService.listFeed({ cursor, limit: FEED_PAGE_SIZE })
+      } catch (error) {
+        request = Promise.reject(error)
+      }
+      return Promise.resolve(request)
+        .then(response => {
+          if (!this.isCurrentFeedRequest(generation, socialUserId, cursor)) return this.data.feedItems
+          const copied = requireFeedResponse(response)
+          const incoming = copied.items.map(decorateFeedItem)
+          const nextCursor = copied.nextCursor === null ? '' : copied.nextCursor
+          const items = this.mergeFeedItems(this.data.feedItems, incoming)
+          this.setData({ feedItems: items, feedNextCursor: nextCursor, feedLoadingMore: false, feedMoreError: '' })
+          return items
+        })
+        .catch(() => {
+          if (!this.isCurrentFeedRequest(generation, socialUserId, cursor)) return this.data.feedItems
+          this.setData({ feedLoadingMore: false, feedMoreError: '加载失败，点击重试' })
+          return this.data.feedItems
+        })
+    },
+
+    loadMoreFeed() {
+      if (this._feedMoreFlight) return this._feedMoreFlight
+      const cursor = String(this.data.feedNextCursor || '')
+      if (!cursor || this.data.feedOffline || this.data.feedReadOnly || this._friendHubAttached !== true) return Promise.resolve(this.data.feedItems)
+      const promise = this.requestFeedMore(cursor)
+      this._feedMoreFlight = promise
+      promise.finally(() => {
+        if (this._feedMoreFlight === promise) this._feedMoreFlight = null
+      })
+      return promise
+    },
+
+    openHand(event) {
+      if (this._friendHubAttached !== true || this.data.feedReadOnly) return
+      const dataset = event && event.currentTarget && event.currentTarget.dataset || {}
+      const shareId = String(dataset.shareId || dataset.id || '')
+      if (shareId) this.triggerEvent('openhand', { shareId })
+    },
+
+    openPublisher(event) {
+      if (this._friendHubAttached !== true || this.data.feedReadOnly) return
+      const dataset = event && event.currentTarget && event.currentTarget.dataset || {}
+      const friendUserId = String(dataset.socialUserId || dataset.id || '')
+      if (friendUserId) this.triggerEvent('openfriend', { friendUserId })
+    },
+
     isCurrentLoad(sequence) {
       return this._friendHubAttached !== false && sequence === this._friendLoadSequence
     },
@@ -236,4 +477,4 @@ Component({
   }
 })
 
-module.exports = { buildFriendCard, buildRankingRow, formatDuration }
+module.exports = { buildFriendCard, buildRankingRow, decorateFeedItem, formatDuration }

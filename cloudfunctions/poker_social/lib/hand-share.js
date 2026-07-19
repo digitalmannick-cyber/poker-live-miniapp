@@ -62,14 +62,95 @@ function normalizeId(value) {
   return String(value || '').trim()
 }
 
+function playerIdentity(row) {
+  const canonical = normalizeId(row && row.privatePlayerId)
+  const legacy = normalizeId(row && row.playerId)
+  if (canonical && legacy && canonical.toUpperCase() !== legacy.toUpperCase()) return ''
+  return canonical || legacy
+}
+
+function ownerIdentity(row) {
+  const canonical = normalizeId(row && row.ownerOpenId)
+  const legacy = normalizeId(row && row._openid)
+  if (canonical && legacy && canonical !== legacy) return ''
+  return canonical || legacy
+}
+
 function sortedUniqueTargets(values) {
   if (!Array.isArray(values)) return []
   return Array.from(new Set(values.map(normalizeId).filter(Boolean))).sort()
 }
 
 function ownerMatches(row, ownerOpenId, privatePlayerId) {
-  return !!row && normalizeId(row.ownerOpenId || row._openid) === normalizeId(ownerOpenId) &&
-    normalizeId(row.privatePlayerId || row.playerId).toUpperCase() === normalizeId(privatePlayerId).toUpperCase()
+  const actualOwner = ownerIdentity(row)
+  const actualPlayer = playerIdentity(row)
+  return !!row && !!actualOwner && !!actualPlayer && actualOwner === normalizeId(ownerOpenId) &&
+    actualPlayer.toUpperCase() === normalizeId(privatePlayerId).toUpperCase()
+}
+
+function snapshotError() {
+  return socialError('INVALID_HAND_SNAPSHOT', 'invalid hand snapshot')
+}
+
+function snapshotText(value) {
+  if (typeof value !== 'string') throw snapshotError()
+  return value
+}
+
+function snapshotNumber(value, integer) {
+  if (!Number.isFinite(value) || value < 0 || (integer && !Number.isInteger(value))) throw snapshotError()
+  return value
+}
+
+function snapshotCards(value) {
+  if (!Array.isArray(value)) throw snapshotError()
+  return value.map(snapshotText)
+}
+
+function copySnapshotPlayer(value, hero) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw snapshotError()
+  const result = {
+    label: snapshotText(value.label),
+    position: snapshotText(value.position),
+    seat: snapshotNumber(value.seat, true)
+  }
+  if (hero) result.cards = snapshotCards(value.cards)
+  if (Object.prototype.hasOwnProperty.call(value, 'stackBb')) result.stackBb = snapshotNumber(value.stackBb, false)
+  return result
+}
+
+function copyHandSnapshot(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== 1 ||
+    !Array.isArray(value.players) || !value.board || typeof value.board !== 'object' ||
+    !Array.isArray(value.actions) || !Array.isArray(value.showdown)) throw snapshotError()
+  const result = {
+    version: 1,
+    hero: copySnapshotPlayer(value.hero, true),
+    players: value.players.map(player => copySnapshotPlayer(player, false)),
+    board: {
+      flop: snapshotCards(value.board.flop),
+      turn: snapshotCards(value.board.turn),
+      river: snapshotCards(value.board.river)
+    },
+    actions: value.actions.map(action => {
+      if (!action || typeof action !== 'object' || Array.isArray(action)) throw snapshotError()
+      const item = {
+        street: snapshotText(action.street),
+        actor: snapshotText(action.actor),
+        type: snapshotText(action.type)
+      }
+      if (Object.prototype.hasOwnProperty.call(action, 'amountBb')) item.amountBb = snapshotNumber(action.amountBb, false)
+      return item
+    })
+  }
+  for (const key of ['effectiveStackBb', 'potBb', 'allInPotBb']) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) result[key] = snapshotNumber(value[key], false)
+  }
+  result.showdown = value.showdown.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw snapshotError()
+    return { actor: snapshotText(item.actor), cards: snapshotCards(item.cards) }
+  })
+  return result
 }
 
 async function resolveSocialUser(store, actor) {
@@ -608,5 +689,9 @@ module.exports = {
   drainNotificationOutbox,
   compensateRecipientOutboxes,
   requireReadableShare,
+  playerIdentity,
+  ownerIdentity,
+  ownerMatches,
+  copyHandSnapshot,
   createHandShareHandlers
 }

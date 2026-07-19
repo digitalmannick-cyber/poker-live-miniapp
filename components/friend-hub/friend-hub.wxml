@@ -39,7 +39,60 @@
     <view wx:else class="friend-hub-state">还没有已确认的好友</view>
   </view>
 
-  <view wx:elif="{{activeSection === 'feed'}}" class="friend-hub-state">动态功能后续开放</view>
+  <view wx:elif="{{activeSection === 'feed'}}" class="feed-panel">
+    <view wx:if="{{feedOffline}}" class="feed-offline-banner">离线只读 · 内容可能不是最新状态</view>
+    <view wx:if="{{feedStatus === 'loading' && !feedItems.length}}" class="friend-hub-state feed-state">正在加载动态…</view>
+    <view wx:elif="{{feedStatus === 'error' && !feedItems.length}}" class="friend-hub-state friend-hub-error feed-state">
+      <text>{{feedError}}</text>
+      <view class="friend-retry" bindtap="refreshFeed">重试</view>
+    </view>
+    <view wx:elif="{{feedItems.length}}" class="feed-list">
+      <view wx:for="{{feedItems}}" wx:key="shareId" class="feed-card" data-share-id="{{item.shareId}}" bindtap="openHand">
+        <view class="feed-card-head">
+          <view class="feed-publisher" data-social-user-id="{{item.publisher.socialUserId}}" catchtap="openPublisher">
+            <view class="feed-avatar">
+              <image wx:if="{{item.publisher.avatarUrl}}" class="feed-avatar-image" src="{{item.publisher.avatarUrl}}" mode="aspectFill"></image>
+              <text wx:else>{{item.publisher.avatarText}}</text>
+            </view>
+            <view class="feed-publisher-copy">
+              <view class="feed-publisher-name">{{item.publisher.nickname}}</view>
+              <view class="feed-time">{{item.timeLabel}}</view>
+            </view>
+          </view>
+          <view class="feed-scope feed-scope-{{item.scope}}">{{item.scopeLabel}}</view>
+        </view>
+
+        <view class="feed-hand-summary">
+          <view class="feed-hand-line">
+            <text class="feed-hand-label">手牌</text>
+            <text class="feed-hole-cards">{{item.heroCardsLabel}}</text>
+          </view>
+          <view class="feed-board">{{item.boardLabel}}</view>
+          <view class="feed-metrics">
+            <view><text>底池</text><text class="feed-metric-value">{{item.potBbLabel}}</text></view>
+            <view><text>有效筹码</text><text class="feed-metric-value">{{item.stackBbLabel}}</text></view>
+            <view><text>行动</text><text class="feed-metric-value">{{item.summary.actionCount || 0}}</text></view>
+          </view>
+        </view>
+
+        <view class="feed-card-actions">
+          <view class="feed-action" data-share-id="{{item.shareId}}" catchtap="openHand" aria-label="点赞 {{item.likeCount}}">
+            <text class="feed-action-icon feed-like-icon">{{item.likedByMe ? '♥' : '♡'}}</text>
+            <text class="feed-action-count">{{item.likeCount}}</text>
+          </view>
+          <view class="feed-action" data-share-id="{{item.shareId}}" catchtap="openHand" aria-label="评论 {{item.commentCount}}">
+            <image class="feed-action-icon feed-comment-icon" src="/assets/review-icons/comment-bubble-v263.png" mode="aspectFit"></image>
+            <text class="feed-action-count">{{item.commentCount}}</text>
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{feedNextCursor}}" class="feed-load-more {{feedLoadingMore ? 'is-loading' : ''}}" bindtap="loadMoreFeed">
+        {{feedLoadingMore ? '加载中…' : (feedMoreError || '加载更多')}}
+      </view>
+    </view>
+    <view wx:elif="{{feedStatus === 'ready'}}" class="friend-hub-state feed-state">还没有可查看的动态</view>
+    <view wx:else class="friend-hub-state feed-state">社交资料确认后即可查看动态</view>
+  </view>
   <view wx:else class="ranking-panel">
     <view class="ranking-range-tabs">
       <view class="ranking-range-tab {{rankingRange === 'week' ? 'active' : ''}}" data-range="week" bindtap="selectRankingRange">本周</view>
