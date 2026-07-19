@@ -216,7 +216,7 @@ git commit -m "feat: add private social identity profile"
 - Produces cloud actions: `create_invite`、`create_invite_qr`、`inspect_invite`、`send_friend_request`、`accept_friend_request`、`reject_friend_request`、`remove_friend`、`list_friends`。
 - Produces service methods with the same camelCase names and required `clientMutationId` for writes。
 
-- [ ] **Step 1: 写状态机和冷却失败测试**
+- [x] **Step 1: 写状态机和冷却失败测试**
 
 ```js
 test('friend pair is canonical and rejected pairs cool down for seven days', () => {
@@ -228,13 +228,13 @@ test('friend pair is canonical and rejected pairs cool down for seven days', () 
 })
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-friendship.test.js`
 
 Expected: FAIL because friendship module is missing。
 
-- [ ] **Step 3: 实现确定性关系、令牌摘要与幂等**
+- [x] **Step 3: 实现确定性关系、令牌摘要与幂等**
 
 ```js
 function transition(current, operation, nowMs) {
@@ -261,13 +261,13 @@ function buildFriendshipRecord(leftUserId, rightUserId, requesterId, nowMs) {
 
 `list_friends` 分别查询 `userA=current` 和 `userB=current` 的 accepted 记录后按 `acceptedAt DESC, _id ASC` 合并分页，不对 `userIds` 数组做全表扫描；offset 最大 1000，超过时公开返回 `INVALID_PAGINATION`，不得静默截断。两侧查询需要索引 `(userA ASC, status ASC, acceptedAt DESC, _id ASC)` 与 `(userB ASC, status ASC, acceptedAt DESC, _id ASC)`。
 
-- [ ] **Step 4: 运行好友关系测试**
+- [x] **Step 4: 运行好友关系测试**
 
 Run: `node --test tests/social-friendship.test.js tests/social-profile.test.js tests/social-cloud-routing.test.js`
 
 Expected: PASS；覆盖双方同时申请、重复接受、拒绝冷却、解除冷却和转发邀请不会自动建立关系。
 
-- [ ] **Step 5: 提交关系状态机**
+- [x] **Step 5: 提交关系状态机**
 
 ```powershell
 git add cloudfunctions/poker_social/lib/invite.js cloudfunctions/poker_social/lib/friendship.js cloudfunctions/poker_social/lib/idempotency.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/index.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-friendship.test.js
