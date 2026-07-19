@@ -34,7 +34,7 @@
 - Produces: `getFriendPlayerNote(friendUserId)`、`ensureFriendPlayerNote(friendSnapshot)`、`detachFriendPlayerNote(friendUserId)`。
 - Player note fields: `sourceKind: 'library' | 'friend'` and `linkedFriendUserId: string`。
 
-- [ ] **Step 1: 写好友玩家记录失败测试**
+- [x] **Step 1: 写好友玩家记录失败测试**
 
 ```js
 const friend = store.ensureFriendPlayerNote({ socialUserId: 'su_a', nickname: '银狼' })
@@ -47,13 +47,13 @@ assert.equal(detached.sourceKind, 'library')
 assert.equal(detached.linkedFriendUserId, '')
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-friend-player-note.test.js`
 
 Expected: FAIL because `ensureFriendPlayerNote` is undefined。
 
-- [ ] **Step 3: 实现兼容归一化和 owner-scoped 云同步**
+- [x] **Step 3: 实现兼容归一化和 owner-scoped 云同步**
 
 ```js
 function normalizePlayerNote(input) {
@@ -78,7 +78,7 @@ function ensureFriendPlayerNote(snapshot) {
 
 在 `buildPlayerNoteDoc` 同步白名单中加入两个字段，但所有读取和写入继续校验当前 `playerId + ownerOpenId`。不得用 `linkedFriendUserId` 跨 owner 查询玩家记录。
 
-- [ ] **Step 4: 运行新旧玩家库测试**
+- [x] **Step 4: 运行新旧玩家库测试**
 
 Run:
 
@@ -92,7 +92,7 @@ node tests/player-notes-cloud-boundary.test.js
 
 Expected: PASS；旧备份缺少新字段时归一化为 `sourceKind: 'library'`。
 
-- [ ] **Step 5: 提交数据扩展**
+- [x] **Step 5: 提交数据扩展**
 
 ```powershell
 git add utils/store.js services/data-service.js services/cloud-data-api.js cloudfunctions/poker_data/index.js tests/social-friend-player-note.test.js tests/player-notes-store.test.js tests/player-notes-cloud-boundary.test.js
