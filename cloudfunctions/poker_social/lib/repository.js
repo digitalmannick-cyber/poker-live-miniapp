@@ -4,7 +4,11 @@ const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_INVITES: 'social_invites',
   SOCIAL_MUTATIONS: 'social_mutations',
   SOCIAL_DAILY_STATS: 'social_daily_stats',
-  SOCIAL_PLAYER_CARD_SHARES: 'social_player_card_shares'
+  SOCIAL_PLAYER_CARD_SHARES: 'social_player_card_shares',
+  SOCIAL_NOTIFICATIONS: 'social_notifications',
+  SOCIAL_NOTIFICATION_STATE: 'social_notification_state',
+  SOCIAL_NOTIFICATION_HEADS: 'social_notification_heads',
+  SOCIAL_NOTIFICATION_ACTORS: 'social_notification_actors'
 })
 
 const PRIVATE_PAGE_SIZE = 100
@@ -155,6 +159,33 @@ function createCloudSocialRepository(database) {
       })
       const items = all.slice(offset, offset + limit)
       return { items, nextOffset: all.length > offset + limit ? offset + limit : null }
+    },
+
+    async listNotifications(recipientId, page) {
+      const cursor = page && page.cursor
+      const limit = Math.min(50, Math.max(1, Number(page && page.limit) || 20))
+      let query = { recipientId: String(recipientId || '') }
+      if (cursor) {
+        const command = database.command
+        if (!command || typeof command.and !== 'function' || typeof command.or !== 'function' || typeof command.lt !== 'function' || typeof command.eq !== 'function') {
+          throw new Error('cloud database command unavailable')
+        }
+        query = command.and([
+          { recipientId: String(recipientId || '') },
+          command.or([
+            { createdAt: command.lt(Number(cursor.createdAt)) },
+            command.and([
+              { createdAt: command.eq(Number(cursor.createdAt)) },
+              { _id: command.lt(String(cursor.id || '')) }
+            ])
+          ])
+        ])
+      }
+      let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATIONS).where(query)
+      if (typeof request.orderBy === 'function') request = request.orderBy('createdAt', 'desc').orderBy('_id', 'desc')
+      if (typeof request.limit === 'function') request = request.limit(limit + 1)
+      const response = await request.get()
+      return Array.isArray(response && response.data) ? response.data : []
     }
     }
   }
@@ -162,7 +193,7 @@ function createCloudSocialRepository(database) {
   const store = createStore(database)
   return Object.assign(store, {
     async runTransaction(callback) {
-      if (typeof database.runTransaction !== 'function') return callback(store)
+      if (typeof database.runTransaction !== 'function') throw new Error('cloud database transactions unavailable')
       return database.runTransaction(transaction => callback(createStore(transaction)))
     }
   })

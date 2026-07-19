@@ -3,6 +3,7 @@ const { socialError } = require('./social-error')
 const { deriveInviteToken, buildInviteRecord, getInviteId, assertActiveInvite } = require('./invite')
 const { MUTATION_COLLECTION, mutationRecordId, runIdempotent, requireClientMutationId } = require('./idempotency')
 const { toProfileDto } = require('./profile')
+const { createNotificationWriter } = require('./notification')
 
 const USER_COLLECTION = 'social_users'
 const FRIENDSHIP_COLLECTION = 'social_friendships'
@@ -103,6 +104,14 @@ function profileSnapshot(user) {
   }
 }
 
+function friendRequestEventId(record) {
+  return ['friend_request', record && record._id, Number(record && record.createdAt) || 0].join(':')
+}
+
+function friendAcceptedEventId(record) {
+  return ['friend_accepted', record && record._id, Number(record && record.acceptedAt) || 0].join(':')
+}
+
 async function friendDto(relationship, friendId, friend, avatarUrl) {
   const current = await publicUserDto(friend, avatarUrl)
   const snapshot = relationship && relationship.profileSnapshots && relationship.profileSnapshots[friendId] || {}
@@ -119,6 +128,7 @@ function createFriendshipHandlers(repository, options) {
   const config = options || {}
   const now = typeof config.now === 'function' ? config.now : () => Date.now()
   const avatarUrl = typeof config.avatarUrl === 'function' ? config.avatarUrl : async () => ''
+  const notificationWriter = config.notificationWriter || createNotificationWriter({ now })
 
   async function getActiveInvite(store, token, at) {
     const invite = await store.get(INVITE_COLLECTION, getInviteId(token))
@@ -229,6 +239,16 @@ function createFriendshipHandlers(repository, options) {
         }
         await store.set(FRIENDSHIP_COLLECTION, pairId, record)
         await store.set(INVITE_COLLECTION, invite._id, Object.assign({}, invite, { usedCount: (Number(invite.usedCount) || 0) + 1, updatedAt: at }))
+        await notificationWriter.write(store, {
+          recipientId: record.receiverId,
+          kind: 'friend_request',
+          actor: requester,
+          targetType: 'friendship',
+          targetId: record._id,
+          sourceEventId: friendRequestEventId(record),
+          actionState: 'pending',
+          at
+        })
         return friendshipResult(record)
       })
     },
@@ -249,7 +269,25 @@ function createFriendshipHandlers(repository, options) {
             [next.userB]: profileSnapshot(userB)
           }
         }
-        if (next !== record) await store.set(FRIENDSHIP_COLLECTION, next._id, next)
+        if (next !== record) {
+          await store.set(FRIENDSHIP_COLLECTION, next._id, next)
+          await notificationWriter.setActionState(store, {
+            recipientId: record.receiverId,
+            kind: 'friend_request',
+            sourceEventId: friendRequestEventId(record),
+            actionState: 'accepted'
+          })
+          await notificationWriter.write(store, {
+            recipientId: record.requesterId,
+            kind: 'friend_accepted',
+            actor: actorUser,
+            targetType: 'social_user',
+            targetId: actorUser._id,
+            sourceEventId: friendAcceptedEventId(next),
+            actionState: 'accepted',
+            at: Number(next.acceptedAt) || now()
+          })
+        }
         return friendshipResult(next)
       })
     },
@@ -262,7 +300,15 @@ function createFriendshipHandlers(repository, options) {
         if ((record.userA !== actorUser._id && record.userB !== actorUser._id) || record.receiverId !== actorUser._id) throw socialError('FORBIDDEN', 'not allowed')
         if (record.status !== 'pending' && record.status !== 'rejected') throw socialError('INVALID_FRIENDSHIP_STATE', 'invalid friendship state')
         const next = transition(record, 'reject', now())
-        if (next !== record) await store.set(FRIENDSHIP_COLLECTION, next._id, next)
+        if (next !== record) {
+          await store.set(FRIENDSHIP_COLLECTION, next._id, next)
+          await notificationWriter.setActionState(store, {
+            recipientId: record.receiverId,
+            kind: 'friend_request',
+            sourceEventId: friendRequestEventId(record),
+            actionState: 'rejected'
+          })
+        }
         return friendshipResult(next)
       })
     },
@@ -315,4 +361,4 @@ function createFriendshipHandlers(repository, options) {
   }
 }
 
-module.exports = { COOLDOWN_MS, MAX_FRIEND_OFFSET, getPairId, transition, buildFriendshipRecord, createFriendshipHandlers }
+module.exports = { COOLDOWN_MS, MAX_FRIEND_OFFSET, getPairId, transition, buildFriendshipRecord, friendRequestEventId, friendAcceptedEventId, createFriendshipHandlers }

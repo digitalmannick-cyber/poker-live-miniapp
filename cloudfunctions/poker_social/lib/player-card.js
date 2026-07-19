@@ -2,6 +2,7 @@ const crypto = require('crypto')
 const { socialError } = require('./social-error')
 const { runIdempotent, requireClientMutationId } = require('./idempotency')
 const { requireAcceptedFriendship, isReadableCardShare } = require('./visibility')
+const { createNotificationWriter } = require('./notification')
 
 const USER_COLLECTION = 'social_users'
 const PLAYER_NOTE_COLLECTION = 'player_notes'
@@ -126,6 +127,7 @@ function createPlayerCardHandlers(repository, options) {
   const config = options || {}
   const now = typeof config.now === 'function' ? config.now : () => Date.now()
   const avatarUrl = typeof config.avatarUrl === 'function' ? config.avatarUrl : async () => ''
+  const notificationWriter = config.notificationWriter || createNotificationWriter({ now })
 
   async function dto(share) {
     return toCardShareDto(share, { avatarUrl })
@@ -170,6 +172,16 @@ function createPlayerCardHandlers(repository, options) {
           withdrawnAt: 0
         }
         await store.set(CARD_SHARE_COLLECTION, share._id, share)
+        await notificationWriter.write(store, {
+          recipientId: targetUserId,
+          kind: 'player_card',
+          actor: sender,
+          targetType: 'player_card',
+          targetId: share._id,
+          sourceEventId: 'player_card:' + share._id,
+          actionState: 'available',
+          at
+        })
         return share
       }, {
         persistResult: share => ({ shareId: share._id }),

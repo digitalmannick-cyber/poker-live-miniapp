@@ -2,6 +2,7 @@ const { createProfileHandlers } = require('./lib/profile')
 const { createFriendshipHandlers } = require('./lib/friendship')
 const { createRankingHandlers } = require('./lib/ranking')
 const { createPlayerCardHandlers } = require('./lib/player-card')
+const { createNotificationWriter, createNotificationHandlers } = require('./lib/notification')
 
 function withoutPrivateIdentifiers(value) {
   if (typeof value === 'string' && value.includes('cloud://')) return null
@@ -50,19 +51,23 @@ function publicError(error) {
 function createSocialApp(deps) {
   const config = deps || {}
   const identity = config.identity || {}
+  const notificationWriter = config.notificationWriter || createNotificationWriter(config.notification)
   const profileHandlers = config.repository
     ? createProfileHandlers(config.repository, { avatarUrl: config.avatarUrl })
     : {}
   const friendshipHandlers = config.repository
-    ? createFriendshipHandlers(config.repository, Object.assign({}, config.friendship || {}, { avatarUrl: config.avatarUrl }))
+    ? createFriendshipHandlers(config.repository, Object.assign({}, config.friendship || {}, { avatarUrl: config.avatarUrl, notificationWriter }))
     : {}
   const rankingHandlers = config.repository
     ? createRankingHandlers(config.repository, Object.assign({}, config.ranking || {}, { avatarUrl: config.avatarUrl || config.ranking && config.ranking.avatarUrl }))
     : {}
   const playerCardHandlers = config.repository
-    ? createPlayerCardHandlers(config.repository, Object.assign({}, config.playerCard || {}, { avatarUrl: config.avatarUrl || config.playerCard && config.playerCard.avatarUrl }))
+    ? createPlayerCardHandlers(config.repository, Object.assign({}, config.playerCard || {}, { avatarUrl: config.avatarUrl || config.playerCard && config.playerCard.avatarUrl, notificationWriter }))
     : {}
-  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers, config.handlers || {})
+  const notificationHandlers = config.repository
+    ? createNotificationHandlers(config.repository, Object.assign({}, config.notification || {}, { avatarUrl: config.avatarUrl || config.notification && config.notification.avatarUrl }))
+    : {}
+  const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers, notificationHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()

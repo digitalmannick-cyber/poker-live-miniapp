@@ -1,5 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 const { createMemorySocialRepository } = require('./helpers/social-fixture')
 const {
   COLLECTIONS,
@@ -65,7 +67,7 @@ test('notification DTO is a safe navigation hint and list uses stable cursor pag
   assert.equal(second.nextCursor, null)
   assert.equal(new Set(first.items.concat(second.items).map(row => row.notificationId)).size, 3)
   const dto = first.items.concat(second.items).find(row => row.kind === 'friend_request')
-  assert.deepEqual(dto.actor, { socialUserId: 'su_a', nickname: 'Alice', avatarUrl: 'https://temp.example/alice', avatarText: 'A' })
+  assert.deepEqual(dto.actor, { socialUserId: 'su_a', nickname: 'Alice', avatarUrl: 'https://temp.example/su_a', avatarText: 'A' })
   assert.equal(dto.actionState, 'pending')
   assert.deepEqual(dto.target, { type: 'friendship', id: 'target_0' })
   assert.equal(dto.read, false)
@@ -170,11 +172,29 @@ test('friend request, acceptance, rejection actionState, and card share notifica
   await friendship.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'accept-a-new-id' }, { ownerOpenId: 'openid-a' })
   assert.equal(repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_accepted').length, 1)
 
+  const inviteB = await friendship.create_invite({ clientMutationId: 'invite-b' }, { ownerOpenId: 'openid-b' })
+  const pendingFromC = await friendship.send_friend_request({ token: inviteB.token, clientMutationId: 'request-c' }, { ownerOpenId: 'openid-c' })
+  await friendship.reject_friend_request({ friendshipId: pendingFromC.friendshipId, clientMutationId: 'reject-b' }, { ownerOpenId: 'openid-b' })
+  const rejectedNotification = repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'friend_request' && row.targetId === pendingFromC.friendshipId)[0]
+  assert.equal(rejectedNotification.actionState, 'rejected')
+
   const card = createPlayerCardHandlers(repository, { now: () => 3_000 })
   const shared = await card.share_player_card({ playerNoteId: 'note-a', targetUserId: 'su_b', clientMutationId: 'card-share' }, { ownerOpenId: 'openid-a' })
   const cardNotifications = repository.where(COLLECTIONS.NOTIFICATIONS, row => row.kind === 'player_card')
   assert.equal(cardNotifications.length, 1)
   assert.equal(cardNotifications[0].targetId, shared.shareId)
+
+  const cardCountBeforeFailure = repository.where('social_player_card_shares', () => true).length
+  const failingCard = createPlayerCardHandlers(repository, {
+    now: () => 3_500,
+    notificationWriter: { write: async () => { throw new Error('card notification failed') } }
+  })
+  await assert.rejects(
+    failingCard.share_player_card({ playerNoteId: 'note-a', targetUserId: 'su_b', clientMutationId: 'card-atomic-fail' }, { ownerOpenId: 'openid-a' }),
+    /card notification failed/
+  )
+  assert.equal(repository.where('social_player_card_shares', () => true).length, cardCountBeforeFailure)
+  assert.equal(repository.where('social_mutations', row => row.clientMutationId === 'card-atomic-fail').length, 0)
 
   const failing = createFriendshipHandlers(repository, {
     now: () => 4_000,
@@ -214,4 +234,70 @@ test('notification service wrappers preserve read/write mutation boundaries', as
     api.callSocialFunction = original
     delete require.cache[servicePath]
   }
+})
+
+test('social app routes notification actions while keeping target authorization separate', async () => {
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const repository = createMemorySocialRepository({ social_users: users() })
+  const writer = createNotificationWriter({ now: () => 1_000 })
+  const row = await repository.runTransaction(store => writer.write(store, {
+    recipientId: 'su_b', kind: 'player_card', actor: actorSnapshot('su_a', 'Alice'),
+    targetType: 'player_card', targetId: 'withdrawn-card', sourceEventId: 'withdrawn-card'
+  }))
+  const app = createSocialApp({
+    repository,
+    identity: { resolve: openId => ({ ownerOpenId: openId }) },
+    requestId: () => 'notification-route',
+    avatarUrl: async () => 'https://temp.example/avatar'
+  })
+  const listed = await app.handle({ action: 'list_notifications', limit: 20 }, { openId: 'openid-b' })
+  assert.equal(listed.code, 0)
+  assert.equal(listed.data.items[0].targetId, 'withdrawn-card')
+  assert.equal(Object.hasOwn(listed.data.items[0], 'accessible'), false)
+  const missingMutation = await app.handle({ action: 'mark_notification_read', notificationId: row._id }, { openId: 'openid-b' })
+  assert.equal(missingMutation.code, 'INVALID_MUTATION')
+  const marked = await app.handle({ action: 'mark_notification_read', notificationId: row._id, clientMutationId: 'route-read' }, { openId: 'openid-b' })
+  assert.equal(marked.code, 0)
+})
+
+test('CloudBase notification repository uses recipient-scoped keyset queries and documents exact indexes', async () => {
+  const { SOCIAL_COLLECTIONS, createCloudSocialRepository } = require('../cloudfunctions/poker_social/lib/repository')
+  assert.equal(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATIONS, COLLECTIONS.NOTIFICATIONS)
+  assert.equal(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_STATE, COLLECTIONS.STATE)
+  assert.equal(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_HEADS, COLLECTIONS.HEADS)
+  assert.equal(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_ACTORS, COLLECTIONS.ACTORS)
+  const calls = []
+  const chain = {
+    orderBy(field, direction) { calls.push(['orderBy', field, direction]); return this },
+    limit(value) { calls.push(['limit', value]); return this },
+    async get() { return { data: [] } }
+  }
+  const command = {
+    lt: value => ({ $lt: value }),
+    eq: value => ({ $eq: value }),
+    and: value => ({ $and: value }),
+    or: value => ({ $or: value })
+  }
+  const database = {
+    command,
+    collection(name) {
+      calls.push(['collection', name])
+      return { where(query) { calls.push(['where', query]); return chain } }
+    }
+  }
+  const repository = createCloudSocialRepository(database)
+  await repository.listNotifications('su_b', { cursor: { createdAt: 123, id: 'sn_cursor' }, limit: 20 })
+  assert.deepEqual(calls.filter(call => call[0] === 'orderBy'), [
+    ['orderBy', 'createdAt', 'desc'], ['orderBy', '_id', 'desc']
+  ])
+  assert.deepEqual(calls.find(call => call[0] === 'limit'), ['limit', 21])
+  assert.match(JSON.stringify(calls.find(call => call[0] === 'where')), /su_b|createdAt|sn_cursor/)
+  assert.equal(calls.some(call => call[0] === 'skip'), false)
+  await assert.rejects(repository.runTransaction(async () => ({})), /transactions unavailable/)
+
+  const indexes = fs.readFileSync(path.join(__dirname, '../cloudfunctions/poker_social/database-indexes.md'), 'utf8')
+  assert.match(indexes, /social_notifications.*recipientId ASC.*createdAt DESC.*_id DESC/i)
+  assert.match(indexes, /social_notification_state/)
+  assert.match(indexes, /social_notification_heads/)
+  assert.match(indexes, /social_notification_actors/)
 })

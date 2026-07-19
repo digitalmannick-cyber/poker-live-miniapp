@@ -98,6 +98,26 @@ function confirmPlayerCardImport(input) {
   return write('confirm_player_card_import', input)
 }
 
+function listNotifications(input) {
+  const source = input || {}
+  return callSocialFunction('list_notifications', {
+    cursor: source.cursor || '',
+    limit: Math.min(50, Math.max(1, Number(source.limit) || 20))
+  })
+}
+
+function getUnreadNotificationCount() {
+  return callSocialFunction('get_unread_count')
+}
+
+function markNotificationRead(input) {
+  return write('mark_notification_read', input)
+}
+
+function markAllNotificationsRead(input) {
+  return write('mark_all_notifications_read', input)
+}
+
 module.exports = {
   initializeSocialProfile,
   getMySocialProfile,
@@ -116,6 +136,10 @@ module.exports = {
   getPlayerCardShare,
   withdrawPlayerCardShare,
   confirmPlayerCardImport,
+  listNotifications,
+  getUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
   scheduleMyStatsSync,
   __test: { normalizePlayerId, socialStatsStorageKey }
 }
