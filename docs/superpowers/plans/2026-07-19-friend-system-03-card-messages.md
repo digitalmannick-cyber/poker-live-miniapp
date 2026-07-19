@@ -387,7 +387,7 @@ git commit -m "feat: add in-app social message center"
 **Interfaces:**
 - Verifies Tasks 1-5 and previous friendship/player-note boundaries。
 
-- [ ] **Step 1: 写名片敏感字段扫描**
+- [x] **Step 1: 写名片敏感字段扫描**
 
 ```js
 const cardDto = playerCard.toCardShareDto({
@@ -400,25 +400,25 @@ const text = JSON.stringify(cardDto)
 })
 ```
 
-- [ ] **Step 2: 运行第三计划测试集**
+- [x] **Step 2: 运行第三计划测试集**
 
 Run: `node --test tests/social-player-card.test.js tests/social-player-card-share-ui.test.js tests/social-player-card-import.test.js tests/social-player-card-preview-page.test.js tests/social-notifications.test.js tests/social-message-center.test.js tests/social-tab-unread.test.js tests/social-card-message-security.test.js`
 
 Expected: PASS。
 
-- [ ] **Step 3: 运行玩家库回归**
+- [x] **Step 3: 运行玩家库回归**
 
 Run: `node tests/player-notes-store.test.js; node tests/player-notes-navigation.test.js; node tests/player-notes-cloud-boundary.test.js`
 
 Expected: all exit `0`。
 
-- [ ] **Step 4: 真实工作区预览**
+- [x] **Step 4: 真实工作区预览**
 
 Run: 使用 `skills/wechat-miniapp-auto-preview/SKILL.md` 预览名片单好友分享、预览、新建、整体覆盖、消息接受/拒绝和失效状态。
 
 Expected: 玩家库已有对战手牌在覆盖后保持；不上传开发版。
 
-- [ ] **Step 5: 提交验收测试**
+- [x] **Step 5: 提交验收测试**
 
 ```powershell
 git add tests/social-card-message-security.test.js
