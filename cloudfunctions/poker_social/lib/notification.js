@@ -29,6 +29,11 @@ const NOTIFICATION_TARGET_TYPES = Object.freeze({
   player_card: 'player_card_share'
 })
 
+const LEGACY_NOTIFICATION_TARGET_TYPES = Object.freeze({
+  friend_accepted: Object.freeze({ social_user: 'friend' }),
+  player_card: Object.freeze({ player_card: 'player_card_share' })
+})
+
 const LIKE_WINDOW_MS = 10 * 60 * 1000
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 50
@@ -143,13 +148,31 @@ function safeHttpsUrl(value) {
   }
 }
 
+function normalizeNotificationTarget(row) {
+  const kind = String(row && row.kind || '').trim()
+  const sourceType = String(row && row.targetType || '').trim()
+  const targetId = String(row && row.targetId || '').trim()
+  const canonicalType = Object.prototype.hasOwnProperty.call(NOTIFICATION_TARGET_TYPES, kind)
+    ? NOTIFICATION_TARGET_TYPES[kind]
+    : ''
+  const legacyTypes = Object.prototype.hasOwnProperty.call(LEGACY_NOTIFICATION_TARGET_TYPES, kind)
+    ? LEGACY_NOTIFICATION_TARGET_TYPES[kind]
+    : null
+  const legacyType = legacyTypes && Object.prototype.hasOwnProperty.call(legacyTypes, sourceType)
+    ? legacyTypes[sourceType]
+    : ''
+  if (!targetId || !canonicalType || (sourceType !== canonicalType && legacyType !== canonicalType)) {
+    return { targetType: '', targetId: '' }
+  }
+  return { targetType: canonicalType, targetId }
+}
+
 async function toNotificationDto(row, state, options) {
   const config = options || {}
   const avatarUrl = typeof config.avatarUrl === 'function' ? config.avatarUrl : async () => ''
   const actor = normalizeActor(row && row.actorSnapshot)
   const resolvedAvatar = actor.avatarFileId ? safeHttpsUrl(await avatarUrl(actor.avatarFileId)) : ''
-  const targetType = String(row && row.targetType || '')
-  const targetId = String(row && row.targetId || '')
+  const target = normalizeNotificationTarget(row)
   return {
     notificationId: String(row && row._id || ''),
     kind: String(row && row.kind || ''),
@@ -159,8 +182,8 @@ async function toNotificationDto(row, state, options) {
       avatarUrl: resolvedAvatar,
       avatarText: actor.avatarText
     },
-    targetType,
-    targetId,
+    targetType: target.targetType,
+    targetId: target.targetId,
     actionState: String(row && row.actionState || ''),
     aggregateCount: Math.max(1, Math.floor(Number(row && row.aggregateCount) || 1)),
     read: isEffectivelyRead(row, state),

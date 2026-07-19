@@ -11,6 +11,7 @@ const {
   decodeCursor,
   stateDocumentId,
   isEffectivelyRead,
+  toNotificationDto,
   createNotificationWriter,
   createNotificationHandlers
 } = require('../cloudfunctions/poker_social/lib/notification')
@@ -85,6 +86,34 @@ test('notification writer rejects target types outside the canonical route contr
     })),
     error => error.code === 'INVALID_NOTIFICATION'
   )
+})
+
+test('notification DTO upgrades only explicit legacy target pairs and fails closed for every other mismatch', async () => {
+  async function target(kind, targetType, targetId) {
+    const dto = await toNotificationDto({
+      _id: 'sn_legacy',
+      kind,
+      actorSnapshot: actorSnapshot('su_a', 'Alice'),
+      targetType,
+      targetId,
+      aggregateCount: 1,
+      actionState: '',
+      createdAt: 1_000,
+      readAt: 0
+    }, {}, {})
+    return { targetType: dto.targetType, targetId: dto.targetId }
+  }
+
+  assert.deepEqual(await target('friend_accepted', 'social_user', 'su_a'), { targetType: 'friend', targetId: 'su_a' })
+  assert.deepEqual(await target('player_card', 'player_card', 'pcs_1'), { targetType: 'player_card_share', targetId: 'pcs_1' })
+  assert.deepEqual(await target('friend_accepted', 'friend', 'su_a'), { targetType: 'friend', targetId: 'su_a' })
+  assert.deepEqual(await target('player_card', 'player_card_share', 'pcs_1'), { targetType: 'player_card_share', targetId: 'pcs_1' })
+  assert.deepEqual(await target('friend_accepted', 'player_card', 'su_a'), { targetType: '', targetId: '' })
+  assert.deepEqual(await target('friend_request', 'social_user', 'fr_1'), { targetType: '', targetId: '' })
+  assert.deepEqual(await target('unknown_kind', 'friend', 'su_a'), { targetType: '', targetId: '' })
+  assert.deepEqual(await target('player_card', 'future_target', 'pcs_1'), { targetType: '', targetId: '' })
+  assert.deepEqual(await target('friend_accepted', 'constructor', 'su_a'), { targetType: '', targetId: '' })
+  assert.deepEqual(await target('player_card', 'player_card_share', ''), { targetType: '', targetId: '' })
 })
 
 test('notification DTO is a safe navigation hint and list uses stable cursor pagination', async () => {

@@ -153,3 +153,48 @@ node --test $socialTests
 - `.superpowers/sdd/plan03-task-4-report.md`
 
 本轮不新增集合或索引，也未修改任何页面、路由或 UI 文件。
+
+---
+
+## Task 4 历史通知 canonical target 兼容
+
+### 修复内容
+
+- 仅在通知 DTO 输出边界归一化两组已知历史 pair：
+  - `friend_accepted + social_user -> friend`
+  - `player_card + player_card -> player_card_share`
+- canonical targetType 原样输出，`targetId` 语义不变。
+- 其他 kind/targetType 不匹配、未知 kind、未知 targetType、原型属性名及空 targetId 均清空为 `{ targetType: '', targetId: '' }`，由 Task 5 按不可导航状态处理。
+- writer 仍严格拒绝旧值；生产者与 UI 均不接受 legacy targetType。
+
+### RED 证据
+
+```powershell
+node --test --test-name-pattern="legacy target pairs" tests/social-notifications.test.js
+```
+
+在修正测试导入后结果为 0 通过、1 失败：历史 `friend_accepted/social_user` 实际仍输出 `social_user`，期望为 `friend`。
+
+### GREEN 证据
+
+```powershell
+node --test --test-name-pattern="legacy target pairs" tests/social-notifications.test.js
+node --test tests/social-notifications.test.js
+```
+
+结果分别为 1/1 与 16/16 通过。
+
+提交前完整验证：
+
+- `node --test tests/social-notifications.test.js tests/social-friendship.test.js tests/social-player-card.test.js`：44/44 通过。
+- 全部 `social-*.test.js`：157/157 通过。
+- Task 4 列出的 6 个相关 JavaScript 文件均通过 `node --check`。
+- `git diff --check` 退出码为 0。
+
+### 本轮改动文件
+
+- `cloudfunctions/poker_social/lib/notification.js`
+- `tests/social-notifications.test.js`
+- `.superpowers/sdd/plan03-task-4-report.md`
+
+本轮仅改 DTO 归一化、测试与报告；未修改 UI、生产者写入合同、集合或索引。
