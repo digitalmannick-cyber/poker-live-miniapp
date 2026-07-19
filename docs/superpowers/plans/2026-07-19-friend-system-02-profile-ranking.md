@@ -404,7 +404,7 @@ git commit -m "feat: add privacy-safe friend ranking"
 **Interfaces:**
 - Verifies Tasks 1-5 and Plan 01 friendship APIs。
 
-- [ ] **Step 1: 写敏感字段响应扫描**
+- [x] **Step 1: 写敏感字段响应扫描**
 
 ```js
 const forbidden = ['ownerOpenId', '_openid', 'profit', 'currentProfit', 'buyIn', 'cashOut', 'hourlyRate', 'winRate', 'venue']
@@ -415,25 +415,25 @@ const body = JSON.stringify([
 forbidden.forEach(field => assert.equal(body.includes(field), false, field + ' leaked'))
 ```
 
-- [ ] **Step 2: 运行第二计划测试集**
+- [x] **Step 2: 运行第二计划测试集**
 
 Run: `node --test tests/social-friend-player-note.test.js tests/social-player-hub.test.js tests/social-friend-detail.test.js tests/social-stats-sync.test.js tests/social-ranking.test.js tests/social-ranking-ui.test.js tests/social-profile-ranking-security.test.js`
 
 Expected: PASS。
 
-- [ ] **Step 3: 运行玩家库回归**
+- [x] **Step 3: 运行玩家库回归**
 
 Run: `node tests/player-notes-store.test.js; node tests/player-notes-navigation.test.js; node tests/player-notes-cloud-boundary.test.js`
 
 Expected: three commands exit `0`。
 
-- [ ] **Step 4: 真实工作区预览**
+- [x] **Step 4: 真实工作区预览**
 
 Run: 使用 `skills/wechat-miniapp-auto-preview/SKILL.md` 对真实工作区预览好友列表、好友详情、玩家库和排行榜。
 
 Expected: 好友页社交失败不影响玩家库；前三名动效正常且 reduced-motion 可关闭；不上传开发版。
 
-- [ ] **Step 5: 提交验收测试**
+- [x] **Step 5: 提交验收测试**
 
 ```powershell
 git add tests/social-profile-ranking-security.test.js
