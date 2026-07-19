@@ -37,7 +37,10 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   INVALID_SOCIAL_SETTINGS: 'invalid social settings',
   INVALID_CARD_TARGET: 'invalid card target',
   PLAYER_CARD_SOURCE_NOT_FOUND: 'player card source not found',
-  PLAYER_CARD_UNAVAILABLE: 'player card unavailable'
+  PLAYER_CARD_UNAVAILABLE: 'player card unavailable',
+  BLIND_REQUIRED: 'big blind required',
+  INVALID_HAND_SNAPSHOT: 'invalid hand snapshot',
+  HAND_ACTIONS_REQUIRED: 'hand actions required'
 })
 
 function publicError(error) {
