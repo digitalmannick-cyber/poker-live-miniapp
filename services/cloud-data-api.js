@@ -187,7 +187,7 @@ function buildPlayerNotePayload(input) {
   const source = input || {}
   const payload = {}
   const has = key => Object.prototype.hasOwnProperty.call(source, key)
-  const stringKeys = ['_id', 'linkedFriendUserId', 'name', 'avatarUrl', 'avatarFileId', 'avatarText', 'type', 'note', 'lastVenue', 'lastStake']
+  const stringKeys = ['_id', 'linkedFriendUserId', 'importedCardShareId', 'importedCardMode', 'name', 'avatarUrl', 'avatarFileId', 'avatarText', 'type', 'note', 'lastVenue', 'lastStake']
   stringKeys.forEach(key => {
     if (has(key)) payload[key] = String(source[key] || '').trim()
   })

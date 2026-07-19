@@ -1,5 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 
 const importer = require('../utils/player-card-import')
 
@@ -49,6 +51,22 @@ test('applying overwrite keeps ids, relationship, hands, and system metadata', (
     assert.deepEqual(next[key], existing[key], key + ' must be preserved')
   }
   assert.equal(next.name, '新名')
+})
+
+test('private import receipts survive player-note normalization without entering the five-field card patch', () => {
+  const store = require('../utils/store')
+  const normalized = store.__test.normalizePlayerNote({
+    _id: 'p1', name: '老张', sourceKind: 'library',
+    importedCardShareId: 'pcs_1', importedCardMode: 'overwrite'
+  })
+  assert.equal(normalized.importedCardShareId, 'pcs_1')
+  assert.equal(normalized.importedCardMode, 'overwrite')
+  assert.equal(Object.hasOwn(importer.buildCardOverwritePatch({ name: '老张' }), 'importedCardShareId'), false)
+  const playerUi = [
+    fs.readFileSync(path.join(__dirname, '..', 'pages/player-notes/player-notes.wxml'), 'utf8'),
+    fs.readFileSync(path.join(__dirname, '..', 'pages/player-note-detail/player-note-detail.wxml'), 'utf8')
+  ].join('\n')
+  assert.doesNotMatch(playerUi, /importedCardShareId|importedCardMode/)
 })
 
 test('temporary HTTPS avatar is downloaded and reuploaded under receiver cloud storage', async () => {

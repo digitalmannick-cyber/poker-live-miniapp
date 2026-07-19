@@ -78,6 +78,9 @@ test('new import blocks double click, keeps one mutation, copies avatar, and cre
     assert.equal(loaded.calls.confirm[0].clientMutationId, page.data.importMutationId)
     assert.equal(loaded.calls.create[0].avatarUrl, 'cloud://receiver/copied.png')
     assert.equal(loaded.calls.create[0].avatarFileId, 'cloud://receiver/copied.png')
+    assert.deepEqual(loaded.calls.createOptions[0], { waitForCloud: true })
+    assert.equal(loaded.calls.create[0].importedCardShareId, 'pcs_1')
+    assert.equal(loaded.calls.create[0].importedCardMode, 'new')
     assert.notEqual(loaded.calls.create[0].avatarUrl, cardShare().card.avatarUrl)
     assert.equal(page.data.status, 'imported')
     assert.match(page.data.importedPlayerId, /^player_note_card_/)
@@ -146,7 +149,10 @@ test('overwrite uses one whitelist update and preserves target identity and hand
     await page.overwriteExisting()
     assert.deepEqual(loaded.calls.order, ['confirm', 'copy-avatar', 'update'])
     assert.equal(loaded.calls.update[0].id, 'existing')
-    assert.deepEqual(Object.keys(loaded.calls.update[0].patch).sort(), ['avatarFileId', 'avatarUrl', 'leakTags', 'name', 'note', 'type'])
+    assert.deepEqual(Object.keys(loaded.calls.update[0].patch).sort(), ['avatarFileId', 'avatarUrl', 'importedCardMode', 'importedCardShareId', 'leakTags', 'name', 'note', 'type'])
+    assert.equal(loaded.calls.update[0].patch.importedCardShareId, 'pcs_1')
+    assert.equal(loaded.calls.update[0].patch.importedCardMode, 'overwrite')
+    assert.deepEqual(loaded.calls.updateOptions[0], { waitForCloud: true })
     for (const forbidden of ['_id', 'playerId', 'sourceKind', 'battleHandIds', 'createdAt', 'lastSeenAt', 'lastVenue', 'lastStake']) {
       assert.equal(Object.hasOwn(loaded.calls.update[0].patch, forbidden), false)
     }
@@ -155,7 +161,8 @@ test('overwrite uses one whitelist update and preserves target identity and hand
 
 test('local create failure retries with the same deterministic player id and no second confirm', async () => {
   let createAttempt = 0
-  const loaded = loadPage({ createError() {
+  const storage = new Map()
+  const loaded = loadPage({ storage, createError() {
     createAttempt += 1
     return createAttempt === 1 ? new Error('local write failed') : null
   } })
@@ -164,11 +171,13 @@ test('local create failure retries with the same deterministic player id and no 
     await page.onLoad({ shareId: 'pcs_1' })
     await page.importAsNew()
     assert.equal(page.data.status, 'error')
+    assert.equal(storage.has('playerCardImportCompleted:pcs_1'), false)
     const stableId = loaded.calls.create[0]._id
     await page.importAsNew()
     assert.equal(loaded.calls.confirm.length, 1)
     assert.equal(loaded.calls.create[1]._id, stableId)
     assert.equal(page.data.status, 'imported')
+    assert.equal(storage.get('playerCardImportCompleted:pcs_1').playerId, stableId)
   } finally { loaded.restore() }
 })
 
@@ -195,22 +204,109 @@ test('local overwrite failure retries the same target without a second confirm',
 
 test('unload after server confirmation prevents avatar and local player writes', async () => {
   const confirm = deferred()
-  const loaded = loadPage({ confirm: confirm.promise })
+  const storage = new Map()
+  const loaded = loadPage({ confirm: confirm.promise, storage })
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ shareId: 'pcs_1' })
     const importing = page.importAsNew()
     page.onUnload()
+    const patchCount = page._patches.length
     confirm.resolve({ imported: true })
     await importing
     assert.deepEqual(loaded.calls.order, ['confirm'])
     assert.equal(loaded.calls.create.length, 0)
+    assert.equal(page._patches.length, patchCount)
+    assert.equal(storage.get('playerCardImportPending:pcs_1').serverConfirmed, true)
+  } finally { loaded.restore() }
+})
+
+test('unload while avatar copy is pending prevents stale state and local writes', async () => {
+  const copy = deferred()
+  const loaded = loadPage({ copyAvatar: () => copy.promise })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    const importing = page.importAsNew()
+    await Promise.resolve()
+    page.onUnload()
+    const patchCount = page._patches.length
+    copy.resolve({ avatarUrl: 'cloud://receiver/copied.png', avatarFileId: 'cloud://receiver/copied.png' })
+    await importing
+    assert.equal(loaded.calls.create.length, 0)
+    assert.equal(page._patches.length, patchCount)
+  } finally { loaded.restore() }
+})
+
+test('an overwrite modal callback is stale after unload and creates no pending saga', async () => {
+  const storage = new Map()
+  const loaded = loadPage({
+    storage,
+    manualModal: true,
+    notes: [{ _id: 'existing', sourceKind: 'library', name: '老张' }]
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    page.requestOverwrite()
+    page.onUnload()
+    await page.onLoad({ shareId: 'pcs_1' })
+    const patchCount = page._patches.length
+    loaded.calls.modals[0].success({ confirm: true })
+    await Promise.resolve()
+    assert.equal(loaded.calls.confirm.length, 0)
+    assert.equal(storage.has('playerCardImportPending:pcs_1'), false)
+    assert.equal(page._patches.length, patchCount)
+  } finally { loaded.restore() }
+})
+
+test('overwrite resume is pinned to its stored target id and never switches to the first same-name note', async () => {
+  const pending = {
+    shareId: 'pcs_1', mutationId: 'stable-mutation', mode: 'overwrite',
+    serverConfirmed: true, createdPlayerNoteId: '', overwriteTargetId: 'target-b'
+  }
+  const storage = new Map([['playerCardImportPending:pcs_1', pending]])
+  const notes = [
+    { _id: 'target-a', sourceKind: 'library', name: '老张' },
+    { _id: 'target-b', sourceKind: 'library', name: '老张', battleHandIds: ['h1'] }
+  ]
+  const loaded = loadPage({ storage, getShare: Object.assign(cardShare(), { imported: true }), notes, refreshedNotes: notes })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    assert.equal(page.data.duplicate._id, 'target-b')
+    await page.overwriteExisting()
+    assert.deepEqual(loaded.calls.update.map(item => item.id), ['target-b'])
+  } finally { loaded.restore() }
+})
+
+test('a missing overwrite target requires a new explicit choice instead of silently switching', async () => {
+  const storage = new Map([['playerCardImportPending:pcs_1', {
+    shareId: 'pcs_1', mutationId: 'stable-mutation', mode: 'overwrite',
+    serverConfirmed: true, createdPlayerNoteId: '', overwriteTargetId: 'missing-target'
+  }]])
+  const loaded = loadPage({
+    storage,
+    getShare: Object.assign(cardShare(), { imported: true }),
+    notes: [{ _id: 'other-same-name', sourceKind: 'library', name: '老张' }]
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    assert.equal(page.data.status, 'ready')
+    assert.equal(page.data.overwriteTargetMissing, true)
+    assert.equal(loaded.calls.update.length, 0)
+    assert.equal(loaded.calls.confirm.length, 0)
   } finally { loaded.restore() }
 })
 
 test('already-imported and unavailable shares never write the player library', async () => {
-  const completedStorage = new Map([['playerCardImportCompleted:pcs_1', { shareId: 'pcs_1', playerId: 'saved-player' }]])
-  const imported = loadPage({ storage: completedStorage, getShare: Object.assign(cardShare(), { imported: true }) })
+  const completedStorage = new Map([['playerCardImportCompleted:pcs_1', { shareId: 'pcs_1', playerId: 'saved-player', mode: 'new' }]])
+  const imported = loadPage({
+    storage: completedStorage,
+    getShare: Object.assign(cardShare(), { imported: true }),
+    notes: [{ _id: 'saved-player', sourceKind: 'library', name: '老张', importedCardShareId: 'pcs_1', importedCardMode: 'new' }]
+  })
   try {
     const page = createInstance(imported.definition)
     await page.onLoad({ shareId: 'pcs_1' })
@@ -230,7 +326,7 @@ test('already-imported and unavailable shares never write the player library', a
 })
 
 test('an imported share without a local completion receipt can finish on another device', async () => {
-  const loaded = loadPage({ getShare: Object.assign(cardShare(), { imported: true }) })
+  const loaded = loadPage({ getShare: Object.assign(cardShare(), { imported: true }), refreshedNotes: [] })
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ shareId: 'pcs_1' })
@@ -241,6 +337,41 @@ test('an imported share without a local completion receipt can finish on another
     assert.equal(loaded.calls.create.length, 1)
     assert.match(loaded.calls.create[0]._id, /pcs_1/)
     assert.equal(page.data.status, 'imported')
+  } finally { loaded.restore() }
+})
+
+test('cloud player-note receipt prevents a second import on a device without local storage', async () => {
+  const receipt = {
+    _id: 'existing-overwrite', sourceKind: 'library', name: '老张',
+    importedCardShareId: 'pcs_1', importedCardMode: 'overwrite'
+  }
+  const loaded = loadPage({
+    getShare: Object.assign(cardShare(), { imported: true }),
+    notes: [],
+    refreshedNotes: [receipt]
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    assert.equal(page.data.status, 'imported')
+    assert.equal(page.data.importedPlayerId, 'existing-overwrite')
+    await page.importAsNew()
+    assert.equal(loaded.calls.create.length, 0)
+  } finally { loaded.restore() }
+})
+
+test('failed cloud receipt refresh fails closed and cannot create a second player', async () => {
+  const loaded = loadPage({
+    getShare: Object.assign(cardShare(), { imported: true }),
+    refreshError: new Error('cloud unavailable')
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    assert.equal(page.data.status, 'error')
+    assert.equal(page.data.receiptCheckFailed, true)
+    await page.importAsNew()
+    assert.equal(loaded.calls.create.length, 0)
   } finally { loaded.restore() }
 })
 
@@ -262,7 +393,7 @@ function deferred() {
 function loadPage(options = {}) {
   let definition
   let mutationIndex = 0
-  const calls = { order: [], confirm: [], create: [], update: [], getPlayerNotes: [], navigateTo: [] }
+  const calls = { order: [], confirm: [], create: [], createOptions: [], update: [], updateOptions: [], getPlayerNotes: [], refreshPlayerNotes: 0, navigateTo: [], modals: [] }
   const originalLoad = Module._load
   Module._load = function (request, parent, isMain) {
     if (parent && /pages[\\/]social-card-preview[\\/]social-card-preview\.js$/.test(parent.filename || '')) {
@@ -280,14 +411,22 @@ function loadPage(options = {}) {
       }
       if (request === '../../services/data-service') return {
         async getPlayerNotes(input) { calls.getPlayerNotes.push(input); return options.notes || [] },
-        async createPlayerNote(payload) {
-          calls.order.push('create'); calls.create.push(payload)
+        async refreshPlayerNotesFromCloud() {
+          calls.refreshPlayerNotes += 1
+          if (options.refreshError) throw options.refreshError
+          return options.refreshedNotes || []
+        },
+        async getPlayerNoteByImportedCardShareId(shareId) {
+          return (options.notes || []).find(item => item.importedCardShareId === shareId) || null
+        },
+        async createPlayerNote(payload, createOptions) {
+          calls.order.push('create'); calls.create.push(payload); calls.createOptions.push(createOptions)
           const createError = typeof options.createError === 'function' ? options.createError(payload) : options.createError
           if (createError) throw createError
           return Object.assign({}, payload, { _id: payload._id || 'new-player' })
         },
-        async updatePlayerNote(id, patch) {
-          calls.order.push('update'); calls.update.push({ id, patch })
+        async updatePlayerNote(id, patch, updateOptions) {
+          calls.order.push('update'); calls.update.push({ id, patch }); calls.updateOptions.push(updateOptions)
           const updateError = typeof options.updateError === 'function' ? options.updateError(id, patch) : options.updateError
           if (updateError) throw updateError
           return Object.assign({ _id: id }, patch)
@@ -314,7 +453,7 @@ function loadPage(options = {}) {
     getStorageSync(key) { return options.storage && options.storage.get(key) },
     setStorageSync(key, value) { if (options.storage) options.storage.set(key, value) },
     removeStorageSync(key) { if (options.storage) options.storage.delete(key) },
-    showModal(input) { input.success({ confirm: true }) },
+    showModal(input) { calls.modals.push(input); if (!options.manualModal) input.success({ confirm: true }) },
     navigateTo(input) { calls.navigateTo.push(input) },
     navigateBack() {}
   }

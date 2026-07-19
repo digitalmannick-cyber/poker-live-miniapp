@@ -152,13 +152,17 @@ const importedWithStableId = store.createPlayerNote({
   name: '名片玩家',
   type: '常客',
   leakTags: ['河牌过度跟注'],
-  note: '导入副本'
+  note: '导入副本',
+  importedCardShareId: 'pcs_store_1',
+  importedCardMode: 'new'
 })
 const importedRetry = store.createPlayerNote({
   _id: 'player_note_card_import_1',
   name: '不应产生第二份'
 })
 assert.equal(importedRetry._id, importedWithStableId._id)
+assert.equal(importedRetry.importedCardShareId, 'pcs_store_1')
+assert.equal(store.getPlayerNoteByImportedCardShareId('pcs_store_1')._id, importedWithStableId._id)
 assert.equal(store.getPlayerNotes({ sourceKind: 'library' }).filter(item => item._id === importedWithStableId._id).length, 1)
 
 const cleared = store.clearAllData()

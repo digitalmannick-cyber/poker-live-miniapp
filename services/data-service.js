@@ -1571,6 +1571,31 @@ async function getPlayerNoteById(noteId) {
   return getLocalAdapter().getPlayerNoteById(noteId)
 }
 
+async function getPlayerNoteByImportedCardShareId(shareId) {
+  scheduleCloudBootstrap()
+  return getLocalAdapter().getPlayerNoteByImportedCardShareId(shareId)
+}
+
+async function refreshPlayerNotesFromCloud() {
+  if (!cloudUtils.canUseCloud() || !canStartCloudTask()) {
+    const error = new Error('cloud player notes unavailable')
+    error.code = 'CLOUD_PLAYER_NOTES_UNAVAILABLE'
+    throw error
+  }
+  await bootstrapCloudSync(true, { waitForCloud: true })
+  const response = await cloudDataApi.listPlayerNotes({
+    playerId: getCurrentPlayerId(),
+    includeArchived: true
+  })
+  if (!response || !Array.isArray(response.playerNotes)) {
+    const error = new Error('cloud player notes unavailable')
+    error.code = 'CLOUD_PLAYER_NOTES_UNAVAILABLE'
+    throw error
+  }
+  mergeRemoteBusinessPatch({ playerNotes: response.playerNotes })
+  return response.playerNotes
+}
+
 function scheduleSocialStatsSyncAfterCloudWrite() {
   const playerId = getCurrentPlayerId()
   if (!playerId || !socialService || typeof socialService.scheduleMyStatsSync !== 'function') return
@@ -1589,21 +1614,38 @@ async function getPlayerNoteBattleHands(noteId) {
   return getLocalAdapter().getPlayerNoteBattleHands(noteId)
 }
 
-async function createPlayerNote(payload) {
+async function createPlayerNote(payload, options) {
+  const waitForCloud = !!(options && options.waitForCloud)
+  if (waitForCloud && (!cloudUtils.canUseCloud() || !canStartCloudTask())) {
+    const error = new Error('cloud player note write required')
+    error.code = 'CLOUD_PLAYER_NOTE_WRITE_REQUIRED'
+    throw error
+  }
   const result = await getLocalAdapter().createPlayerNote(payload || {})
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
-    cloudDataApi.createPlayerNote({
+    const cloudTask = cloudDataApi.createPlayerNote({
       playerId: getCurrentPlayerId(),
       clientMutationId: createClientMutationId('create_player_note', result._id),
       payload: result
     }).then(response => {
       if (response && response.playerNote) {
         mergeRemoteBusinessPatch({ playerNotes: [response.playerNote] })
+        return response.playerNote
       }
+      throw new Error('cloud create player note failed')
     }).catch(error => {
+      if (waitForCloud) {
+        scheduleBusinessDataSync('sync create player note backup failed')
+        throw error
+      }
       logCloudBackgroundFailure('sync create player note failed', error)
       scheduleBusinessDataSync('sync create player note backup failed')
     })
+    if (waitForCloud) return cloudTask
+  } else if (waitForCloud) {
+    const error = new Error('cloud player note write required')
+    error.code = 'CLOUD_PLAYER_NOTE_WRITE_REQUIRED'
+    throw error
   }
   return result
 }
@@ -1651,10 +1693,16 @@ async function detachFriendPlayerNote(friendUserId) {
   return result
 }
 
-async function updatePlayerNote(noteId, patch) {
+async function updatePlayerNote(noteId, patch, options) {
+  const waitForCloud = !!(options && options.waitForCloud)
+  if (waitForCloud && (!cloudUtils.canUseCloud() || !canStartCloudTask())) {
+    const error = new Error('cloud player note write required')
+    error.code = 'CLOUD_PLAYER_NOTE_WRITE_REQUIRED'
+    throw error
+  }
   const result = await getLocalAdapter().updatePlayerNote(noteId, patch || {})
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
-    cloudDataApi.updatePlayerNote({
+    const cloudTask = cloudDataApi.updatePlayerNote({
       playerId: getCurrentPlayerId(),
       clientMutationId: createClientMutationId('update_player_note', noteId),
       noteId,
@@ -1662,11 +1710,22 @@ async function updatePlayerNote(noteId, patch) {
     }).then(response => {
       if (response && response.playerNote) {
         mergeRemoteBusinessPatch({ playerNotes: [response.playerNote] })
+        return response.playerNote
       }
+      throw new Error('cloud update player note failed')
     }).catch(error => {
+      if (waitForCloud) {
+        scheduleBusinessDataSync('sync update player note backup failed')
+        throw error
+      }
       logCloudBackgroundFailure('sync update player note failed', error)
       scheduleBusinessDataSync('sync update player note backup failed')
     })
+    if (waitForCloud) return cloudTask
+  } else if (waitForCloud) {
+    const error = new Error('cloud player note write required')
+    error.code = 'CLOUD_PLAYER_NOTE_WRITE_REQUIRED'
+    throw error
   }
   return result
 }
@@ -2209,6 +2268,8 @@ module.exports = {
   getReviewHands,
   getPlayerNotes,
   getPlayerNoteById,
+  getPlayerNoteByImportedCardShareId,
+  refreshPlayerNotesFromCloud,
   getFriendPlayerNote,
   getPlayerNoteBattleHands,
   createPlayerNote,

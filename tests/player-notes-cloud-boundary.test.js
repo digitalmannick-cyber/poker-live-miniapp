@@ -17,6 +17,12 @@ assert.match(
   /fetchWhere\(COLLECTIONS\.playerNotes,\s*\{\s*playerId,\s*ownerOpenId/s,
   'list_player_notes must scope reads by playerId and ownerOpenId'
 )
+assert.match(source, /importedCardShareId:\s*String\(merged\.importedCardShareId/, 'private player-note docs must persist the imported card share receipt')
+assert.match(source, /importedCardMode:\s*merged\.importedCardMode/, 'private player-note docs must persist the imported card mode')
+
+const cloudApiSource = fs.readFileSync(path.join(__dirname, '..', 'services', 'cloud-data-api.js'), 'utf8')
+assert.match(cloudApiSource, /'importedCardShareId'/, 'player-note cloud payload must allow the private card receipt')
+assert.match(cloudApiSource, /'importedCardMode'/, 'player-note cloud payload must allow the private card mode')
 assert.match(
   source,
   /normalizePlayerId\(current\.playerId\)\s*!==\s*playerId\s*\|\|\s*current\.ownerOpenId\s*!==\s*ownerOpenId/s,

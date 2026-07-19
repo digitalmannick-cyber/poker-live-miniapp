@@ -1388,6 +1388,8 @@ function buildPlayerNoteDoc(base, patch) {
     battleHandIds: normalizePlayerNoteStringList(merged.battleHandIds || merged.linkedHandIds),
     sourceKind,
     linkedFriendUserId,
+    importedCardShareId: String(merged.importedCardShareId || '').trim(),
+    importedCardMode: merged.importedCardMode === 'overwrite' ? 'overwrite' : (merged.importedCardShareId ? 'new' : ''),
     archived: !!merged.archived,
     createdAt: Number(merged.createdAt) || now(),
     updatedAt: now()

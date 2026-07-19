@@ -458,6 +458,8 @@ function normalizePlayerNote(input) {
     playerId: String(source.playerId || '').trim(),
     sourceKind,
     linkedFriendUserId,
+    importedCardShareId: String(source.importedCardShareId || '').trim(),
+    importedCardMode: source.importedCardMode === 'overwrite' ? 'overwrite' : (source.importedCardShareId ? 'new' : ''),
     name,
     alias: normalizeStringList(source.alias, []),
     avatarUrl: String(source.avatarUrl || '').trim(),
@@ -1310,6 +1312,12 @@ function getPlayerNoteById(id) {
   return readStore().playerNotes.find(item => item._id === noteId) || null
 }
 
+function getPlayerNoteByImportedCardShareId(shareId) {
+  const target = String(shareId || '').trim()
+  if (!target) return null
+  return readStore().playerNotes.find(item => item.importedCardShareId === target) || null
+}
+
 function findFriendPlayerNote(friendUserId) {
   const target = String(friendUserId || '').trim()
   if (!target) return null
@@ -1711,6 +1719,7 @@ module.exports = {
   getReviewHands,
   getPlayerNotes,
   getPlayerNoteById,
+  getPlayerNoteByImportedCardShareId,
   getFriendPlayerNote,
   reconcileFriendPlayerNote,
   createPlayerNote,

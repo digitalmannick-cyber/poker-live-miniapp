@@ -15,7 +15,7 @@
     <view class="state-kicker">{{status === 'unavailable' ? 'UNAVAILABLE' : 'RETRY'}}</view>
     <view class="state-title">{{status === 'unavailable' ? '名片不可访问' : '导入未完成'}}</view>
     <view class="state-text">{{errorMessage}}</view>
-    <view wx:if="{{status === 'error' && !serverConfirmed}}" class="secondary-action" bindtap="retryLoad">重新读取</view>
+    <view wx:if="{{status === 'error' && (receiptCheckFailed || !serverConfirmed)}}" class="secondary-action" bindtap="retryLoad">重新读取</view>
     <view wx:elif="{{status === 'error' && serverConfirmed && importMode === 'overwrite'}}" class="primary-action" bindtap="overwriteExisting">重试导入</view>
     <view wx:elif="{{status === 'error' && serverConfirmed}}" class="primary-action" bindtap="importAsNew">重试导入</view>
   </view>
@@ -60,6 +60,7 @@
       <view class="duplicate-kicker">POSSIBLE DUPLICATE</view>
       <view class="duplicate-title">疑似已存在同名玩家</view>
       <view class="duplicate-text">“{{duplicate.name}}”已在你的玩家库。不会自动覆盖，请明确选择。</view>
+      <view wx:if="{{overwriteTargetMissing}}" class="overwrite-summary">上次选择覆盖的玩家已不存在，请重新明确选择当前玩家。</view>
       <view class="overwrite-summary">整体覆盖将替换头像、名称、玩家类型、Leak 标签和 Note；保留玩家 ID 和对战手牌。</view>
       <view class="primary-action danger-action {{importing ? 'is-disabled' : ''}}" bindtap="requestOverwrite">整体覆盖已有玩家</view>
       <view class="secondary-action {{importing ? 'is-disabled' : ''}}" bindtap="importAsNew">仍然新建</view>
