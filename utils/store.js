@@ -1286,10 +1286,12 @@ function getPlayerNotes(filters) {
   const config = filters || {}
   const q = String(config.query || '').trim().toLowerCase()
   const type = String(config.type || '').trim()
-  const sourceKind = config.sourceKind === 'friend' ? 'friend' : 'library'
+  const sourceKind = config.sourceKind === 'friend' || config.sourceKind === 'library'
+    ? config.sourceKind
+    : ''
   return readStore().playerNotes
     .filter(item => config.includeArchived || !item.archived)
-    .filter(item => item.sourceKind === sourceKind)
+    .filter(item => !sourceKind || item.sourceKind === sourceKind)
     .filter(item => !type || type === '全部' || item.type === type)
     .filter(item => {
       if (!q) return true
@@ -1319,6 +1321,22 @@ function findFriendPlayerNote(friendUserId) {
 function getFriendPlayerNote(friendUserId) {
   const note = findFriendPlayerNote(friendUserId)
   return note && !note.archived ? note : null
+}
+
+function reconcileFriendPlayerNote(remoteNote) {
+  const remote = normalizePlayerNote(remoteNote)
+  if (!remote._id || remote.sourceKind !== 'friend' || !remote.linkedFriendUserId) return null
+  const data = readStore()
+  let replaced = false
+  data.playerNotes = data.playerNotes.map(item => {
+    if (item.sourceKind !== 'friend' || item.linkedFriendUserId !== remote.linkedFriendUserId) return item
+    if (replaced) return item
+    replaced = true
+    return remote
+  })
+  if (!replaced) data.playerNotes.unshift(remote)
+  writeStore(data)
+  return getFriendPlayerNote(remote.linkedFriendUserId)
 }
 
 function createPlayerNote(payload) {
@@ -1689,6 +1707,7 @@ module.exports = {
   getPlayerNotes,
   getPlayerNoteById,
   getFriendPlayerNote,
+  reconcileFriendPlayerNote,
   createPlayerNote,
   ensureFriendPlayerNote,
   detachFriendPlayerNote,

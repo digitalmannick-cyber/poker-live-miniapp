@@ -51,7 +51,7 @@ assert.equal(friend.linkedFriendUserId, 'su_a')
 assert.equal(friend.name, 'Silver Wolf')
 assert.equal(friend.avatarUrl, 'https://cdn.example/avatar-a.png')
 assert.equal(store.getPlayerNotes({ sourceKind: 'library' }).some(item => item._id === friend._id), false)
-assert.equal(store.getPlayerNotes({}).some(item => item._id === friend._id), false, 'default player library list must hide friend notes')
+assert.equal(store.getPlayerNotes({}).some(item => item._id === friend._id), true, 'the legacy unfiltered list must continue to include friend notes')
 assert.equal(store.getFriendPlayerNote('su_a')._id, friend._id)
 
 const annotated = store.updatePlayerNote(friend._id, {
@@ -127,5 +127,17 @@ resetStore({
 const duplicateFriendNotes = store.getPlayerNotes({ sourceKind: 'friend' })
 assert.equal(duplicateFriendNotes.length, 1, 'local backup merges must keep at most one note for each linked friend')
 assert.equal(duplicateFriendNotes[0]._id, 'friend_new', 'the newest local annotation wins when repairing duplicate friend notes')
+
+const canonicalFriend = store.reconcileFriendPlayerNote({
+  _id: 'canonical_cloud_note',
+  sourceKind: 'friend',
+  linkedFriendUserId: 'su_duplicate',
+  name: 'Cloud canonical',
+  archived: false,
+  updatedAt: 30
+})
+assert.equal(canonicalFriend._id, 'canonical_cloud_note')
+assert.equal(store.getFriendPlayerNote('su_duplicate')._id, 'canonical_cloud_note', 'cloud confirmation must replace the local random ID before later updates')
+assert.equal(store.getPlayerNotes({ sourceKind: 'friend' }).length, 1)
 
 console.log('social friend player note tests passed')

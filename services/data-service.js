@@ -426,6 +426,9 @@ function getLocalAdapter() {
     async getFriendPlayerNote(friendUserId) {
       return store.getFriendPlayerNote(friendUserId)
     },
+    async reconcileFriendPlayerNote(remoteNote) {
+      return store.reconcileFriendPlayerNote(remoteNote)
+    },
     async getPlayerNoteBattleHands(noteId) {
       return store.getPlayerNoteBattleHands(noteId)
     },
@@ -1601,18 +1604,20 @@ async function ensureFriendPlayerNote(snapshot) {
   const existing = await adapter.getFriendPlayerNote(snapshot && (snapshot.socialUserId || snapshot.friendUserId))
   const result = await adapter.ensureFriendPlayerNote(snapshot || {})
   if (!existing && cloudUtils.canUseCloud() && canStartCloudTask()) {
-    cloudDataApi.createPlayerNote({
-      playerId: getCurrentPlayerId(),
-      clientMutationId: createClientMutationId('ensure_friend_player_note', result._id),
-      payload: result
-    }).then(response => {
+    try {
+      const response = await cloudDataApi.createPlayerNote({
+        playerId: getCurrentPlayerId(),
+        clientMutationId: createClientMutationId('ensure_friend_player_note', result._id),
+        payload: result
+      })
       if (response && response.playerNote) {
         mergeRemoteBusinessPatch({ playerNotes: [response.playerNote] })
+        return adapter.reconcileFriendPlayerNote(response.playerNote) || response.playerNote
       }
-    }).catch(error => {
+    } catch (error) {
       logCloudBackgroundFailure('sync ensure friend player note failed', error)
       scheduleBusinessDataSync('sync ensure friend player note backup failed')
-    })
+    }
   }
   return result
 }

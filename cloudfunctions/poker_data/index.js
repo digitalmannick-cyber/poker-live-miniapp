@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk')
+const crypto = require('crypto')
 const agentExport = require('./agent-export')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
@@ -1348,6 +1349,20 @@ function getPlayerTypeColor(type) {
   return PLAYER_TYPE_COLORS[String(type || '').trim()] || PLAYER_TYPE_COLORS['未分类']
 }
 
+function getFriendPlayerNoteDocumentId(ownerOpenId, playerId, linkedFriendUserId) {
+  return crypto.createHash('sha256')
+    .update(JSON.stringify([
+      String(ownerOpenId || '').trim(),
+      normalizePlayerId(playerId),
+      String(linkedFriendUserId || '').trim()
+    ]))
+    .digest('hex')
+}
+
+function hasOwnField(value, key) {
+  return Object.prototype.hasOwnProperty.call(value || {}, key)
+}
+
 function buildPlayerNoteDoc(base, patch) {
   const merged = Object.assign({}, base || {}, patch || {})
   const name = String(merged.name || '').trim()
@@ -1403,12 +1418,28 @@ async function createPlayerNoteAction(event, ownerOpenId) {
     if (!doc.name) {
       return { playerNote: null, rejected: true, reason: 'MISSING_NAME' }
     }
-    if (doc.sourceKind === 'friend' && doc.linkedFriendUserId) {
+    if (doc.sourceKind === 'friend') {
+      if (!doc.linkedFriendUserId) {
+        return { playerNote: null, rejected: true, reason: 'FRIEND_LINK_REQUIRED' }
+      }
       const existingFriendNote = (await fetchWhere(COLLECTIONS.playerNotes, { playerId, ownerOpenId }))
         .find(item => item && item.sourceKind === 'friend' && item.linkedFriendUserId === doc.linkedFriendUserId)
       if (existingFriendNote) {
+        if (existingFriendNote.archived) {
+          const restored = withOwnerScope(Object.assign({}, buildPlayerNoteDoc(existingFriendNote, { archived: false }), {
+            _id: existingFriendNote._id
+          }), playerId, ownerOpenId)
+          await setDocById(COLLECTIONS.playerNotes, existingFriendNote._id, restored)
+          await writeAuditLog(ownerOpenId, playerId, 'restore_friend_player_note', existingFriendNote._id, existingFriendNote, restored, clientMutationId)
+          return { playerNote: cleanCloudDoc(restored) }
+        }
         return { playerNote: cleanCloudDoc(existingFriendNote) }
       }
+      const id = getFriendPlayerNoteDocumentId(ownerOpenId, playerId, doc.linkedFriendUserId)
+      const next = withOwnerScope(Object.assign({}, doc, { _id: id }), playerId, ownerOpenId)
+      await setDocById(COLLECTIONS.playerNotes, id, next)
+      await writeAuditLog(ownerOpenId, playerId, 'create_player_note', id, null, next, clientMutationId)
+      return { playerNote: cleanCloudDoc(next) }
     }
     const id = doc._id || createId('player_note')
     const next = withOwnerScope(Object.assign({}, doc, { _id: id }), playerId, ownerOpenId)
@@ -1425,7 +1456,25 @@ async function updatePlayerNoteAction(event, ownerOpenId) {
     if (!current || normalizePlayerId(current.playerId) !== playerId || current.ownerOpenId !== ownerOpenId) {
       return { playerNote: null, rejected: true, reason: 'PLAYER_NOTE_NOT_FOUND' }
     }
-    const next = withOwnerScope(Object.assign({}, buildPlayerNoteDoc(current, event.patch || {}), { _id: noteId }), playerId, ownerOpenId)
+    const patch = event.patch || {}
+    const requestedSourceKind = hasOwnField(patch, 'sourceKind')
+      ? (patch.sourceKind === 'friend' ? 'friend' : 'library')
+      : ''
+    const currentSourceKind = current.sourceKind === 'friend' ? 'friend' : 'library'
+    if (currentSourceKind === 'library' && requestedSourceKind === 'friend') {
+      return { playerNote: null, rejected: true, reason: 'FRIEND_SOURCE_KIND_IMMUTABLE' }
+    }
+    if (currentSourceKind === 'friend' && requestedSourceKind !== 'library' && hasOwnField(patch, 'linkedFriendUserId')) {
+      const requestedFriendUserId = String(patch.linkedFriendUserId || '').trim()
+      if (requestedFriendUserId !== String(current.linkedFriendUserId || '').trim()) {
+        return { playerNote: null, rejected: true, reason: 'FRIEND_LINK_IMMUTABLE' }
+      }
+    }
+    const nextDoc = buildPlayerNoteDoc(current, patch)
+    if (nextDoc.sourceKind === 'friend' && !nextDoc.linkedFriendUserId) {
+      return { playerNote: null, rejected: true, reason: 'FRIEND_LINK_REQUIRED' }
+    }
+    const next = withOwnerScope(Object.assign({}, nextDoc, { _id: noteId }), playerId, ownerOpenId)
     await setDocById(COLLECTIONS.playerNotes, noteId, next)
     await writeAuditLog(ownerOpenId, playerId, 'update_player_note', noteId, current, next, clientMutationId)
     return { playerNote: cleanCloudDoc(next) }
@@ -1704,5 +1753,6 @@ exports.__test = {
   normalizeAgentExportRangeKey,
   normalizeAgentExportRange,
   getSessionDurationBackfill,
-  exportAgentData
+  exportAgentData,
+  getFriendPlayerNoteDocumentId
 }
