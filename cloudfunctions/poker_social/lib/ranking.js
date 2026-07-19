@@ -7,25 +7,49 @@ function normalizePlayerId(value) {
   return String(value || '').trim().toUpperCase()
 }
 
+function isValidDateTimeParts(year, month, day, hour, minute, second) {
+  if (month < 1 || month > 12 || day < 1 || hour > 23 || minute > 59 || second > 59) return false
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  return day <= daysInMonth
+}
+
+function millisecondsFromFraction(value) {
+  const fraction = String(value || '')
+  return fraction ? Number(fraction.padEnd(3, '0')) : 0
+}
+
 function parseTime(value, timezoneOffsetMinutes) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (value instanceof Date && Number.isFinite(value.getTime())) return value.getTime()
   const text = String(value || '').trim()
-  if (!text) return 0
-  if (/Z$|[+-]\d\d:\d\d$/.test(text)) {
+  if (!text) return null
+  const zoned = text.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-](\d{2}):(\d{2}))$/)
+  if (zoned) {
+    const year = Number(zoned[1])
+    const month = Number(zoned[2])
+    const day = Number(zoned[3])
+    const hour = Number(zoned[4])
+    const minute = Number(zoned[5])
+    const second = Number(zoned[6] || 0)
+    const offsetHour = Number(zoned[9] || 0)
+    const offsetMinute = Number(zoned[10] || 0)
+    if (!isValidDateTimeParts(year, month, day, hour, minute, second) || offsetHour > 23 || offsetMinute > 59) return null
     const timestamp = Date.parse(text)
-    return Number.isFinite(timestamp) ? timestamp : 0
+    return Number.isFinite(timestamp) ? timestamp : null
   }
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/)
-  if (!match) {
-    const timestamp = Date.parse(text)
-    return Number.isFinite(timestamp) ? timestamp : 0
-  }
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4] || 0)
+  const minute = Number(match[5] || 0)
+  const second = Number(match[6] || 0)
+  if (!isValidDateTimeParts(year, month, day, hour, minute, second)) return null
   const timestamp = Date.UTC(
-    Number(match[1]), Number(match[2]) - 1, Number(match[3]),
-    Number(match[4] || 0), Number(match[5] || 0), Number(match[6] || 0)
+    year, month - 1, day, hour, minute, second, millisecondsFromFraction(match[7])
   ) - (Number(timezoneOffsetMinutes) || BEIJING_OFFSET_MINUTES) * 60000
-  return Number.isFinite(timestamp) ? timestamp : 0
+  return Number.isFinite(timestamp) ? timestamp : null
 }
 
 function dateKeyAt(timestamp, timezoneOffsetMinutes) {
@@ -53,15 +77,27 @@ function addSessionDuration(map, session, timezoneOffsetMinutes) {
   if (!session || session.status !== 'finished') return
   const start = parseTime(session.startTime || session.startedAt, timezoneOffsetMinutes)
   const end = parseTime(session.endTime || session.endedAt || session.finishedAt, timezoneOffsetMinutes)
-  if (!start || !end || end <= start) return
+  if (start === null || end === null || end <= start) return
   let cursor = start
+  const chunks = []
   while (cursor < end) {
     const boundary = nextDayBoundary(cursor, timezoneOffsetMinutes)
     const chunkEnd = Math.min(end, boundary)
-    const minutes = Math.round((chunkEnd - cursor) / 60000)
-    if (minutes > 0) addBucket(map, dateKeyAt(cursor, timezoneOffsetMinutes), minutes, 0)
+    chunks.push({ dateKey: dateKeyAt(cursor, timezoneOffsetMinutes), milliseconds: chunkEnd - cursor })
     cursor = chunkEnd
   }
+  const totalMinutes = Math.round((end - start) / 60000)
+  let allocatedMinutes = 0
+  chunks.forEach(chunk => {
+    chunk.minutes = Math.floor(chunk.milliseconds / 60000)
+    allocatedMinutes += chunk.minutes
+  })
+  chunks
+    .map((chunk, index) => ({ chunk, index, remainder: chunk.milliseconds % 60000 }))
+    .sort((left, right) => right.remainder - left.remainder || left.index - right.index)
+    .slice(0, Math.max(0, totalMinutes - allocatedMinutes))
+    .forEach(item => { item.chunk.minutes += 1 })
+  chunks.forEach(chunk => addBucket(map, chunk.dateKey, chunk.minutes, 0))
 }
 
 function handTimestamp(hand, timezoneOffsetMinutes) {
@@ -69,9 +105,9 @@ function handTimestamp(hand, timezoneOffsetMinutes) {
   const values = [source.playedDate, source.playedAt, source.handTime, source.recordedAt, source.createdAt]
   for (const value of values) {
     const timestamp = parseTime(value, timezoneOffsetMinutes)
-    if (timestamp) return timestamp
+    if (timestamp !== null) return timestamp
   }
-  return 0
+  return null
 }
 
 function buildDailyBuckets(input) {
@@ -81,7 +117,7 @@ function buildDailyBuckets(input) {
   ;(Array.isArray(source.sessions) ? source.sessions : []).forEach(session => addSessionDuration(buckets, session, timezoneOffsetMinutes))
   ;(Array.isArray(source.hands) ? source.hands : []).forEach(hand => {
     const timestamp = handTimestamp(hand, timezoneOffsetMinutes)
-    if (timestamp) addBucket(buckets, dateKeyAt(timestamp, timezoneOffsetMinutes), 0, 1)
+    if (timestamp !== null) addBucket(buckets, dateKeyAt(timestamp, timezoneOffsetMinutes), 0, 1)
   })
   return Object.keys(buckets)
     .sort()
@@ -108,7 +144,7 @@ function createRankingHandlers(repository, options) {
       if (!playerId || playerId !== normalizePlayerId(user.privatePlayerId)) {
         throw socialError('FORBIDDEN', 'not allowed')
       }
-      if (typeof repository.listPrivateOwned !== 'function' || typeof repository.replaceDailyStats !== 'function') {
+      if (typeof repository.listPrivateOwned !== 'function' || typeof repository.replaceDailyStats !== 'function' || typeof repository.patchSocialUserStats !== 'function') {
         throw new Error('social repository stats support unavailable')
       }
       const [sessions, hands] = await Promise.all([
@@ -120,11 +156,11 @@ function createRankingHandlers(repository, options) {
       const totalDurationMinutes = buckets.reduce((sum, item) => sum + item.durationMinutes, 0)
       const totalRecordedHandCount = buckets.reduce((sum, item) => sum + item.recordedHandCount, 0)
       const title = calculateTitle(totalDurationMinutes)
-      await repository.set(USER_COLLECTION, user._id, Object.assign({}, user, {
+      await repository.patchSocialUserStats(user._id, {
         title,
         publicStats: { durationMinutes: totalDurationMinutes, recordedHandCount: totalRecordedHandCount },
         updatedAt: Date.now()
-      }))
+      })
       return { title, totalDurationMinutes, totalRecordedHandCount, syncedDayCount: buckets.length }
     }
   }

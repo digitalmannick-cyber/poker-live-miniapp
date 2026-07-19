@@ -8,7 +8,7 @@ function normalizePlayerId(value) {
 }
 
 function socialStatsStorageKey(playerId) {
-  return 'pokerSocialStatsSyncedAt_' + String(playerId || '').replace(/[^0-9A-Z_]/g, '_')
+  return 'pokerSocialStatsSyncedAt_' + encodeURIComponent(String(playerId || ''))
 }
 
 function scheduleMyStatsSync(playerId) {

@@ -47,6 +47,28 @@ test('daily buckets support ISO and legacy timestamp fields without DST changes 
   ])
 })
 
+test('time parsing accepts only strict valid session and hand timestamp formats', () => {
+  assert.equal(ranking.parseTime('2026-02-30 12:00', 480), null)
+  assert.equal(ranking.parseTime('2026/07/19 12:00', 480), null)
+  assert.equal(ranking.parseTime('July 19, 2026 12:00', 480), null)
+  assert.equal(ranking.parseTime('2026-07-19T12:00:00+25:00', 480), null)
+  assert.equal(ranking.parseTime('2026-07-19T12:00:00Z', 480), Date.parse('2026-07-19T12:00:00Z'))
+  assert.equal(ranking.parseTime('2026-07-19 12:00:00.123', 480), Date.UTC(2026, 6, 19, 12, 0, 0, 123) - 480 * 60000)
+})
+
+test('cross-midnight allocation preserves the rounded session duration without double counting', () => {
+  const buckets = ranking.buildDailyBuckets({
+    sessions: [{ _id: 's-short', status: 'finished', startTime: '2026-07-19 23:59:40', endTime: '2026-07-20 00:00:20' }],
+    hands: [],
+    timezoneOffsetMinutes: 480
+  })
+
+  assert.deepEqual(buckets, [
+    { dateKey: '20260719', durationMinutes: 1, recordedHandCount: 0 }
+  ])
+  assert.equal(buckets.reduce((sum, item) => sum + item.durationMinutes, 0), 1)
+})
+
 test('server sync authorizes the authenticated owner and replaces stale daily buckets', async () => {
   const { createSocialApp } = require('../cloudfunctions/poker_social/app')
   const records = {
@@ -67,16 +89,25 @@ test('server sync authorizes the authenticated owner and replaces stale daily bu
     ]
   }
   const repository = {
+    setCalls: 0,
+    statsPatches: [],
     async find(collection, query) {
       return (records[collection] || []).find(item => Object.keys(query).every(key => item[key] === query[key])) || null
     },
     async set(collection, id, value) {
+      this.setCalls += 1
       const rows = records[collection] || (records[collection] = [])
       const index = rows.findIndex(item => item._id === id)
       const record = Object.assign({}, value, { _id: id })
       if (index >= 0) rows[index] = record
       else rows.push(record)
       return record
+    },
+    async patchSocialUserStats(id, patch) {
+      this.statsPatches.push({ id, patch })
+      const index = records.social_users.findIndex(item => item._id === id)
+      records.social_users[index] = Object.assign({}, records.social_users[index], patch)
+      return records.social_users[index]
     },
     async listPrivateOwned(collection, ownerOpenId, playerId) {
       return (records[collection] || []).filter(item => item.ownerOpenId === ownerOpenId && item.playerId === playerId)
@@ -105,6 +136,11 @@ test('server sync authorizes the authenticated owner and replaces stale daily bu
   })
   assert.deepEqual(records.social_daily_stats, [{
     _id: 'sd_su_owner_20260719', socialUserId: 'su_owner', dateKey: '20260719', durationMinutes: 150, recordedHandCount: 1
+  }])
+  assert.equal(repository.setCalls, 0)
+  assert.deepEqual(repository.statsPatches, [{
+    id: 'su_owner',
+    patch: { title: '初来乍到', publicStats: { durationMinutes: 150, recordedHandCount: 1 }, updatedAt: records.social_users[0].updatedAt }
   }])
   assert.deepEqual(denied, {
     code: 'FORBIDDEN', data: null, message: 'not allowed', requestId: 'sync-request'
@@ -156,6 +192,43 @@ test('CloudBase daily-stat replacement clears every older bucket before writing 
   }])
 })
 
+test('CloudBase stats patch updates only derived social fields without replacing profile preferences', async () => {
+  const records = [{
+    _id: 'su_1', ownerOpenId: 'private', profile: { nickname: 'kept', avatarFileId: 'kept-file' }, statsVisible: false,
+    defaultShareScope: 'selected', title: 'old'
+  }]
+  let updateInput = null
+  const database = {
+    collection() {
+      return {
+        doc(id) {
+          return {
+            async update(input) {
+              updateInput = input
+              const index = records.findIndex(row => row._id === id)
+              records[index] = Object.assign({}, records[index], input.data)
+            }
+          }
+        }
+      }
+    }
+  }
+  const { createCloudSocialRepository } = require('../cloudfunctions/poker_social/lib/repository')
+  const repository = createCloudSocialRepository(database)
+
+  await repository.patchSocialUserStats('su_1', {
+    title: '牌桌常客', publicStats: { durationMinutes: 2400, recordedHandCount: 12 }, updatedAt: 123
+  })
+
+  assert.deepEqual(updateInput, {
+    data: { title: '牌桌常客', publicStats: { durationMinutes: 2400, recordedHandCount: 12 }, updatedAt: 123 }
+  })
+  assert.deepEqual(records[0], {
+    _id: 'su_1', ownerOpenId: 'private', profile: { nickname: 'kept', avatarFileId: 'kept-file' }, statsVisible: false,
+    defaultShareScope: 'selected', title: '牌桌常客', publicStats: { durationMinutes: 2400, recordedHandCount: 12 }, updatedAt: 123
+  })
+})
+
 test('client schedule throttles per player only after success and shares one in-flight request', async () => {
   const apiPath = require.resolve('../services/social-api')
   const servicePath = require.resolve('../services/social-service')
@@ -184,17 +257,18 @@ test('client schedule throttles per player only after success and shares one in-
     assert.strictEqual(first, second)
     resolveCall({ ok: true })
     assert.deepEqual(await first, { ok: true })
-    assert.equal(typeof storage.pokerSocialStatsSyncedAt_PLAYER_1, 'number')
+    assert.equal(typeof storage['pokerSocialStatsSyncedAt_PLAYER-1'], 'number')
+    assert.notEqual(socialService.__test.socialStatsStorageKey('A-B'), socialService.__test.socialStatsStorageKey('A_B'))
 
     assert.deepEqual(await socialService.scheduleMyStatsSync('PLAYER-1'), { skipped: true })
     fail = true
     await assert.rejects(() => socialService.scheduleMyStatsSync('PLAYER-2'), /network/)
-    assert.equal(storage.pokerSocialStatsSyncedAt_PLAYER_2, undefined)
+    assert.equal(storage['pokerSocialStatsSyncedAt_PLAYER-2'], undefined)
     fail = false
     const retry = socialService.scheduleMyStatsSync('PLAYER-2')
     resolveCall({ retried: true })
     assert.deepEqual(await retry, { retried: true })
-    assert.equal(typeof storage.pokerSocialStatsSyncedAt_PLAYER_2, 'number')
+    assert.equal(typeof storage['pokerSocialStatsSyncedAt_PLAYER-2'], 'number')
   } finally {
     api.callSocialFunction = original
     delete require.cache[servicePath]

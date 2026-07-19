@@ -43,6 +43,20 @@ function createCloudSocialRepository(database) {
       return record
     },
 
+    async patchSocialUserStats(id, patch) {
+      const source = patch || {}
+      const data = {
+        title: String(source.title || ''),
+        publicStats: {
+          durationMinutes: Math.max(0, Math.floor(Number(source.publicStats && source.publicStats.durationMinutes) || 0)),
+          recordedHandCount: Math.max(0, Math.floor(Number(source.publicStats && source.publicStats.recordedHandCount) || 0))
+        },
+        updatedAt: Number(source.updatedAt) || Date.now()
+      }
+      await client.collection(SOCIAL_COLLECTIONS.SOCIAL_USERS).doc(id).update({ data })
+      return Object.assign({ _id: id }, data)
+    },
+
     async listPrivateOwned(collection, ownerOpenId, playerId) {
       const rows = []
       let offset = 0
