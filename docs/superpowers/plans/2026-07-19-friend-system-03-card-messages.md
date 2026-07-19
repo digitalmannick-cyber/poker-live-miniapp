@@ -37,7 +37,7 @@
 - 创建、读取与确认导入时接收双方必须仍是 accepted 好友；解除后未导入分享立即失权。已导入副本由接收方玩家库持久化，不依赖分享继续可读。
 - 分享者只能撤回自己的分享；接收者只能读取和确认导入发给自己的分享。所有写 action 都必须幂等。
 
-- [ ] **Step 1: 写五字段白名单与唯一接收人测试**
+- [x] **Step 1: 写五字段白名单与唯一接收人测试**
 
 ```js
 const snapshot = playerCard.buildSnapshot({
@@ -49,13 +49,13 @@ assert.equal(JSON.stringify(snapshot).includes('alias'), false)
 assert.throws(() => playerCard.validateTargets(['su_a', 'su_b']), error => error.code === 'INVALID_CARD_TARGET')
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-player-card.test.js`
 
 Expected: FAIL because player-card module is missing。
 
-- [ ] **Step 3: 实现服务端源记录读取和七天有效期**
+- [x] **Step 3: 实现服务端源记录读取和七天有效期**
 
 ```js
 function buildSnapshot(note) {
@@ -75,13 +75,13 @@ function canReadCardShare(viewerId, share, nowMs) {
 
 `share_player_card` 只接受 `playerNoteId` 和 `targetUserId`，由云端按当前 `ownerOpenId + privatePlayerId` 精确读取源记录并构造快照；不接受客户端上传完整快照。`avatarAsset` 仅允许服务端已有 `avatarFileId` 或安全的 HTTPS 资源，响应转换为临时 `avatarUrl`，不返回云文件 ID、本地路径或 data URI。
 
-- [ ] **Step 4: 运行名片权限测试**
+- [x] **Step 4: 运行名片权限测试**
 
 Run: `node --test tests/social-player-card.test.js tests/social-friendship.test.js`
 
 Expected: PASS；覆盖非目标好友、解除好友、撤回、7 天过期和已导入副本。
 
-- [ ] **Step 5: 提交名片云端能力**
+- [x] **Step 5: 提交名片云端能力**
 
 ```powershell
 git add cloudfunctions/poker_social/lib/player-card.js cloudfunctions/poker_social/lib/visibility.js cloudfunctions/poker_social/app.js services/social-api.js services/social-service.js tests/social-player-card.test.js
