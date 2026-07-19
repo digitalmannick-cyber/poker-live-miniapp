@@ -69,7 +69,12 @@ test('my invite creates share and QR assets with object payloads, and only share
     sendFriendRequest: socialService.sendFriendRequest
   }
   const calls = []
-  global.wx = { showToast() {} }
+  const menuCalls = []
+  global.wx = {
+    showToast() {},
+    hideShareMenu() { menuCalls.push('hide') },
+    showShareMenu(input) { menuCalls.push(input) }
+  }
   socialService.createInvite = async input => { calls.push({ action: 'createInvite', input }); return { token: 'token_A-B', expiresAt: 1 } }
   socialService.createInviteQr = async input => { calls.push({ action: 'createInviteQr', input }); return { qrCodeUrl: 'https://temp.example/invite.png' } }
   socialService.inspectInvite = async input => { calls.push({ action: 'inspectInvite', input }); return { inviter: { nickname: '老王' } } }
@@ -84,11 +89,69 @@ test('my invite creates share and QR assets with object payloads, and only share
     assert.equal(page.data.status, 'ready')
     assert.deepEqual(calls.map(call => call.action), ['createInvite', 'createInviteQr'])
     assert.ok(calls.every(call => typeof call.input.clientMutationId === 'string' && call.input.clientMutationId))
+    assert.equal(calls[1].input.token, 'token_A-B')
+    assert.deepEqual(menuCalls, ['hide', { menus: ['shareAppMessage'] }])
     assert.deepEqual(page.onShareAppMessage(), {
       title: page.data.shareTitle,
       path: '/pages/social-invite/social-invite?token=token_A-B'
     })
     assert.doesNotMatch(page.onShareAppMessage().path, /openid|private|owner/i)
+  } finally {
+    Object.assign(socialService, original)
+    delete global.Page
+  }
+})
+
+test('native share menu stays hidden until a valid invite is ready', async () => {
+  const socialService = require('../services/social-service')
+  const original = { createInvite: socialService.createInvite, createInviteQr: socialService.createInviteQr, inspectInvite: socialService.inspectInvite }
+  const menuCalls = []
+  global.wx = {
+    showToast() {},
+    hideShareMenu() { menuCalls.push('hide') },
+    showShareMenu(input) { menuCalls.push(input) }
+  }
+  socialService.createInvite = async () => {
+    const error = new Error('network')
+    error.code = 'NETWORK_ERROR'
+    throw error
+  }
+
+  try {
+    const page = loadInvitePage()
+    await page.onLoad({})
+    assert.deepEqual(menuCalls, ['hide'])
+    assert.equal(page.onShareAppMessage(), undefined)
+    assert.equal(page.data.status, 'error')
+  } finally {
+    Object.assign(socialService, original)
+    delete global.Page
+  }
+})
+
+test('failed friend request returns the landing page to a hidden-share error state', async () => {
+  const socialService = require('../services/social-service')
+  const original = { inspectInvite: socialService.inspectInvite, sendFriendRequest: socialService.sendFriendRequest }
+  const menuCalls = []
+  global.wx = {
+    showToast() {},
+    hideShareMenu() { menuCalls.push('hide') },
+    showShareMenu(input) { menuCalls.push(input) }
+  }
+  socialService.inspectInvite = async () => ({ inviter: { nickname: '老王' } })
+  socialService.sendFriendRequest = async () => {
+    const error = new Error('network')
+    error.code = 'NETWORK_ERROR'
+    throw error
+  }
+
+  try {
+    const page = loadInvitePage()
+    await page.onLoad({ token: 'token_A-B' })
+    await page.sendFriendRequest()
+    assert.equal(page.data.status, 'error')
+    assert.equal(menuCalls.at(-1), 'hide')
+    assert.equal(page.onShareAppMessage(), undefined)
   } finally {
     Object.assign(socialService, original)
     delete global.Page
@@ -105,7 +168,7 @@ test('landing links decode safely, inspect before applying, and prevent duplicat
   }
   const calls = []
   let resolveRequest
-  global.wx = { showToast() {} }
+  global.wx = { showToast() {}, hideShareMenu() {}, showShareMenu() {} }
   socialService.inspectInvite = async input => { calls.push({ action: 'inspectInvite', input }); return { inviter: { nickname: '阿强', title: '银狼' }, expiresAt: 7 } }
   socialService.sendFriendRequest = async input => {
     calls.push({ action: 'sendFriendRequest', input })
@@ -141,7 +204,7 @@ test('landing links decode safely, inspect before applying, and prevent duplicat
 test('a QR display failure keeps the invite shareable and explains the fallback', async () => {
   const socialService = require('../services/social-service')
   const original = { createInvite: socialService.createInvite, createInviteQr: socialService.createInviteQr }
-  global.wx = { showToast() {} }
+  global.wx = { showToast() {}, hideShareMenu() {}, showShareMenu() {} }
   socialService.createInvite = async () => ({ token: 'share_still_ready' })
   socialService.createInviteQr = async () => {
     const error = new Error('qr unavailable')
@@ -165,7 +228,7 @@ test('a QR display failure keeps the invite shareable and explains the fallback'
 test('expired invite errors are recoverable in the page state', async () => {
   const socialService = require('../services/social-service')
   const original = socialService.inspectInvite
-  global.wx = { showToast() {} }
+  global.wx = { showToast() {}, hideShareMenu() {}, showShareMenu() {} }
   socialService.inspectInvite = async () => {
     const error = new Error('expired')
     error.code = 'INVALID_INVITE'

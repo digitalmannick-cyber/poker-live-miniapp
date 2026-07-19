@@ -26,6 +26,14 @@ function showToast(title) {
   if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title, icon: 'none' })
 }
 
+function hideShareMenu() {
+  if (typeof wx !== 'undefined' && wx.hideShareMenu) wx.hideShareMenu()
+}
+
+function showShareMenu() {
+  if (typeof wx !== 'undefined' && wx.showShareMenu) wx.showShareMenu({ menus: ['shareAppMessage'] })
+}
+
 Page({
   data: {
     mode: 'mine',
@@ -43,6 +51,7 @@ Page({
   },
 
   async onLoad(options) {
+    hideShareMenu()
     const input = options || {}
     const token = safeDecodeInviteToken(input.scene || input.token)
     this.setData({
@@ -51,14 +60,15 @@ Page({
       errorMessage: ''
     })
     if (token) {
-      await this.inspectInvite()
+      await this.inspectInvite(true)
       return
     }
-    await this.createMyInvite()
+    await this.createMyInvite(true)
   },
 
-  async createMyInvite() {
+  async createMyInvite(menuAlreadyHidden) {
     if (this.data.generating) return
+    if (!menuAlreadyHidden) hideShareMenu()
     this.setData({ generating: true, loading: true, status: 'loading', errorMessage: '' })
     try {
       const invite = await socialService.createInvite({
@@ -73,6 +83,7 @@ Page({
       })
       try {
         const qr = await socialService.createInviteQr({
+          token,
           clientMutationId: socialMutation.createMutationId('create_invite_qr')
         })
         this.setData({
@@ -82,6 +93,7 @@ Page({
       } catch (error) {
         this.setData({ qrCodeUrl: '', qrUnavailable: true })
       }
+      showShareMenu()
     } catch (error) {
       this.setData(inviteErrorState(error))
     } finally {
@@ -89,9 +101,10 @@ Page({
     }
   },
 
-  async inspectInvite() {
+  async inspectInvite(menuAlreadyHidden) {
     const token = String(this.data.inviteToken || '')
     if (!token) return
+    if (!menuAlreadyHidden) hideShareMenu()
     this.setData({ loading: true, status: 'loading', errorMessage: '' })
     try {
       const result = await socialService.inspectInvite({ token })
@@ -100,6 +113,7 @@ Page({
         expiresAt: Number(result && result.expiresAt) || 0,
         status: 'ready'
       })
+      showShareMenu()
     } catch (error) {
       this.setData(inviteErrorState(error))
     } finally {
@@ -124,9 +138,11 @@ Page({
         status: 'sent',
         friendshipId: String(result && result.friendshipId || '')
       })
+      hideShareMenu()
       showToast('好友申请已发送')
     } catch (error) {
       this.setData(inviteErrorState(error))
+      hideShareMenu()
     } finally {
       this.setData({ submitting: false })
     }

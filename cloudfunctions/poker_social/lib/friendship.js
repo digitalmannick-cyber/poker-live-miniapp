@@ -1,7 +1,7 @@
 const crypto = require('crypto')
 const { socialError } = require('./social-error')
 const { deriveInviteToken, buildInviteRecord, getInviteId, assertActiveInvite } = require('./invite')
-const { runIdempotent, requireClientMutationId } = require('./idempotency')
+const { MUTATION_COLLECTION, mutationRecordId, runIdempotent, requireClientMutationId } = require('./idempotency')
 const { toProfileDto } = require('./profile')
 
 const USER_COLLECTION = 'social_users'
@@ -125,9 +125,9 @@ function createFriendshipHandlers(repository, options) {
     return user
   }
 
-  async function createInvite(event, actor, createQr) {
+  async function createInvite(event, actor) {
     const actorUser = await findActorUser(repository, actor)
-    const action = createQr ? 'create_invite_qr' : 'create_invite'
+    const action = 'create_invite'
     const clientMutationId = requireClientMutationId(event)
     const token = deriveInviteToken(config.tokenSecret, actorUser._id, action, clientMutationId)
     const result = await runIdempotent(repository, actorUser._id, action, event, async store => {
@@ -138,24 +138,56 @@ function createFriendshipHandlers(repository, options) {
       persistResult: value => ({ inviteId: value.inviteId, expiresAt: value.expiresAt }),
       restoreResult: value => ({ inviteId: value.inviteId, expiresAt: value.expiresAt })
     })
-    if (!createQr) return { token, expiresAt: result.expiresAt }
-      if (!config.qrCode || typeof config.qrCode.getUnlimited !== 'function' || typeof config.uploadTempFile !== 'function') {
-        throw socialError('QR_UNAVAILABLE', 'qr unavailable')
+    return { token, expiresAt: result.expiresAt }
+  }
+
+  async function createInviteQr(event, actor) {
+    const actorUser = await findActorUser(repository, actor)
+    const clientMutationId = requireClientMutationId(event)
+    const token = String(event && event.token || '').trim()
+    const result = await repository.runTransaction(async store => {
+      let invite
+      try {
+        invite = await getActiveInvite(store, token, now())
+      } catch (error) {
+        if (error && error.code === 'INVALID_INVITE') throw socialError('INVITE_UNAVAILABLE', 'invite unavailable')
+        throw error
       }
-      const image = await config.qrCode.getUnlimited({ scene: token, page: 'pages/social-invite/social-invite' })
-      const uploaded = await config.uploadTempFile({ cloudPath: 'social-invites/' + result.inviteId + '.png', fileContent: image })
-      const qrCodeUrl = String(uploaded && uploaded.url || '')
-      if (!qrCodeUrl) throw socialError('QR_UNAVAILABLE', 'qr unavailable')
-      return { expiresAt: result.expiresAt, qrCodeUrl }
+      if (invite.inviterId !== actorUser._id) throw socialError('FORBIDDEN', 'not allowed')
+      const mutationId = mutationRecordId(actorUser._id, clientMutationId)
+      const existing = await store.get(MUTATION_COLLECTION, mutationId)
+      if (existing) {
+        if (existing.actorId !== actorUser._id || existing.action !== 'create_invite_qr') throw socialError('MUTATION_CONFLICT', 'mutation conflict')
+        if (!existing.result || existing.result.inviteId !== invite._id) throw socialError('MUTATION_CONFLICT', 'mutation conflict')
+        return existing.result
+      }
+      const safeResult = { inviteId: invite._id, expiresAt: invite.expiresAt }
+      await store.set(MUTATION_COLLECTION, mutationId, {
+        actorId: actorUser._id,
+        action: 'create_invite_qr',
+        clientMutationId,
+        result: safeResult,
+        createdAt: Date.now()
+      })
+      return safeResult
+    })
+    if (!config.qrCode || typeof config.qrCode.getUnlimited !== 'function' || typeof config.uploadTempFile !== 'function') {
+      throw socialError('QR_UNAVAILABLE', 'qr unavailable')
+    }
+    const image = await config.qrCode.getUnlimited({ scene: token, page: 'pages/social-invite/social-invite' })
+    const uploaded = await config.uploadTempFile({ cloudPath: 'social-invites/' + result.inviteId + '.png', fileContent: image })
+    const qrCodeUrl = String(uploaded && uploaded.url || '')
+    if (!qrCodeUrl) throw socialError('QR_UNAVAILABLE', 'qr unavailable')
+    return { expiresAt: result.expiresAt, qrCodeUrl }
   }
 
   return {
     create_invite(event, actor) {
-      return createInvite(event, actor, false)
+      return createInvite(event, actor)
     },
 
     create_invite_qr(event, actor) {
-      return createInvite(event, actor, true)
+      return createInviteQr(event, actor)
     },
 
     async inspect_invite(event) {

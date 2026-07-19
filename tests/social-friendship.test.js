@@ -167,9 +167,15 @@ test('repository paginates accepted friendships with directed userA/userB querie
   ])
 })
 
-test('create invite QR generates scene code through injected code client and returns only display URL', async () => {
+test('create invite QR encodes the existing share token and persists no plaintext token', async () => {
   const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
-  const repository = createMemorySocialRepository({ social_users: [{ _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: 'A' } }] })
+  const { getInviteId } = require('../cloudfunctions/poker_social/lib/invite')
+  const repository = createMemorySocialRepository({
+    social_users: [
+      { _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: 'A' } },
+      { _id: 'su_b', ownerOpenId: 'openid-b', profile: { nickname: 'B' } }
+    ]
+  })
   const calls = []
   const uploads = []
   const handlers = createFriendshipHandlers(repository, {
@@ -179,13 +185,31 @@ test('create invite QR generates scene code through injected code client and ret
     uploadTempFile: async payload => { uploads.push(payload); return { url: 'https://temp/qrcode.png' } }
   })
 
-  const result = await handlers.create_invite_qr({ clientMutationId: 'qr-1' }, { ownerOpenId: 'openid-a' })
-  const retried = await handlers.create_invite_qr({ clientMutationId: 'qr-1' }, { ownerOpenId: 'openid-a' })
+  const share = await handlers.create_invite({ clientMutationId: 'share-1' }, { ownerOpenId: 'openid-a' })
+  const result = await handlers.create_invite_qr({ token: share.token, clientMutationId: 'qr-1' }, { ownerOpenId: 'openid-a' })
+  const retried = await handlers.create_invite_qr({ token: share.token, clientMutationId: 'qr-1' }, { ownerOpenId: 'openid-a' })
   assert.equal(result.qrCodeUrl, 'https://temp/qrcode.png')
+  assert.equal(result.expiresAt, share.expiresAt)
   assert.deepEqual(retried, result)
-  assert.match(calls[0].scene, /^[A-Za-z0-9_-]{22}$/)
-  assert.equal(calls[0].scene, calls[1].scene)
+  assert.equal(calls[0].scene, share.token)
+  assert.equal(calls[1].scene, share.token)
   assert.equal(uploads[0].cloudPath, uploads[1].cloudPath)
+  const mutation = repository.where('social_mutations', row => row.action === 'create_invite_qr')[0]
+  assert.deepEqual(mutation.result, { inviteId: getInviteId(share.token), expiresAt: share.expiresAt })
+  assert.equal(JSON.stringify(repository.dump()).includes(share.token), false)
+  await assert.rejects(
+    handlers.create_invite_qr({ token: share.token, clientMutationId: 'qr-other' }, { ownerOpenId: 'openid-b' }),
+    error => error.code === 'FORBIDDEN'
+  )
+  await assert.rejects(
+    handlers.create_invite_qr({ token: 'not-a-real-token', clientMutationId: 'qr-missing' }, { ownerOpenId: 'openid-a' }),
+    error => error.code === 'INVITE_UNAVAILABLE'
+  )
+  const differentShare = await handlers.create_invite({ clientMutationId: 'share-2' }, { ownerOpenId: 'openid-a' })
+  await assert.rejects(
+    handlers.create_invite_qr({ token: differentShare.token, clientMutationId: 'qr-1' }, { ownerOpenId: 'openid-a' }),
+    error => error.code === 'MUTATION_CONFLICT'
+  )
   assert.doesNotMatch(JSON.stringify(result), /ownerOpenId|avatarFileId|digest/)
 })
 
