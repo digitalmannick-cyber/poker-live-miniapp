@@ -252,7 +252,7 @@
   <view wx:if="{{!accountLoggedOut}}" class="section-label profile-command-label">帮助与反馈</view>
   <view wx:if="{{!accountLoggedOut}}" class="profile-command-section">
     <view class="profile-command-list">
-      <button class="setting-row customer-feedback-button" open-type="contact" hover-class="none" aria-label="反馈与建议">
+      <view class="setting-row customer-feedback-row">
         <view class="setting-main">
           <view>
             <view class="setting-title">反馈与建议</view>
@@ -260,7 +260,8 @@
           </view>
         </view>
         <view class="setting-arrow">›</view>
-      </button>
+        <button class="customer-feedback-button" open-type="contact" hover-class="none" aria-label="反馈与建议"></button>
+      </view>
       <view class="setting-row" bindtap="restartOnboardingGuide">
         <view class="setting-main">
           <view>
