@@ -158,6 +158,33 @@ test('non-ready friend states cannot enter edit or save and a cloud removal fail
   } finally { loaded.restore() }
 })
 
+test('cloud removal invalidates an in-flight friend load before it can restore the detail state', async () => {
+  const pendingLoad = deferred()
+  const loaded = loadDetailPage({
+    localNote: { _id: 'note_b', sourceKind: 'friend', linkedFriendUserId: 'su_b', name: '本地备注', type: '常客', leakTags: [], note: '', battleHandIds: [] },
+    getFriendDetail() { return pendingLoad.promise }
+  })
+  try {
+    const instance = createInstance(loaded.definition)
+    instance.setData({
+      mode: 'friend',
+      friendUserId: 'su_b',
+      id: 'note_b',
+      detailState: 'ready',
+      note: loaded.options.localNote,
+      friend: friendDto()
+    })
+    const staleRequest = instance.loadFriendMode('su_b')
+    await instance.removeFriend()
+    const patchCountAfterRemoval = instance._patches.length
+    pendingLoad.resolve(friendDto())
+    await staleRequest
+    assert.equal(instance._patches.length, patchCountAfterRemoval)
+    assert.deepEqual(loaded.calls.detachFriendPlayerNote, ['su_b'])
+    assert.deepEqual(loaded.calls.switchTab, [{ url: '/pages/player-notes/player-notes' }])
+  } finally { loaded.restore() }
+})
+
 test('remove friend calls cloud before detaching the local note and keeps a retry when local detach fails', async () => {
   const { definition, restore, calls } = loadDetailPage({
     localNote: { _id: 'note_b', sourceKind: 'friend', linkedFriendUserId: 'su_b', name: '本地备注', type: '常客', leakTags: [], note: '', battleHandIds: [] },
@@ -238,7 +265,7 @@ function loadDetailPage(options) {
   const pagePath = require.resolve('../pages/player-note-detail/player-note-detail')
   delete require.cache[pagePath]
   try { require(pagePath) } finally { Module._load = originalLoad; delete global.Page }
-  return { definition, calls, restore() { delete require.cache[pagePath]; delete global.wx } }
+  return { definition, calls, options, restore() { delete require.cache[pagePath]; delete global.wx } }
 }
 
 function friendDto() {
@@ -255,7 +282,9 @@ function deferred() {
 function createInstance(definition) {
   const instance = {
     data: Object.assign({}, definition.data),
+    _patches: [],
     setData(patch) {
+      this._patches.push(patch)
       Object.keys(patch).forEach(key => {
         const segments = key.split('.')
         let target = this.data
