@@ -55,3 +55,5 @@
 .friend-hub-state { margin-top: 70rpx; padding: 48rpx 30rpx; text-align: center; border-radius: 22rpx; color: rgba(255,255,255,0.60); font-size: 26rpx; line-height: 1.5; background: rgba(255,255,255,0.055); border: 1rpx solid rgba(255,255,255,0.1); }
 .friend-hub-error { color: #ff8b97; }
 .friend-retry { display: inline-flex; margin-top: 18rpx; padding: 8rpx 24rpx; border-radius: 999rpx; color: #ffffff; background: #e60012; font-weight: 950; }
+.friend-load-more { display: flex; align-items: center; justify-content: center; min-height: 70rpx; border-radius: 16rpx; color: rgba(255,255,255,0.82); font-size: 24rpx; font-weight: 950; background: rgba(255,255,255,0.06); border: 1rpx solid rgba(255,255,255,0.12); }
+.friend-load-more.is-loading { opacity: 0.62; }

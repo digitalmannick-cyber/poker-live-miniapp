@@ -75,7 +75,7 @@ async function findActorUser(repository, actor) {
 
 async function publicUserDto(user, avatarUrl) {
   const profile = toProfileDto(user, { avatarUrl: user && user.profile && user.profile.avatarFileId && avatarUrl ? await avatarUrl(user.profile.avatarFileId) : '' })
-  return {
+  const result = {
     socialUserId: profile.socialUserId,
     nickname: profile.nickname,
     avatarUrl: profile.avatarUrl,
@@ -83,6 +83,12 @@ async function publicUserDto(user, avatarUrl) {
     title: profile.title,
     statsVisible: profile.statsVisible
   }
+  const stats = user && user.publicStats && typeof user.publicStats === 'object' ? user.publicStats : user || {}
+  if (profile.statsVisible && (Object.prototype.hasOwnProperty.call(stats, 'durationMinutes') || Object.prototype.hasOwnProperty.call(stats, 'recordedHandCount'))) {
+    result.durationMinutes = Math.max(0, Number(stats.durationMinutes) || 0)
+    result.recordedHandCount = Math.max(0, Math.floor(Number(stats.recordedHandCount) || 0))
+  }
+  return result
 }
 
 function friendshipResult(record) {

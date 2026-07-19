@@ -42,7 +42,7 @@ Component({
   properties: {
     activeSection: {
       type: String,
-      value: 'friends'
+      value: 'feed'
     }
   },
 
@@ -50,48 +50,108 @@ Component({
     status: 'idle',
     errorMessage: '',
     friends: [],
-    nextOffset: null
+    nextOffset: null,
+    loadingMore: false,
+    loadMoreError: ''
+  },
+
+  lifetimes: {
+    attached() {
+      this._friendHubAttached = true
+      this._friendLoadSequence = Number(this._friendLoadSequence) || 0
+    },
+
+    detached() {
+      this._friendHubAttached = false
+      this._friendLoadSequence = (Number(this._friendLoadSequence) || 0) + 1
+      this._friendLoadPromise = null
+      this._friendLoadMorePromise = null
+    }
   },
 
   methods: {
-    async loadFriends(force) {
-      if (this._friendLoadPromise) return this._friendLoadPromise
-      if (!force && this.data.status === 'ready') return this.data.friends
+    isCurrentLoad(sequence) {
+      return this._friendHubAttached !== false && sequence === this._friendLoadSequence
+    },
 
-      this.setData({ status: 'loading', errorMessage: '' })
-      this._friendLoadPromise = (async () => {
-        try {
-          const response = await socialService.listFriends({ offset: 0, limit: 20 })
-          const remoteFriends = Array.isArray(response && response.items) ? response.items : []
-          const friends = []
-          for (const remote of remoteFriends) {
-            const localNote = await dataService.ensureFriendPlayerNote({
-              socialUserId: remote.socialUserId,
-              nickname: remote.nickname,
-              avatarUrl: remote.avatarUrl,
-              avatarText: remote.avatarText
-            })
-            friends.push(buildFriendCard(remote, localNote))
-          }
-          this.setData({
-            status: 'ready',
-            friends,
-            nextOffset: response && response.nextOffset != null ? response.nextOffset : null
-          })
-          return friends
-        } catch (error) {
-          this.setData({
-            status: 'error',
-            friends: [],
-            nextOffset: null,
-            errorMessage: '好友功能暂时不可用，请稍后重试'
-          })
-          return []
-        } finally {
-          this._friendLoadPromise = null
+    async buildFriendCards(remoteFriends) {
+      const cards = []
+      for (const remote of remoteFriends) {
+        const localNote = await dataService.ensureFriendPlayerNote({
+          socialUserId: remote.socialUserId,
+          nickname: remote.nickname,
+          avatarUrl: remote.avatarUrl,
+          avatarText: remote.avatarText
+        })
+        cards.push(buildFriendCard(remote, localNote))
+      }
+      return cards
+    },
+
+    mergeFriends(existing, incoming) {
+      const byId = new Map()
+      ;(existing || []).concat(incoming || []).forEach(item => {
+        const id = String(item && item.friendUserId || '')
+        if (id && !byId.has(id)) byId.set(id, item)
+      })
+      return Array.from(byId.values())
+    },
+
+    async requestFriendPage(offset, options) {
+      const config = options || {}
+      const sequence = (Number(this._friendLoadSequence) || 0) + 1
+      this._friendLoadSequence = sequence
+      if (config.append) this.setData({ loadingMore: true, loadMoreError: '' })
+      else this.setData({ status: 'loading', errorMessage: '', loadMoreError: '' })
+
+      try {
+        const response = await socialService.listFriends({ offset, limit: 20 })
+        const remoteFriends = Array.isArray(response && response.items) ? response.items : []
+        const cards = await this.buildFriendCards(remoteFriends)
+        if (!this.isCurrentLoad(sequence)) return this.data.friends
+        this.setData({
+          status: 'ready',
+          friends: config.append ? this.mergeFriends(this.data.friends, cards) : cards,
+          nextOffset: response && response.nextOffset != null ? response.nextOffset : null,
+          loadingMore: false,
+          loadMoreError: ''
+        })
+        return this.data.friends
+      } catch (error) {
+        if (!this.isCurrentLoad(sequence)) return this.data.friends
+        if (config.append) {
+          this.setData({ loadingMore: false, loadMoreError: '加载更多失败，请重试' })
+          return this.data.friends
         }
-      })()
-      return this._friendLoadPromise
+        this.setData({
+          status: 'error',
+          friends: [],
+          nextOffset: null,
+          loadingMore: false,
+          errorMessage: '好友功能暂时不可用，请稍后重试'
+        })
+        return []
+      }
+    },
+
+    loadFriends(force) {
+      if (!force && this._friendLoadPromise) return this._friendLoadPromise
+      if (!force && this.data.status === 'ready') return this.data.friends
+      const promise = this.requestFriendPage(0, { append: false })
+      this._friendLoadPromise = promise
+      return promise.finally(() => {
+        if (this._friendLoadPromise === promise) this._friendLoadPromise = null
+      })
+    },
+
+    loadMoreFriends() {
+      const offset = Number(this.data.nextOffset)
+      if (!Number.isFinite(offset) || offset < 0 || this._friendLoadMorePromise) return this.data.friends
+      const promise = this.requestFriendPage(offset, { append: true })
+      this._friendLoadMorePromise = promise
+      return promise.finally(() => {
+        if (this._friendLoadMorePromise === promise) this._friendLoadMorePromise = null
+      })
     },
 
     selectSection(event) {

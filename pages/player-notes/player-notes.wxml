@@ -3,7 +3,7 @@
   <view class="player-notes-head onboarding-target-player-notes">
     <view>
       <view class="player-notes-kicker">PLAYER NOTES</view>
-      <view class="player-notes-title">玩家库</view>
+      <view class="player-notes-title">玩家</view>
     </view>
     <view style="display: flex; align-items: center; gap: 12rpx;">
       <view class="player-notes-message" bindtap="openMessages">

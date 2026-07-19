@@ -34,10 +34,11 @@
           </view>
         </view>
       </view>
+      <view wx:if="{{nextOffset !== null}}" class="friend-load-more {{loadingMore ? 'is-loading' : ''}}" bindtap="loadMoreFriends">{{loadingMore ? '加载中…' : (loadMoreError || '加载更多') }}</view>
     </view>
     <view wx:else class="friend-hub-state">还没有已确认的好友</view>
   </view>
 
-  <view wx:elif="{{activeSection === 'feed'}}" class="friend-hub-state">动态将在这里聚合好友与广场范围内容</view>
+  <view wx:elif="{{activeSection === 'feed'}}" class="friend-hub-state">动态功能后续开放</view>
   <view wx:else class="friend-hub-state">排行榜将在好友统计同步后开放</view>
 </view>

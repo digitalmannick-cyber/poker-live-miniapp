@@ -40,7 +40,7 @@ function buildListItem(note) {
 Page({
   data: {
     playerSection: 'friends',
-    friendSection: 'friends',
+    friendSection: 'feed',
     friendsLoaded: false,
     query: '',
     selectedType: '',
@@ -59,21 +59,24 @@ Page({
   },
 
   async onReady() {
-    if (this.data.playerSection === 'friends') await this.ensureFriendsLoaded()
+    this.syncOnboardingGuide()
   },
 
   async onShow() {
     tabBar.syncCustomTabBar('/pages/player-notes/player-notes')
     if (this.data.playerSection === 'library') await this.refresh()
+    if (this.data.playerSection === 'friends' && this.data.friendSection === 'friends' && this.data.friendsLoaded) {
+      await this.ensureFriendsLoaded(true)
+    }
     this.syncOnboardingGuide()
   },
 
-  async ensureFriendsLoaded() {
-    if (this.data.friendsLoaded) return
+  async ensureFriendsLoaded(force) {
+    if (this.data.friendsLoaded && !force) return
     const friendHub = this.selectComponent && this.selectComponent('#friendHub')
     if (!friendHub || typeof friendHub.loadFriends !== 'function') return
-    await friendHub.loadFriends()
-    this.setData({ friendsLoaded: true })
+    await friendHub.loadFriends(!!force)
+    if (friendHub.data && friendHub.data.status === 'ready') this.setData({ friendsLoaded: true })
   },
 
   async selectPlayerSection(event) {
@@ -90,6 +93,7 @@ Page({
   selectFriendSection(event) {
     const section = String(event && event.detail && event.detail.section || 'friends')
     this.setData({ friendSection: section })
+    if (section === 'friends') return this.ensureFriendsLoaded()
   },
 
   syncOnboardingGuide() {
@@ -168,7 +172,7 @@ Page({
   openFriend(event) {
     const friendUserId = String(event && event.detail && event.detail.friendUserId || '')
     if (!friendUserId) return
-    wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?friendUserId=' + encodeURIComponent(friendUserId) })
+    if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '好友详情将在下一步开放', icon: 'none' })
   },
 
   openMessages() {
