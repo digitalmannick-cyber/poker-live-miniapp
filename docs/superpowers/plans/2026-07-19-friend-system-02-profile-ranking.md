@@ -121,7 +121,7 @@ git commit -m "feat: store private friend annotations in player notes"
 - Produces cloud actions: `list_friends({ cursor, limit })` and `get_friend_detail({ friendUserId })`；两个 action 都只装配当前有效好友。
 - Emits: `openfriend` with `{ friendUserId }` and `openmessages`。
 
-- [ ] **Step 1: 写双层导航和玩家库回归测试**
+- [x] **Step 1: 写双层导航和玩家库回归测试**
 
 ```js
 assert.match(pageWxml, /好友[\s\S]*玩家库/)
@@ -134,13 +134,13 @@ assert.match(friendHubWxml, /Note/)
 assert.match(pageWxml, /player-list/)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-player-hub.test.js`
 
 Expected: FAIL because `components/friend-hub` does not exist。
 
-- [ ] **Step 3: 实现懒加载好友分支**
+- [x] **Step 3: 实现懒加载好友分支**
 
 ```js
 data: { playerSection: 'friends', friendSection: 'feed', friendsLoaded: false }
@@ -157,7 +157,7 @@ async selectPlayerSection(event) {
 
 玩家库列表调用 `dataService.getPlayerNotes({ sourceKind: 'library' })`。好友卡片展示私人玩家记录的头像、名称、类型、Leak、Note，并叠加允许显示的云端称号、时长、手数。社交加载失败只替换好友分支为空态。
 
-- [ ] **Step 4: 运行页面与玩家库回归**
+- [x] **Step 4: 运行页面与玩家库回归**
 
 Run:
 
@@ -171,7 +171,7 @@ node tests/player-notes-store.test.js
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交玩家 Tab 改造**
+- [x] **Step 5: 提交玩家 Tab 改造**
 
 ```powershell
 git add components/friend-hub pages/player-notes cloudfunctions/poker_social/lib/friendship.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-player-hub.test.js tests/player-notes-navigation.test.js
