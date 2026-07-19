@@ -127,53 +127,52 @@
     </view>
   </view>
 
-  <view wx:elif="{{sessions.length}}" class="card">
-    <view class="row">
-      <view>
-        <view class="card-title">全部 Session</view>
-      </view>
-      <button class="primary-btn small-btn new-session-btn onboarding-target-session" bindtap="goNewSession">新建</button>
+  <view wx:elif="{{sessions.length}}" class="card session-history-head-card">
+    <view class="session-history-head">
+      <view class="session-history-title"><text>全部</text><text>Session</text></view>
+      <button class="primary-btn small-btn new-session-btn session-history-create onboarding-target-session" bindtap="goNewSession">+ 新建</button>
     </view>
   </view>
 
-  <view wx:if="{{(!activeSessionView || !showActiveSessionHome) && sessions.length}}" class="card">
-    <view>
-      <view wx:for="{{sessions}}" wx:key="_id" class="session-swipe-row {{item.swiped ? 'open' : ''}}">
-        <view class="session-swipe-actions {{item.onboardingSessionSwipeTargetClass}}">
-          <view class="session-swipe-action edit" catchtap="editSessionFromList" data-id="{{item._id}}">编辑</view>
-          <view class="session-swipe-action delete {{item.onboardingSessionDeleteTargetClass}}" catchtap="deleteSessionFromList" data-id="{{item._id}}">删除</view>
-        </view>
-        <view
-          class="list-item session-swipe-content"
-          bindtap="goSessionDetail"
-          bindtouchstart="onSessionItemTouchStart"
-          bindtouchmove="onSessionItemTouchMove"
-          bindtouchend="onSessionItemTouchEnd"
-          data-id="{{item._id}}"
-        >
-          <view class="row">
-            <view class="session-list-main">
-              <view>{{item.title}}</view>
-              <view class="small muted">{{item.date}}</view>
-            </view>
-            <view class="session-list-actions">
-              <view
-                wx:if="{{item.summaryEligible}}"
-                class="session-summary-trigger onboarding-target-session-summary"
-                catchtap="openSessionSummary"
-                data-id="{{item._id}}"
-                aria-label="查看 AI Session 总结"
-              >
-                AI总结
-              </view>
-              <view class="badge-outline session-status-badge {{item.status === 'active' ? 'active' : 'finished'}}">
-                {{item.status === 'active' ? '进行中' : '已结束'}}
-              </view>
-            </view>
+  <view wx:if="{{(!activeSessionView || !showActiveSessionHome) && sessions.length}}" class="card session-history-list-card">
+    <view wx:for="{{sessions}}" wx:key="_id" class="session-swipe-row {{item.swiped ? 'open' : ''}}">
+      <view class="session-swipe-actions {{item.onboardingSessionSwipeTargetClass}}">
+        <view class="session-swipe-action edit" catchtap="editSessionFromList" data-id="{{item._id}}">编辑</view>
+        <view class="session-swipe-action delete {{item.onboardingSessionDeleteTargetClass}}" catchtap="deleteSessionFromList" data-id="{{item._id}}">删除</view>
+      </view>
+      <view
+        class="session-swipe-content session-history-card {{item.totalProfitTone}}"
+        bindtap="goSessionDetail"
+        bindtouchstart="onSessionItemTouchStart"
+        bindtouchmove="onSessionItemTouchMove"
+        bindtouchend="onSessionItemTouchEnd"
+        data-id="{{item._id}}"
+      >
+        <view class="session-history-card-layout">
+          <view class="session-history-info">
+            <view class="session-history-name">{{item.title}}</view>
+            <view class="session-history-date">{{item.date}}</view>
           </view>
-          <view class="row" style="margin-top: 14rpx;">
-            <view class="small muted">买入 {{item.buyIn}} · 手牌 {{item.handCount}}</view>
-            <view class="small {{(item.totalProfit || 0) >= 0 ? 'positive' : 'negative'}}">{{item.totalProfitDisplay}}</view>
+          <view class="session-history-result {{item.totalProfitTone}}">
+            <view class="session-history-result-label">本场输赢</view>
+            <view class="session-history-result-value {{item.totalProfitDisplay.length > 10 ? 'compact' : ''}}">{{item.totalProfitDisplay}}</view>
+          </view>
+          <view class="session-history-footer">
+            <view class="session-history-metrics">
+              <text>买入 {{item.buyIn}}</text>
+              <text class="session-history-divider"></text>
+              <text>手牌 {{item.handCount}}</text>
+            </view>
+            <view
+              wx:if="{{item.summaryEligible}}"
+              class="session-summary-trigger session-history-summary onboarding-target-session-summary"
+              catchtap="openSessionSummary"
+              data-id="{{item._id}}"
+              aria-label="查看 AI Session 总结"
+            >AI总结</view>
+            <view class="badge-outline session-status-badge session-history-status {{item.status === 'active' ? 'active' : 'finished'}}">
+              {{item.status === 'active' ? '进行中' : '已结束'}}
+            </view>
           </view>
         </view>
       </view>
