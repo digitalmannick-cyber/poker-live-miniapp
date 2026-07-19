@@ -179,7 +179,7 @@ git commit -m "feat: share one player card with one friend"
 - 导入确认必须先由 `confirm_player_card_import` 在云端重新鉴权成功，再创建或覆盖本地玩家记录；不得先写入私有玩家库后才发现好友关系已解除。
 - 名片头像临时 URL 必须复制到接收方可长期使用的云文件后再写入玩家记录；不能把会过期的临时 URL 当作永久头像。
 
-- [ ] **Step 1: 写重复检测与覆盖保留测试**
+- [x] **Step 1: 写重复检测与覆盖保留测试**
 
 ```js
 const existing = { _id: 'p1', name: ' 老 张 ', battleHandIds: ['h1'], alias: ['旧别名'], createdAt: 1 }
@@ -189,13 +189,13 @@ assert.deepEqual(Object.keys(patch).sort(), ['avatarUrl', 'leakTags', 'name', 'n
 assert.equal(Object.hasOwn(patch, 'battleHandIds'), false)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-player-card-import.test.js tests/social-player-card-preview-page.test.js`
 
 Expected: FAIL because importer and page are missing。
 
-- [ ] **Step 3: 实现新建、覆盖与幂等确认**
+- [x] **Step 3: 实现新建、覆盖与幂等确认**
 
 ```js
 const socialMutation = require('../../utils/social-mutation')
@@ -218,7 +218,7 @@ async overwriteExisting() {
 
 覆盖确认文案明确列出“替换头像、名称、玩家类型、Leak、Note；保留对战手牌”。不提供逐字段勾选。
 
-- [ ] **Step 4: 运行导入与玩家库测试**
+- [x] **Step 4: 运行导入与玩家库测试**
 
 Run:
 
@@ -230,7 +230,7 @@ node tests/player-notes-store.test.js
 
 Expected: PASS；网络重试使用同一 mutation ID。云端确认成功后，本地创建/覆盖失败只重试本地步骤，不再次确认或创建第二份玩家记录。
 
-- [ ] **Step 5: 提交导入页面**
+- [x] **Step 5: 提交导入页面**
 
 ```powershell
 git add utils/player-card-import.js pages/social-card-preview app.json services/social-service.js tests/social-player-card-import.test.js tests/social-player-card-preview-page.test.js
