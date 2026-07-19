@@ -176,6 +176,8 @@ git commit -m "feat: share one player card with one friend"
 **Interfaces:**
 - Produces: `normalizePlayerName(name)`、`findDuplicateByName(notes, name)`、`buildCardOverwritePatch(card)`。
 - Route: `/pages/social-card-preview/social-card-preview?shareId=<id>`。
+- 导入确认必须先由 `confirm_player_card_import` 在云端重新鉴权成功，再创建或覆盖本地玩家记录；不得先写入私有玩家库后才发现好友关系已解除。
+- 名片头像临时 URL 必须复制到接收方可长期使用的云文件后再写入玩家记录；不能把会过期的临时 URL 当作永久头像。
 
 - [ ] **Step 1: 写重复检测与覆盖保留测试**
 
@@ -201,15 +203,15 @@ const socialMutation = require('../../utils/social-mutation')
 async importAsNew() {
   const mutationId = this.data.importMutationId || socialMutation.createMutationId('import_player_card')
   this.setData({ importMutationId: mutationId })
+  await socialService.confirmPlayerCardImport({ shareId: this.data.share.shareId, clientMutationId: mutationId })
   const created = await dataService.createPlayerNote(importer.buildCardOverwritePatch(this.data.share.card))
-  await socialService.confirmPlayerCardImport({ shareId: this.data.share.shareId, playerNoteId: created._id, clientMutationId: mutationId })
   this.setData({ imported: true })
 }
 
 async overwriteExisting() {
   const target = this.data.duplicate
+  await socialService.confirmPlayerCardImport({ shareId: this.data.share.shareId, clientMutationId: this.data.importMutationId })
   await dataService.updatePlayerNote(target._id, importer.buildCardOverwritePatch(this.data.share.card))
-  await socialService.confirmPlayerCardImport({ shareId: this.data.share.shareId, playerNoteId: target._id, clientMutationId: this.data.importMutationId })
   this.setData({ imported: true })
 }
 ```
@@ -226,7 +228,7 @@ if ($LASTEXITCODE) { exit $LASTEXITCODE }
 node tests/player-notes-store.test.js
 ```
 
-Expected: PASS；网络重试使用同一 mutation ID，不创建第二份玩家记录。
+Expected: PASS；网络重试使用同一 mutation ID。云端确认成功后，本地创建/覆盖失败只重试本地步骤，不再次确认或创建第二份玩家记录。
 
 - [ ] **Step 5: 提交导入页面**
 
