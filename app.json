@@ -7,6 +7,7 @@
     "pages/review-list/review-list",
     "pages/player-notes/player-notes",
     "pages/player-note-detail/player-note-detail",
+    "pages/social-invite/social-invite",
     "pages/stats/stats",
     "pages/profile/profile",
     "pages/home/home",

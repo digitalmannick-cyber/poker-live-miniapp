@@ -123,6 +123,10 @@ Page({
     wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?mode=new' })
   },
 
+  openInvite() {
+    wx.navigateTo({ url: '/pages/social-invite/social-invite' })
+  },
+
   openDetail(event) {
     const id = event.currentTarget.dataset.id
     if (!id) return

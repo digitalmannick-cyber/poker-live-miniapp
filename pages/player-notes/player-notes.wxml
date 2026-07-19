@@ -5,8 +5,13 @@
       <view class="player-notes-kicker">PLAYER NOTES</view>
       <view class="player-notes-title">玩家库</view>
     </view>
-    <view class="player-notes-add" bindtap="openCreate">
-      <text class="player-notes-add-plus">+</text>
+    <view style="display: flex; align-items: center; gap: 12rpx;">
+      <view class="player-notes-add" bindtap="openInvite">
+        <text class="player-notes-add-plus" style="margin-top: 0; font-size: 28rpx;">友</text>
+      </view>
+      <view class="player-notes-add" bindtap="openCreate">
+        <text class="player-notes-add-plus">+</text>
+      </view>
     </view>
   </view>
 

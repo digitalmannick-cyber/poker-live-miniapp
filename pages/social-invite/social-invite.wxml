@@ -1,0 +1,44 @@
+<view class="app-bg"></view>
+<view class="container social-invite-page">
+  <view class="invite-hero">
+    <view class="invite-kicker">SOCIAL LINK</view>
+    <view class="invite-title">好友邀请</view>
+    <view class="invite-slash"></view>
+  </view>
+
+  <view wx:if="{{loading}}" class="invite-card invite-state-card">
+    <view class="invite-state-title">正在读取邀请</view>
+    <view class="invite-state-text">请稍候，正在核验邀请信息。</view>
+  </view>
+
+  <view wx:elif="{{status === 'expired' || status === 'error'}}" class="invite-card invite-state-card">
+    <view class="invite-state-title">{{status === 'expired' ? '邀请不可用' : '暂时无法继续'}}</view>
+    <view class="invite-state-text">{{errorMessage}}</view>
+    <view class="invite-action invite-action-secondary" bindtap="retry">重试</view>
+  </view>
+
+  <view wx:elif="{{mode === 'mine'}}" class="invite-card">
+    <view class="invite-card-kicker">MY INVITE</view>
+    <view class="invite-card-title">把好友带进你的牌局记录</view>
+    <view class="invite-card-text">从微信分享卡片或个人二维码进入后，对方需要主动发送申请；不会自动成为好友。</view>
+    <image wx:if="{{qrCodeUrl}}" class="invite-qr" src="{{qrCodeUrl}}" mode="aspectFit"></image>
+    <view wx:else class="invite-qr invite-qr-empty">QR</view>
+    <view class="invite-qr-caption">{{qrUnavailable ? '二维码暂不可用，仍可用微信卡片分享' : '个人邀请二维码'}}</view>
+    <button class="invite-action invite-action-primary" open-type="share">发送微信邀请</button>
+  </view>
+
+  <view wx:else class="invite-card">
+    <view class="invite-card-kicker">FRIEND REQUEST</view>
+    <view class="invite-profile">
+      <image wx:if="{{inviter.avatarUrl}}" class="invite-avatar" src="{{inviter.avatarUrl}}" mode="aspectFill"></image>
+      <view wx:else class="invite-avatar invite-avatar-text">{{inviter.avatarText || 'P5'}}</view>
+      <view>
+        <view class="invite-name">{{inviter.nickname || '牌友'}}</view>
+        <view class="invite-title-text">{{inviter.title || '牌局记录玩家'}}</view>
+      </view>
+    </view>
+    <view class="invite-card-text">发送申请后需对方确认。确认前，双方都不会看到彼此的牌局数据。</view>
+    <view wx:if="{{status === 'sent'}}" class="invite-sent">申请已发送，等待对方确认</view>
+    <view wx:else class="invite-action invite-action-primary {{submitting ? 'is-disabled' : ''}}" bindtap="sendFriendRequest">{{submitting ? '正在发送' : '发送好友申请'}}</view>
+  </view>
+</view>
