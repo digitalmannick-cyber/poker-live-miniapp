@@ -363,6 +363,7 @@ git commit -m "feat: add in-app friend invitation flow"
 
 **Files:**
 - Create: `tests/social-foundation-security.test.js`
+- Modify: `cloudfunctions/poker_social/app.js` only if the security test exposes a response-boundary leak.
 - Modify: `docs/superpowers/specs/2026-07-19-friend-system-design.md` only if implementation reveals a confirmed design correction。
 
 **Interfaces:**
@@ -404,6 +405,6 @@ Expected: 编译与预览成功；不上传开发版。
 - [ ] **Step 5: 提交验收测试**
 
 ```powershell
-git add tests/social-foundation-security.test.js
+git add tests/social-foundation-security.test.js cloudfunctions/poker_social/app.js
 git commit -m "test: verify social foundation security"
 ```
