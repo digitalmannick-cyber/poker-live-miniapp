@@ -292,7 +292,7 @@ git commit -m "feat: implement social friendship lifecycle"
 - Consumes: `socialService.createInvite()`、`createInviteQr(code)`、`inspectInvite(code)`、`sendFriendRequest(code, clientMutationId)`。
 - Route: 微信卡片使用 `/pages/social-invite/social-invite?token=<encodedCode>`；小程序码通过 `options.scene` 传入同一邀请码。
 
-- [ ] **Step 1: 写页面注册和交互失败测试**
+- [x] **Step 1: 写页面注册和交互失败测试**
 
 ```js
 assert.ok(appConfig.pages.includes('pages/social-invite/social-invite'))
@@ -302,13 +302,13 @@ assert.match(inviteWxml, /发送好友申请/)
 assert.doesNotMatch(inviteJs, /ownerOpenId|_openid/)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-invite-page.test.js`
 
 Expected: FAIL because invite page is not registered。
 
-- [ ] **Step 3: 实现邀请创建、微信卡片和二维码页面**
+- [x] **Step 3: 实现邀请创建、微信卡片和二维码页面**
 
 ```js
 const socialMutation = require('../../utils/social-mutation')
@@ -340,7 +340,7 @@ async sendRequest() {
 
 二维码只编码同一路径，不编码 OpenID。页面明确写“发送申请后需对方确认”，不存在“一键自动成为好友”文案。
 
-- [ ] **Step 4: 运行页面和基础回归测试**
+- [x] **Step 4: 运行页面和基础回归测试**
 
 Run:
 
@@ -352,7 +352,7 @@ node tests/player-notes-navigation.test.js
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交页面**
+- [x] **Step 5: 提交页面**
 
 ```powershell
 git add pages/social-invite cloudfunctions/poker_social/lib/friendship.js app.json pages/player-notes/player-notes.js pages/player-notes/player-notes.wxml tests/social-invite-page.test.js tests/social-friendship.test.js
