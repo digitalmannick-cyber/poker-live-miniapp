@@ -8,14 +8,21 @@ const { toNotificationDto } = require('../cloudfunctions/poker_social/lib/notifi
 const { toCardShareDto } = require('../cloudfunctions/poker_social/lib/player-card')
 const notificationRoute = require('../utils/social-notification-route')
 
+const CARD_SHARE_KEYS = ['card', 'expiresAt', 'imported', 'sender', 'shareId']
+const CARD_SENDER_KEYS = ['avatarText', 'avatarUrl', 'nickname', 'socialUserId']
 const CARD_KEYS = ['avatarUrl', 'leakTags', 'name', 'note', 'type']
 const NOTIFICATION_KEYS = ['actionState', 'actor', 'aggregateCount', 'createdAt', 'kind', 'notificationId', 'read', 'targetId', 'targetType']
 const ACTOR_KEYS = ['avatarText', 'avatarUrl', 'nickname', 'socialUserId']
-const CARD_FORBIDDEN = new Set(['alias', 'battleHandIds', 'linkedHandIds', 'localId', 'playerNoteId', 'ownerOpenId', '_openid', 'avatarFileId'])
+const CARD_FORBIDDEN = new Set([
+  'alias', 'battleHandIds', 'linkedHandIds', 'localId', 'playerNoteId', 'ownerOpenId', '_openid',
+  'avatarFileId', 'createdAt', 'updatedAt', 'targetUserId'
+])
 const NOTIFICATION_FORBIDDEN = new Set([
   'ownerOpenId', '_openid', 'privatePlayerId', 'avatarFileId', 'accessible', 'permission', 'accessToken',
   'url', 'path', 'playerCardSnapshot', 'cardSnapshot', 'clientMutationId', 'mutationId', 'sourceEventId', 'recipientId'
 ])
+const CACHE_FORBIDDEN = new Set([...CARD_FORBIDDEN, ...NOTIFICATION_FORBIDDEN])
+CACHE_FORBIDDEN.delete('createdAt')
 const ECONOMIC_FORBIDDEN = new Set(['profit', 'currentProfit', 'buyIn', 'cashOut', 'hourlyRate', 'winRate', 'venue'])
 
 function assertExactKeys(value, keys, label) {
@@ -37,22 +44,34 @@ test('player-card public DTO keeps exactly five card fields and drops private pl
     senderUserId: 'su_sender',
     senderSnapshot: {
       socialUserId: 'su_sender', nickname: 'Sender', avatarText: 'S', avatarFileId: 'cloud://private/sender.png',
-      ownerOpenId: 'open-sender'
+      ownerOpenId: 'open-sender', targetUserId: 'sender-target-secret',
+      createdAt: 'sender-created-secret', updatedAt: 'sender-updated-secret'
     },
     snapshot: {
       avatarAsset: 'cloud://private/card.png', name: '老张', type: '激进', leakTags: ['河牌'], note: '完整 Note',
       alias: ['张总'], battleHandIds: ['hand-secret'], linkedHandIds: ['linked-secret'], localId: 'local-secret',
-      playerNoteId: 'note-secret', ownerOpenId: 'open-secret', _openid: 'shadow-secret', avatarFileId: 'cloud://private/raw.png'
+      playerNoteId: 'note-secret', ownerOpenId: 'open-secret', _openid: 'shadow-secret', avatarFileId: 'cloud://private/raw.png',
+      targetUserId: 'snapshot-target-secret', createdAt: 'snapshot-created-secret', updatedAt: 'snapshot-updated-secret'
     },
+    targetUserId: 'target-secret',
+    createdAt: 'created-secret',
+    updatedAt: 'updated-secret',
     expiresAt: 12345,
     importedAt: 0,
     playerNoteId: 'outer-note-secret'
   }, { avatarUrl: async () => 'https://temp.example/safe-avatar.png' })
 
+  assertExactKeys(dto, CARD_SHARE_KEYS, 'card share')
+  assertExactKeys(dto.sender, CARD_SENDER_KEYS, 'card sender')
   assertExactKeys(dto.card, CARD_KEYS, 'card')
   assertNoKeys(dto, CARD_FORBIDDEN)
   const serialized = JSON.stringify(dto)
-  for (const canary of ['hand-secret', 'linked-secret', 'local-secret', 'note-secret', 'open-secret', 'cloud://']) {
+  for (const canary of [
+    'hand-secret', 'linked-secret', 'local-secret', 'note-secret', 'open-secret', 'cloud://',
+    'target-secret', 'sender-target-secret', 'snapshot-target-secret',
+    'created-secret', 'updated-secret', 'sender-created-secret', 'sender-updated-secret',
+    'snapshot-created-secret', 'snapshot-updated-secret'
+  ]) {
     assert.equal(serialized.includes(canary), false, `card DTO leaked ${canary}`)
   }
 })
@@ -166,7 +185,7 @@ test('message first-page cache stores only the account envelope and exact notifi
     assert.equal(cached.items.length, 1)
     assertExactKeys(cached.items[0], NOTIFICATION_KEYS, 'cached notification')
     assertExactKeys(cached.items[0].actor, ACTOR_KEYS, 'cached actor')
-    assertNoKeys(cached, new Set([...CARD_FORBIDDEN, ...NOTIFICATION_FORBIDDEN]))
+    assertNoKeys(cached, CACHE_FORBIDDEN)
     const serialized = JSON.stringify(cached)
     for (const canary of ['open-root', 'open-actor', 'PLAYER-SECRET', '/pages/evil', 'mutation-secret', 'note-secret', 'cloud://']) {
       assert.equal(serialized.includes(canary), false, `message cache leaked ${canary}`)
