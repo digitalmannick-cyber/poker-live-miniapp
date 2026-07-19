@@ -33,11 +33,35 @@ test('Beijing week and month boundaries include only the requested daily buckets
   assert.equal(ranking.rangeStartDateKey('week', now), '20260720')
   assert.equal(ranking.rangeStartDateKey('month', now), '20260701')
   assert.equal(ranking.rangeStartDateKey('all', now), '')
-  const rows = ranking.aggregateDailyStats([
+  assert.deepEqual(ranking.rangeDateWindow('week', now), { startDateKey: '20260720', endDateKey: '20260727' })
+  assert.deepEqual(ranking.rangeDateWindow('month', now), { startDateKey: '20260701', endDateKey: '20260801' })
+  assert.deepEqual(ranking.rangeDateWindow('all', now), { startDateKey: '', endDateKey: '' })
+  const weekRows = ranking.aggregateDailyStats([
     { socialUserId: 'su_a', dateKey: '20260719', durationMinutes: 90, recordedHandCount: 9 },
-    { socialUserId: 'su_a', dateKey: '20260720', durationMinutes: 60, recordedHandCount: 3 }
+    { socialUserId: 'su_a', dateKey: '20260720', durationMinutes: 60, recordedHandCount: 3 },
+    { socialUserId: 'su_a', dateKey: '20260727', durationMinutes: 600, recordedHandCount: 30 }
   ], ['su_a'], 'week', now)
-  assert.deepEqual(rows, [{ socialUserId: 'su_a', durationMinutes: 60, recordedHandCount: 3 }])
+  assert.deepEqual(weekRows, [{ socialUserId: 'su_a', durationMinutes: 60, recordedHandCount: 3 }])
+  const monthRows = ranking.aggregateDailyStats([
+    { socialUserId: 'su_a', dateKey: '20260731', durationMinutes: 40, recordedHandCount: 2 },
+    { socialUserId: 'su_a', dateKey: '20260801', durationMinutes: 400, recordedHandCount: 20 }
+  ], ['su_a'], 'month', now)
+  assert.deepEqual(monthRows, [{ socialUserId: 'su_a', durationMinutes: 40, recordedHandCount: 2 }])
+  const allRows = ranking.aggregateDailyStats([
+    { socialUserId: 'su_a', dateKey: '20300101', durationMinutes: 15, recordedHandCount: 1 }
+  ], ['su_a'], 'all', now)
+  assert.deepEqual(allRows, [{ socialUserId: 'su_a', durationMinutes: 15, recordedHandCount: 1 }])
+})
+
+test('zero-duration users do not qualify through hand count and a zero viewer has no rank', () => {
+  const output = ranking.rankRows([
+    { socialUserId: 'su_zero', nickname: 'Many hands', durationMinutes: 0, recordedHandCount: 999 },
+    { socialUserId: 'su_negative', nickname: 'Bad data', durationMinutes: -10, recordedHandCount: 999 },
+    { socialUserId: 'su_friend', nickname: 'Played', durationMinutes: 1, recordedHandCount: 0 }
+  ], 'su_zero')
+  assert.deepEqual(output.top10.map(row => row.socialUserId), ['su_friend'])
+  assert.equal(output.myRank, null)
+  assert.deepEqual(ranking.rankRows([{ socialUserId: 'su_zero', durationMinutes: 0, recordedHandCount: 10 }], 'su_zero'), { top10: [], myRank: null })
 })
 
 test('ranking action is authenticated, friend-scoped, privacy filtered and never leaks records', async () => {
@@ -86,6 +110,17 @@ test('ranking action is authenticated, friend-scoped, privacy filtered and never
   assert.deepEqual(viewerHidden.data.top10.map(row => row.socialUserId), ['su_friend'])
   assert.equal(viewerHidden.data.myRank, null)
   assert.equal(JSON.stringify(viewerHidden).includes('su_me'), false)
+
+  records.social_users[0].statsVisible = true
+  records.social_users[2].statsVisible = false
+  records.social_daily_stats.forEach(row => {
+    if (row.socialUserId === 'su_me' || row.socialUserId === 'su_friend') {
+      row.durationMinutes = 0
+      row.recordedHandCount = 999
+    }
+  })
+  const handOnly = await app.handle({ action: 'list_ranking', rangeKey: 'week' }, {})
+  assert.deepEqual(handOnly.data, { top10: [], myRank: null })
 })
 
 test('settings action applies an idempotent field patch and preserves concurrent profile and stats fields', async () => {

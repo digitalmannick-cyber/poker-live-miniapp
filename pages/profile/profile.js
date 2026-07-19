@@ -338,11 +338,16 @@ Page({
   },
 
   async onShow() {
+    this._socialSettingsAttached = true
     tabBar.syncCustomTabBar('/pages/profile/profile')
     await this.refresh()
     this.loadSocialSettings()
     this.consumeOpenAiReminderEditorRequest()
     this.maybeShowReleaseNotes()
+  },
+  onUnload() {
+    this._socialSettingsAttached = false
+    this._socialSettingsSequence = (Number(this._socialSettingsSequence) || 0) + 1
   },
   onReady() {
     setTimeout(() => {
@@ -365,9 +370,13 @@ Page({
   },
 
   async loadSocialSettings() {
+    if (this._socialSettingsAttached === false || this.data.socialSettingsSaving) return null
+    const sequence = (Number(this._socialSettingsSequence) || 0) + 1
+    this._socialSettingsSequence = sequence
     this.setData({ socialSettingsStatus: 'loading' })
     try {
       const profile = await socialService.getMySocialProfile()
+      if (this._socialSettingsAttached === false || sequence !== this._socialSettingsSequence) return null
       this.setData({
         socialSettings: {
           statsVisible: profile.statsVisible !== false,
@@ -377,6 +386,7 @@ Page({
       })
       return this.data.socialSettings
     } catch (error) {
+      if (this._socialSettingsAttached === false || sequence !== this._socialSettingsSequence) return null
       this.setData({ socialSettingsStatus: 'error' })
       return null
     }
@@ -387,9 +397,11 @@ Page({
   },
 
   async saveSocialSettings(nextSettings) {
-    if (this.data.socialSettingsSaving) return null
+    if (this._socialSettingsAttached === false || this.data.socialSettingsSaving || this.data.socialSettingsStatus === 'loading') return null
     const current = this.data.socialSettings || { statsVisible: true, defaultShareScope: 'friends' }
     const next = Object.assign({}, current, nextSettings || {})
+    const sequence = (Number(this._socialSettingsSequence) || 0) + 1
+    this._socialSettingsSequence = sequence
     this.setData({ socialSettingsSaving: true })
     try {
       const saved = await socialService.updateSocialSettings({
@@ -397,6 +409,8 @@ Page({
         defaultShareScope: ['square', 'friends', 'selected'].includes(next.defaultShareScope) ? next.defaultShareScope : 'friends',
         clientMutationId: this.createSocialSettingsMutationId()
       })
+      if (this._socialSettingsAttached === false) return null
+      this._socialSettingsSequence = Math.max(sequence, Number(this._socialSettingsSequence) || 0) + 1
       this.setData({
         socialSettings: {
           statsVisible: saved.statsVisible !== false,
@@ -407,20 +421,21 @@ Page({
       wx.showToast({ title: '社交设置已保存', icon: 'success' })
       return saved
     } catch (error) {
-      wx.showToast({ title: '保存失败，请重试', icon: 'none' })
+      if (this._socialSettingsAttached !== false) wx.showToast({ title: '保存失败，请重试', icon: 'none' })
       return null
     } finally {
-      this.setData({ socialSettingsSaving: false })
+      if (this._socialSettingsAttached !== false) this.setData({ socialSettingsSaving: false })
     }
   },
 
   toggleSocialStatsVisible() {
+    if (this.data.socialSettingsSaving || this.data.socialSettingsStatus === 'loading') return null
     return this.saveSocialSettings({ statsVisible: this.data.socialSettings.statsVisible === false })
   },
 
   selectDefaultShareScope(event) {
     const scope = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.scope || '')
-    if (!['square', 'friends', 'selected'].includes(scope)) return null
+    if (!['square', 'friends', 'selected'].includes(scope) || this.data.socialSettingsSaving || this.data.socialSettingsStatus === 'loading') return null
     return this.saveSocialSettings({ defaultShareScope: scope })
   },
 

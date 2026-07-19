@@ -10,6 +10,8 @@ let pageDefinition = null
 let updateSettingsPatch = null
 let lastToast = null
 let socialSettingsPatch = null
+let socialProfileLoader = null
+let socialSettingsSaver = null
 
 function setByPath(target, keyPath, value) {
   const parts = String(keyPath).split('.')
@@ -41,6 +43,8 @@ function installProfilePage() {
   updateSettingsPatch = null
   lastToast = null
   socialSettingsPatch = null
+  socialProfileLoader = null
+  socialSettingsSaver = null
   global.wx = {
     showToast(options) { lastToast = options },
     showModal() {},
@@ -71,10 +75,12 @@ function installProfilePage() {
     if (request.endsWith('../../services/social-service')) {
       return {
         async getMySocialProfile() {
+          if (socialProfileLoader) return socialProfileLoader()
           return { statsVisible: true, defaultShareScope: 'friends' }
         },
         async updateSocialSettings(patch) {
           socialSettingsPatch = patch
+          if (socialSettingsSaver) return socialSettingsSaver(patch)
           return { statsVisible: patch.statsVisible, defaultShareScope: patch.defaultShareScope }
         }
       }
@@ -133,4 +139,58 @@ test('profile markup clearly describes social privacy and all supported default 
   assert.match(wxml, /好友统计可见/)
   assert.match(wxml, /退出本周、月度和累计排行榜/)
   assert.match(wxml, /广场[\s\S]*全部好友[\s\S]*指定好友/)
+})
+
+test('a stale profile GET cannot overwrite a successful privacy save and loading/saving block conflict taps', async () => {
+  const page = installProfilePage()
+  let resolveLoad
+  let resolveSave
+  let saveCalls = 0
+  socialProfileLoader = () => new Promise(resolve => { resolveLoad = resolve })
+  socialSettingsSaver = patch => { saveCalls += 1; return Promise.resolve({ statsVisible: patch.statsVisible, defaultShareScope: patch.defaultShareScope }) }
+
+  const loading = page.loadSocialSettings()
+  assert.equal(page.data.socialSettingsStatus, 'loading')
+  assert.equal(await page.toggleSocialStatsVisible(), null, 'loading must block setting writes')
+  assert.equal(saveCalls, 0)
+
+  // Simulate the user acting after the current value is available while the older GET is still in flight.
+  page.setData({ socialSettingsStatus: 'ready', socialSettings: { statsVisible: true, defaultShareScope: 'friends' } })
+  socialSettingsSaver = patch => new Promise(resolve => { saveCalls += 1; resolveSave = () => resolve({ statsVisible: patch.statsVisible, defaultShareScope: patch.defaultShareScope }) })
+  const saving = page.toggleSocialStatsVisible()
+  assert.equal(page.data.socialSettingsSaving, true)
+  assert.equal(await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'selected' } } }), null, 'saving must block a second write')
+  resolveSave()
+  await saving
+  assert.equal(page.data.socialSettings.statsVisible, false)
+
+  resolveLoad({ statsVisible: true, defaultShareScope: 'square' })
+  await loading
+  assert.deepEqual(page.data.socialSettings, { statsVisible: false, defaultShareScope: 'friends' }, 'late GET must not reopen statistics')
+
+  socialSettingsSaver = patch => Promise.resolve({ statsVisible: patch.statsVisible, defaultShareScope: patch.defaultShareScope })
+  await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'selected' } } })
+  assert.deepEqual(page.data.socialSettings, { statsVisible: false, defaultShareScope: 'selected' })
+  assert.equal(socialSettingsPatch.statsVisible, false)
+})
+
+test('social setting requests never write back after profile page unload', async () => {
+  const page = installProfilePage()
+  let resolveLoad
+  socialProfileLoader = () => new Promise(resolve => { resolveLoad = resolve })
+  const loading = page.loadSocialSettings()
+  page.onUnload()
+  resolveLoad({ statsVisible: false, defaultShareScope: 'selected' })
+  await loading
+  assert.deepEqual(page.data.socialSettings, { statsVisible: true, defaultShareScope: 'friends' })
+
+  const savingPage = installProfilePage()
+  let resolveSave
+  socialSettingsSaver = patch => new Promise(resolve => { resolveSave = () => resolve({ statsVisible: patch.statsVisible, defaultShareScope: patch.defaultShareScope }) })
+  savingPage.setData({ socialSettingsStatus: 'ready', socialSettings: { statsVisible: true, defaultShareScope: 'friends' } })
+  const saving = savingPage.toggleSocialStatsVisible()
+  savingPage.onUnload()
+  resolveSave()
+  await saving
+  assert.deepEqual(savingPage.data.socialSettings, { statsVisible: true, defaultShareScope: 'friends' })
 })

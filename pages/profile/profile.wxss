@@ -3483,3 +3483,4 @@
 .social-scope-row { display: flex; gap: 10rpx; margin-top: 18rpx; }
 .social-scope-item { flex: 1; min-height: 58rpx; display: flex; align-items: center; justify-content: center; border-radius: 13rpx; color: rgba(255,255,255,0.55); background: rgba(255,255,255,0.055); border: 1rpx solid rgba(255,255,255,0.1); font-size: 21rpx; font-weight: 950; }
 .social-scope-item.active { color: #fff; background: rgba(230,0,18,0.74); border-color: rgba(255,255,255,0.18); }
+.social-switch-hit.disabled, .social-scope-item.disabled { opacity: 0.46; }

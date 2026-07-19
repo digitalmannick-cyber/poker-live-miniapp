@@ -142,28 +142,41 @@ function normalizeRangeKey(value) {
 }
 
 function rangeStartDateKey(rangeKey, nowTimestamp) {
+  return rangeDateWindow(rangeKey, nowTimestamp).startDateKey
+}
+
+function formatLocalDateKey(date) {
+  return String(date.getUTCFullYear()) + String(date.getUTCMonth() + 1).padStart(2, '0') + String(date.getUTCDate()).padStart(2, '0')
+}
+
+function rangeDateWindow(rangeKey, nowTimestamp) {
   const key = normalizeRangeKey(rangeKey)
-  if (key === 'all') return ''
+  if (key === 'all') return { startDateKey: '', endDateKey: '' }
   const timestamp = Number(nowTimestamp)
   const now = Number.isFinite(timestamp) ? timestamp : Date.now()
   const local = new Date(now + BEIJING_OFFSET_MINUTES * 60000)
   if (key === 'month') {
-    return String(local.getUTCFullYear()) + String(local.getUTCMonth() + 1).padStart(2, '0') + '01'
+    const start = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1))
+    const end = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 1))
+    return { startDateKey: formatLocalDateKey(start), endDateKey: formatLocalDateKey(end) }
   }
   const mondayDelta = (local.getUTCDay() + 6) % 7
   const monday = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() - mondayDelta))
-  return String(monday.getUTCFullYear()) + String(monday.getUTCMonth() + 1).padStart(2, '0') + String(monday.getUTCDate()).padStart(2, '0')
+  const nextMonday = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate() + 7))
+  return { startDateKey: formatLocalDateKey(monday), endDateKey: formatLocalDateKey(nextMonday) }
 }
 
 function aggregateDailyStats(dailyRows, socialUserIds, rangeKey, nowTimestamp) {
   const ids = Array.from(new Set((socialUserIds || []).map(value => String(value || '')).filter(Boolean)))
-  const startDateKey = rangeStartDateKey(rangeKey, nowTimestamp)
+  const window = rangeDateWindow(rangeKey, nowTimestamp)
   const totals = new Map(ids.map(id => [id, { socialUserId: id, durationMinutes: 0, recordedHandCount: 0 }]))
   ;(Array.isArray(dailyRows) ? dailyRows : []).forEach(row => {
     const id = String(row && row.socialUserId || '')
     const dateKey = String(row && row.dateKey || '')
     const total = totals.get(id)
-    if (!total || !/^\d{8}$/.test(dateKey) || (startDateKey && dateKey < startDateKey)) return
+    if (!total || !/^\d{8}$/.test(dateKey) ||
+      (window.startDateKey && dateKey < window.startDateKey) ||
+      (window.endDateKey && dateKey >= window.endDateKey)) return
     total.durationMinutes += Math.max(0, Math.floor(Number(row.durationMinutes) || 0))
     total.recordedHandCount += Math.max(0, Math.floor(Number(row.recordedHandCount) || 0))
   })
@@ -185,7 +198,7 @@ function rankingDto(row, rank) {
 }
 
 function rankRows(rows, viewerId) {
-  const sorted = (Array.isArray(rows) ? rows : []).slice().sort((left, right) => {
+  const sorted = (Array.isArray(rows) ? rows : []).filter(row => Number(row && row.durationMinutes) > 0).sort((left, right) => {
     return (Number(right.durationMinutes) || 0) - (Number(left.durationMinutes) || 0) ||
       String(left.socialUserId || '').localeCompare(String(right.socialUserId || ''))
   })
@@ -297,6 +310,7 @@ module.exports = {
   calculateTitle,
   normalizeRangeKey,
   rangeStartDateKey,
+  rangeDateWindow,
   aggregateDailyStats,
   rankRows,
   createRankingHandlers
