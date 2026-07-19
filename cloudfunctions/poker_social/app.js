@@ -2,6 +2,7 @@ const { createProfileHandlers } = require('./lib/profile')
 const { createFriendshipHandlers } = require('./lib/friendship')
 
 function withoutPrivateIdentifiers(value) {
+  if (typeof value === 'string' && value.includes('cloud://')) return null
   if (Array.isArray(value)) return value.map(withoutPrivateIdentifiers)
   if (!value || typeof value !== 'object') return value
 
