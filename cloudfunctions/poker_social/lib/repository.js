@@ -43,13 +43,24 @@ function createCloudSocialRepository(database) {
     async listAcceptedFriendships(socialUserId, page) {
       const offset = Math.max(0, Number(page && page.offset) || 0)
       const limit = Math.min(50, Math.max(1, Number(page && page.limit) || 20))
-      const perSideLimit = offset + limit + 1
+      const required = offset + limit + 1
       const querySide = async key => {
-        let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_FRIENDSHIPS)
-          .where({ [key]: socialUserId, status: 'accepted' })
-        if (typeof request.limit === 'function') request = request.limit(perSideLimit)
-        const response = await request.get()
-        return Array.isArray(response && response.data) ? response.data : []
+        const rows = []
+        while (rows.length < required) {
+          const batchSize = Math.min(100, required - rows.length)
+          let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_FRIENDSHIPS)
+            .where({ [key]: socialUserId, status: 'accepted' })
+          if (typeof request.orderBy === 'function') {
+            request = request.orderBy('acceptedAt', 'desc').orderBy('_id', 'asc')
+          }
+          if (typeof request.skip === 'function') request = request.skip(rows.length)
+          if (typeof request.limit === 'function') request = request.limit(batchSize)
+          const response = await request.get()
+          const batch = Array.isArray(response && response.data) ? response.data : []
+          rows.push.apply(rows, batch)
+          if (batch.length < batchSize) break
+        }
+        return rows
       }
       const [left, right] = await Promise.all([querySide('userA'), querySide('userB')])
       const all = left.concat(right).sort((a, b) => {

@@ -15,7 +15,7 @@ test('friend pair is canonical and rejected pairs cool down for seven days', () 
 
 test('invite tokens have 22 characters, store only their sha256 digest, and expire after seven days', () => {
   const invite = require('../cloudfunctions/poker_social/lib/invite')
-  const token = invite.createInviteToken()
+  const token = invite.deriveInviteToken('test-secret', 'su_owner', 'create_invite', 'mutation-1')
   const record = invite.buildInviteRecord(token, 'su_owner', 1_000)
 
   assert.match(token, /^[A-Za-z0-9_-]{22}$/)
@@ -33,7 +33,7 @@ test('invite inspection and forwarded token do not create a friendship', async (
       { _id: 'su_b', ownerOpenId: 'openid-b', profile: { nickname: 'B' } }
     ]
   })
-  const handlers = createFriendshipHandlers(repository, { now: () => 1_000 })
+  const handlers = createFriendshipHandlers(repository, { now: () => 1_000, tokenSecret: 'test-secret' })
   const owner = { ownerOpenId: 'openid-a' }
   const viewer = { ownerOpenId: 'openid-b' }
   const invite = await handlers.create_invite({ clientMutationId: 'create-1' }, owner)
@@ -52,7 +52,7 @@ test('crossed requests merge into one pending pair and writes are idempotent', a
       { _id: 'su_b', ownerOpenId: 'openid-b', profile: { nickname: 'B' } }
     ]
   })
-  const handlers = createFriendshipHandlers(repository, { now: () => 1_000 })
+  const handlers = createFriendshipHandlers(repository, { now: () => 1_000, tokenSecret: 'test-secret' })
   const a = { ownerOpenId: 'openid-a' }
   const b = { ownerOpenId: 'openid-b' }
   const invite = await handlers.create_invite({ clientMutationId: 'invite-a' }, a)
@@ -69,10 +69,7 @@ test('crossed requests merge into one pending pair and writes are idempotent', a
   assert.equal(pairs.length, 1)
   assert.equal(pairs[0].requesterId, 'su_b')
   assert.equal(pairs[0].receiverId, 'su_a')
-  assert.deepEqual(pairs[0].profileSnapshots, {
-    su_a: { nickname: 'A', avatarFileId: '' },
-    su_b: { nickname: 'B', avatarFileId: '' }
-  })
+  assert.deepEqual(pairs[0].profileSnapshots, {})
 })
 
 test('only receiver can accept, accept is repeatable, reject/remove apply cooldown, and friend list uses public DTOs', async () => {
@@ -84,7 +81,7 @@ test('only receiver can accept, accept is repeatable, reject/remove apply cooldo
       { _id: 'su_b', ownerOpenId: 'openid-b', privatePlayerId: 'B', profile: { nickname: 'B', avatarFileId: 'private-b' } }
     ]
   })
-  const handlers = createFriendshipHandlers(repository, { now: () => now, avatarUrl: async id => 'https://temp/' + id })
+  const handlers = createFriendshipHandlers(repository, { now: () => now, tokenSecret: 'test-secret', avatarUrl: async id => 'https://temp/' + id })
   const a = { ownerOpenId: 'openid-a' }
   const b = { ownerOpenId: 'openid-b' }
   const invite = await handlers.create_invite({ clientMutationId: 'invite-a' }, a)
@@ -129,7 +126,7 @@ test('receiver can reject once, repeat rejection is idempotent, and the pair ent
     ]
   })
   const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
-  const handlers = createFriendshipHandlers(repository, { now: () => 1_000 })
+  const handlers = createFriendshipHandlers(repository, { now: () => 1_000, tokenSecret: 'test-secret' })
   const a = { ownerOpenId: 'openid-a' }
   const b = { ownerOpenId: 'openid-b' }
   const invite = await handlers.create_invite({ clientMutationId: 'reject-invite' }, a)
@@ -174,16 +171,21 @@ test('create invite QR generates scene code through injected code client and ret
   const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
   const repository = createMemorySocialRepository({ social_users: [{ _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: 'A' } }] })
   const calls = []
+  const uploads = []
   const handlers = createFriendshipHandlers(repository, {
     now: () => 1_000,
+    tokenSecret: 'test-secret',
     qrCode: { getUnlimited: async input => { calls.push(input); return Buffer.from('png') } },
-    uploadTempFile: async payload => ({ url: 'https://temp/qrcode.png', uploaded: payload })
+    uploadTempFile: async payload => { uploads.push(payload); return { url: 'https://temp/qrcode.png' } }
   })
 
   const result = await handlers.create_invite_qr({ clientMutationId: 'qr-1' }, { ownerOpenId: 'openid-a' })
+  const retried = await handlers.create_invite_qr({ clientMutationId: 'qr-1' }, { ownerOpenId: 'openid-a' })
   assert.equal(result.qrCodeUrl, 'https://temp/qrcode.png')
+  assert.deepEqual(retried, result)
   assert.match(calls[0].scene, /^[A-Za-z0-9_-]{22}$/)
-  assert.deepEqual(calls, [{ scene: calls[0].scene, page: 'pages/social-invite/social-invite' }])
+  assert.equal(calls[0].scene, calls[1].scene)
+  assert.equal(uploads[0].cloudPath, uploads[1].cloudPath)
   assert.doesNotMatch(JSON.stringify(result), /ownerOpenId|avatarFileId|digest/)
 })
 
@@ -194,7 +196,7 @@ test('social app routes friendship actions and social service requires client mu
     repository,
     identity: { resolve: () => ({ ownerOpenId: 'openid-a' }) },
     requestId: () => 'route-friendship',
-    friendship: { now: () => 1_000 }
+    friendship: { now: () => 1_000, tokenSecret: 'test-secret' }
   })
   const routed = await app.handle({ action: 'create_invite', clientMutationId: 'route-create' }, {})
   assert.equal(routed.code, 0)
@@ -216,4 +218,159 @@ test('social app routes friendship actions and social service requires client mu
     api.callSocialFunction = original
     delete require.cache[servicePath]
   }
+})
+
+test('invite retry reconstructs the same token without persisting it and fails closed without a server secret', async () => {
+  const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
+  const repository = createMemorySocialRepository({ social_users: [{ _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: 'A' } }] })
+  const secured = createFriendshipHandlers(repository, { now: () => 1_000, tokenSecret: 'server-secret-for-tests' })
+  const first = await secured.create_invite({ clientMutationId: 'same-create' }, { ownerOpenId: 'openid-a' })
+  const retry = await secured.create_invite({ clientMutationId: 'same-create' }, { ownerOpenId: 'openid-a' })
+
+  assert.deepEqual(retry, first)
+  assert.equal(JSON.stringify(repository.dump()).includes(first.token), false)
+  await assert.rejects(
+    createFriendshipHandlers(repository, { now: () => 1_000 }).create_invite({ clientMutationId: 'missing-secret' }, { ownerOpenId: 'openid-a' }),
+    error => error.code === 'INVITE_SECRET_UNAVAILABLE'
+  )
+})
+
+test('expired rejected and removed pairs become a fresh pending request with refreshed direction and snapshots', async () => {
+  let now = 1_000
+  const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
+  const repository = createMemorySocialRepository({
+    social_users: [
+      { _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: 'A', avatarFileId: 'a-old' } },
+      { _id: 'su_b', ownerOpenId: 'openid-b', profile: { nickname: 'B', avatarFileId: 'b-old' } }
+    ]
+  })
+  const handlers = createFriendshipHandlers(repository, { now: () => now, tokenSecret: 'test-secret' })
+  const a = { ownerOpenId: 'openid-a' }
+  const b = { ownerOpenId: 'openid-b' }
+  const firstInvite = await handlers.create_invite({ clientMutationId: 'reopen-invite-1' }, a)
+  const pending = await handlers.send_friend_request({ token: firstInvite.token, clientMutationId: 'reopen-request-1' }, b)
+  const rejected = await handlers.reject_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'reopen-reject' }, a)
+  await assert.rejects(
+    handlers.send_friend_request({ token: firstInvite.token, clientMutationId: 'reopen-too-early' }, b),
+    error => error.code === 'FRIEND_REQUEST_COOLDOWN'
+  )
+
+  now = rejected.cooldownUntil + 1
+  repository.set('social_users', 'su_b', { _id: 'su_b', ownerOpenId: 'openid-b', profile: { nickname: 'B refreshed', avatarFileId: 'b-new' } })
+  const reopenedInvite = await handlers.create_invite({ clientMutationId: 'reopen-invite-2' }, a)
+  const reopened = await handlers.send_friend_request({ token: reopenedInvite.token, clientMutationId: 'reopen-request-2' }, b)
+  const record = repository.get('social_friendships', pending.friendshipId)
+
+  assert.equal(reopened.status, 'pending')
+  assert.equal(record.requesterId, 'su_b')
+  assert.equal(record.receiverId, 'su_a')
+  assert.deepEqual(record.profileSnapshots, {})
+  assert.equal(record.createdAt, now)
+
+  await handlers.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'reopen-accept' }, a)
+  const removed = await handlers.remove_friend({ friendshipId: pending.friendshipId, clientMutationId: 'reopen-remove' }, a)
+  now = removed.cooldownUntil + 1
+  const afterRemovalInvite = await handlers.create_invite({ clientMutationId: 'reopen-invite-3' }, a)
+  const afterRemoval = await handlers.send_friend_request({ token: afterRemovalInvite.token, clientMutationId: 'reopen-request-3' }, b)
+  assert.equal(afterRemoval.status, 'pending')
+})
+
+test('only the original receiver may repeat accept or reject after status changes', async () => {
+  const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
+  const repository = createMemorySocialRepository({
+    social_users: [
+      { _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: 'A' } },
+      { _id: 'su_b', ownerOpenId: 'openid-b', profile: { nickname: 'B' } },
+      { _id: 'su_c', ownerOpenId: 'openid-c', profile: { nickname: 'C' } }
+    ]
+  })
+  const handlers = createFriendshipHandlers(repository, { now: () => 1_000, tokenSecret: 'test-secret' })
+  const a = { ownerOpenId: 'openid-a' }
+  const b = { ownerOpenId: 'openid-b' }
+  const c = { ownerOpenId: 'openid-c' }
+  const invite = await handlers.create_invite({ clientMutationId: 'permission-invite' }, a)
+  const pending = await handlers.send_friend_request({ token: invite.token, clientMutationId: 'permission-request' }, b)
+  await handlers.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'permission-accept' }, a)
+
+  for (const actor of [b, c]) {
+    await assert.rejects(
+      handlers.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'repeat-accept-' + actor.ownerOpenId }, actor),
+      error => error.code === 'FORBIDDEN'
+    )
+    await assert.rejects(
+      handlers.reject_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'repeat-reject-' + actor.ownerOpenId }, actor),
+      error => error.code === 'FORBIDDEN'
+    )
+  }
+})
+
+test('friend list keeps the acceptance snapshot after a friend changes their profile', async () => {
+  const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
+  const repository = createMemorySocialRepository({
+    social_users: [
+      { _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: 'A' } },
+      { _id: 'su_b', ownerOpenId: 'openid-b', profile: { nickname: 'B at acceptance', avatarFileId: 'b-original' } }
+    ]
+  })
+  const handlers = createFriendshipHandlers(repository, { now: () => 1_000, tokenSecret: 'test-secret', avatarUrl: async fileId => 'https://temp/' + fileId })
+  const a = { ownerOpenId: 'openid-a' }
+  const b = { ownerOpenId: 'openid-b' }
+  const invite = await handlers.create_invite({ clientMutationId: 'snapshot-invite' }, a)
+  const pending = await handlers.send_friend_request({ token: invite.token, clientMutationId: 'snapshot-request' }, b)
+  await handlers.accept_friend_request({ friendshipId: pending.friendshipId, clientMutationId: 'snapshot-accept' }, a)
+  repository.set('social_users', 'su_b', { _id: 'su_b', ownerOpenId: 'openid-b', title: 'New title', profile: { nickname: 'B now', avatarFileId: 'b-new' } })
+
+  const listed = await handlers.list_friends({}, a)
+  assert.equal(listed.items[0].nickname, 'B at acceptance')
+  assert.equal(listed.items[0].avatarUrl, 'https://temp/b-original')
+  assert.equal(listed.items[0].title, 'New title')
+})
+
+test('directed friendship pagination orders each side before limiting and has no cross-page gaps', async () => {
+  const calls = []
+  const records = [
+    { _id: 'a-old', userA: 'su_me', userB: 'su_1', status: 'accepted', acceptedAt: 10 },
+    { _id: 'a-new', userA: 'su_me', userB: 'su_2', status: 'accepted', acceptedAt: 90 },
+    { _id: 'a-mid', userA: 'su_me', userB: 'su_3', status: 'accepted', acceptedAt: 50 },
+    { _id: 'b-old', userA: 'su_4', userB: 'su_me', status: 'accepted', acceptedAt: 20 },
+    { _id: 'b-new', userA: 'su_5', userB: 'su_me', status: 'accepted', acceptedAt: 80 },
+    { _id: 'b-mid', userA: 'su_6', userB: 'su_me', status: 'accepted', acceptedAt: 60 }
+  ]
+  const { createCloudSocialRepository } = require('../cloudfunctions/poker_social/lib/repository')
+  const database = {
+    collection() {
+      return {
+        where(query) {
+          const state = { query, orders: [], skip: 0, limit: 100 }
+          const chain = {
+            orderBy(field, direction) { state.orders.push({ field, direction }); return chain },
+            skip(value) { state.skip = value; return chain },
+            limit(value) { state.limit = value; return chain },
+            async get() {
+              calls.push(state)
+              let rows = records.filter(row => Object.keys(query).every(key => row[key] === query[key]))
+              for (const order of state.orders.slice().reverse()) {
+                rows = rows.slice().sort((left, right) => {
+                  const delta = left[order.field] > right[order.field] ? 1 : left[order.field] < right[order.field] ? -1 : 0
+                  return order.direction === 'desc' ? -delta : delta
+                })
+              }
+              return { data: rows.slice(state.skip, state.skip + state.limit) }
+            }
+          }
+          return chain
+        }
+      }
+    }
+  }
+  const repository = createCloudSocialRepository(database)
+  const first = await repository.listAcceptedFriendships('su_me', { offset: 0, limit: 2 })
+  const second = await repository.listAcceptedFriendships('su_me', { offset: first.nextOffset, limit: 2 })
+  const third = await repository.listAcceptedFriendships('su_me', { offset: second.nextOffset, limit: 2 })
+
+  assert.deepEqual(first.items.map(item => item._id), ['a-new', 'b-new'])
+  assert.deepEqual(second.items.map(item => item._id), ['b-mid', 'a-mid'])
+  assert.deepEqual(third.items.map(item => item._id), ['b-old', 'a-old'])
+  assert.equal(new Set(first.items.concat(second.items, third.items).map(item => item._id)).size, 6)
+  assert.ok(calls.every(call => call.orders.slice(0, 2).map(order => order.field).join(',') === 'acceptedAt,_id'))
 })

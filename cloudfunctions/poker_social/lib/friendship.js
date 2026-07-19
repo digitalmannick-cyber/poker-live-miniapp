@@ -1,7 +1,7 @@
 const crypto = require('crypto')
 const { socialError } = require('./social-error')
-const { createInviteToken, buildInviteRecord, getInviteId, assertActiveInvite } = require('./invite')
-const { runIdempotent } = require('./idempotency')
+const { deriveInviteToken, buildInviteRecord, getInviteId, assertActiveInvite } = require('./invite')
+const { runIdempotent, requireClientMutationId } = require('./idempotency')
 const { toProfileDto } = require('./profile')
 
 const USER_COLLECTION = 'social_users'
@@ -96,6 +96,18 @@ function profileSnapshot(user) {
   }
 }
 
+async function friendDto(relationship, friendId, friend, avatarUrl) {
+  const current = await publicUserDto(friend, avatarUrl)
+  const snapshot = relationship && relationship.profileSnapshots && relationship.profileSnapshots[friendId] || {}
+  const nickname = String(snapshot.nickname || current.nickname)
+  const avatarFileId = String(snapshot.avatarFileId || '')
+  return Object.assign({}, current, {
+    nickname,
+    avatarText: nickname.slice(0, 1),
+    avatarUrl: avatarFileId ? await avatarUrl(avatarFileId) : current.avatarUrl
+  })
+}
+
 function createFriendshipHandlers(repository, options) {
   const config = options || {}
   const now = typeof config.now === 'function' ? config.now : () => Date.now()
@@ -114,20 +126,26 @@ function createFriendshipHandlers(repository, options) {
 
   async function createInvite(event, actor, createQr) {
     const actorUser = await findActorUser(repository, actor)
-    return runIdempotent(repository, actorUser._id, createQr ? 'create_invite_qr' : 'create_invite', event, async store => {
-      const token = createInviteToken()
+    const action = createQr ? 'create_invite_qr' : 'create_invite'
+    const clientMutationId = requireClientMutationId(event)
+    const token = deriveInviteToken(config.tokenSecret, actorUser._id, action, clientMutationId)
+    const result = await runIdempotent(repository, actorUser._id, action, event, async store => {
       const invite = buildInviteRecord(token, actorUser._id, now())
       await store.set(INVITE_COLLECTION, invite._id, invite)
-      if (!createQr) return { token, expiresAt: invite.expiresAt }
+      return { inviteId: invite._id, expiresAt: invite.expiresAt }
+    }, {
+      persistResult: value => ({ inviteId: value.inviteId, expiresAt: value.expiresAt }),
+      restoreResult: value => ({ inviteId: value.inviteId, expiresAt: value.expiresAt })
+    })
+    if (!createQr) return { token, expiresAt: result.expiresAt }
       if (!config.qrCode || typeof config.qrCode.getUnlimited !== 'function' || typeof config.uploadTempFile !== 'function') {
         throw socialError('QR_UNAVAILABLE', 'qr unavailable')
       }
       const image = await config.qrCode.getUnlimited({ scene: token, page: 'pages/social-invite/social-invite' })
-      const uploaded = await config.uploadTempFile({ cloudPath: 'social-invites/' + invite._id + '.png', fileContent: image })
+      const uploaded = await config.uploadTempFile({ cloudPath: 'social-invites/' + result.inviteId + '.png', fileContent: image })
       const qrCodeUrl = String(uploaded && uploaded.url || '')
       if (!qrCodeUrl) throw socialError('QR_UNAVAILABLE', 'qr unavailable')
-      return { expiresAt: invite.expiresAt, qrCodeUrl }
-    })
+      return { expiresAt: result.expiresAt, qrCodeUrl }
   }
 
   return {
@@ -154,12 +172,12 @@ function createFriendshipHandlers(repository, options) {
         const pairId = getPairId(requester._id, invite.inviterId)
         const existing = await store.get(FRIENDSHIP_COLLECTION, pairId)
         transition(existing, 'request', at)
-        if (existing) return friendshipResult(existing)
-        const inviter = await findUserById(store, invite.inviterId)
+        if (existing && existing.status !== 'rejected' && existing.status !== 'removed') return friendshipResult(existing)
         const record = buildFriendshipRecord(requester._id, invite.inviterId, requester._id, at)
-        record.profileSnapshots = {
-          [requester._id]: profileSnapshot(requester),
-          [inviter._id]: profileSnapshot(inviter)
+        record.profileSnapshots = {}
+        if (existing) {
+          record._id = existing._id
+          record.userIds = existing.userIds
         }
         await store.set(FRIENDSHIP_COLLECTION, pairId, record)
         await store.set(INVITE_COLLECTION, invite._id, Object.assign({}, invite, { usedCount: (Number(invite.usedCount) || 0) + 1, updatedAt: at }))
@@ -172,9 +190,17 @@ function createFriendshipHandlers(repository, options) {
       return runIdempotent(repository, actorUser._id, 'accept_friend_request', event, async store => {
         const record = await store.get(FRIENDSHIP_COLLECTION, String(event && event.friendshipId || ''))
         if (!record) throw socialError('FRIENDSHIP_NOT_FOUND', 'friendship not found')
-        if (record.status === 'pending' && record.receiverId !== actorUser._id) throw socialError('FORBIDDEN', 'not allowed')
+        if ((record.userA !== actorUser._id && record.userB !== actorUser._id) || record.receiverId !== actorUser._id) throw socialError('FORBIDDEN', 'not allowed')
         if (record.status !== 'pending' && record.status !== 'accepted') throw socialError('INVALID_FRIENDSHIP_STATE', 'invalid friendship state')
         const next = transition(record, 'accept', now())
+        if (next.status === 'accepted' && record.status === 'pending') {
+          const userA = await findUserById(store, next.userA)
+          const userB = await findUserById(store, next.userB)
+          next.profileSnapshots = {
+            [next.userA]: profileSnapshot(userA),
+            [next.userB]: profileSnapshot(userB)
+          }
+        }
         if (next !== record) await store.set(FRIENDSHIP_COLLECTION, next._id, next)
         return friendshipResult(next)
       })
@@ -185,7 +211,7 @@ function createFriendshipHandlers(repository, options) {
       return runIdempotent(repository, actorUser._id, 'reject_friend_request', event, async store => {
         const record = await store.get(FRIENDSHIP_COLLECTION, String(event && event.friendshipId || ''))
         if (!record) throw socialError('FRIENDSHIP_NOT_FOUND', 'friendship not found')
-        if (record.status === 'pending' && record.receiverId !== actorUser._id) throw socialError('FORBIDDEN', 'not allowed')
+        if ((record.userA !== actorUser._id && record.userB !== actorUser._id) || record.receiverId !== actorUser._id) throw socialError('FORBIDDEN', 'not allowed')
         if (record.status !== 'pending' && record.status !== 'rejected') throw socialError('INVALID_FRIENDSHIP_STATE', 'invalid friendship state')
         const next = transition(record, 'reject', now())
         if (next !== record) await store.set(FRIENDSHIP_COLLECTION, next._id, next)
@@ -220,7 +246,7 @@ function createFriendshipHandlers(repository, options) {
       for (const relationship of page.items) {
         const friendId = relationship.userA === actorUser._id ? relationship.userB : relationship.userA
         const friend = await findUserById(repository, friendId)
-        const dto = await publicUserDto(friend, avatarUrl)
+        const dto = await friendDto(relationship, friendId, friend, avatarUrl)
         items.push(Object.assign({ friendshipId: relationship._id }, dto))
       }
       return { items, nextOffset: page.nextOffset }

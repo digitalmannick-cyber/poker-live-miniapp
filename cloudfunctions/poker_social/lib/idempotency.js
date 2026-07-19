@@ -13,21 +13,25 @@ function requireClientMutationId(event) {
   return value
 }
 
-async function runIdempotent(repository, actorId, action, event, callback) {
+async function runIdempotent(repository, actorId, action, event, callback, options) {
   const clientMutationId = requireClientMutationId(event)
   const id = mutationRecordId(actorId, clientMutationId)
+  const config = options || {}
   return repository.runTransaction(async store => {
     const existing = await store.get(MUTATION_COLLECTION, id)
     if (existing) {
       if (existing.actorId !== actorId || existing.action !== action) throw socialError('MUTATION_CONFLICT', 'mutation conflict')
-      return existing.result
+      return typeof config.restoreResult === 'function' ? config.restoreResult(existing.result, clientMutationId) : existing.result
     }
     const result = await callback(store)
+    const persistedResult = typeof config.persistResult === 'function'
+      ? await config.persistResult(result, clientMutationId)
+      : result
     await store.set(MUTATION_COLLECTION, id, {
       actorId,
       action,
       clientMutationId,
-      result,
+      result: persistedResult,
       createdAt: Date.now()
     })
     return result
