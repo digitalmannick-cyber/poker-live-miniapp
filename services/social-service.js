@@ -29,7 +29,17 @@ function sendFriendRequest(input) { return write('send_friend_request', input) }
 function acceptFriendRequest(input) { return write('accept_friend_request', input) }
 function rejectFriendRequest(input) { return write('reject_friend_request', input) }
 function removeFriend(input) { return write('remove_friend', input) }
-function listFriends(input) { return callSocialFunction('list_friends', input) }
+function listFriends(input) {
+  const source = input || {}
+  return callSocialFunction('list_friends', {
+    offset: Math.max(0, Number(source.offset) || 0),
+    limit: Math.min(50, Math.max(1, Number(source.limit) || 20))
+  })
+}
+
+function getFriendDetail(friendUserId) {
+  return callSocialFunction('get_friend_detail', { friendUserId: String(friendUserId || '').trim() })
+}
 
 module.exports = {
   initializeSocialProfile,
@@ -41,5 +51,6 @@ module.exports = {
   acceptFriendRequest,
   rejectFriendRequest,
   removeFriend,
-  listFriends
+  listFriends,
+  getFriendDetail
 }

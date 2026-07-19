@@ -1,0 +1,43 @@
+<view class="friend-hub">
+  <view class="friend-subnav">
+    <view class="friend-subnav-item {{activeSection === 'feed' ? 'active' : ''}}" data-section="feed" bindtap="selectSection">动态</view>
+    <view class="friend-subnav-item {{activeSection === 'friends' ? 'active' : ''}}" data-section="friends" bindtap="selectSection">好友</view>
+    <view class="friend-subnav-item {{activeSection === 'ranking' ? 'active' : ''}}" data-section="ranking" bindtap="selectSection">排行榜</view>
+  </view>
+
+  <view wx:if="{{activeSection === 'friends'}}">
+    <view wx:if="{{status === 'loading'}}" class="friend-hub-state">正在同步好友资料…</view>
+    <view wx:elif="{{status === 'error'}}" class="friend-hub-state friend-hub-error">
+      <text>{{errorMessage}}</text>
+      <view class="friend-retry" bindtap="loadFriends">重试</view>
+    </view>
+    <view wx:elif="{{friends.length}}" class="friend-list">
+      <view wx:for="{{friends}}" wx:key="friendUserId" class="friend-card" style="{{item.rowStyle}}" data-id="{{item.friendUserId}}" bindtap="openFriend">
+        <view class="friend-card-color" style="{{item.colorStyle}}"></view>
+        <view class="friend-avatar">
+          <image wx:if="{{item.avatarUrl}}" class="friend-avatar-img" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+          <text wx:else>{{item.avatarText}}</text>
+        </view>
+        <view class="friend-main">
+          <view class="friend-name-row">
+            <view class="friend-name">{{item.name}}</view>
+            <view wx:if="{{item.title}}" class="friend-title">{{item.title}}</view>
+          </view>
+          <view class="friend-type" style="{{item.typeStyle}}">玩家类型 · {{item.type}}</view>
+          <view class="friend-private-line">Leak · <block wx:if="{{item.leakTags.length}}"><text wx:for="{{item.leakTags}}" wx:for-item="tag" wx:key="label">{{tag.label}} </text></block><text wx:else>暂无</text></view>
+          <view class="friend-private-line">Note · {{item.notePreview}}</view>
+          <view class="friend-bottom">
+            <text>对战手牌 {{item.battleHandLabel}}</text>
+            <text wx:if="{{item.statsVisible && item.durationLabel}}">累计时长 {{item.durationLabel}}</text>
+            <text wx:if="{{item.statsVisible && item.handCountLabel}}">手牌数 {{item.handCountLabel}}</text>
+            <text wx:if="{{!item.statsVisible}}">对方已隐藏统计数据</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="friend-hub-state">还没有已确认的好友</view>
+  </view>
+
+  <view wx:elif="{{activeSection === 'feed'}}" class="friend-hub-state">动态将在这里聚合好友与广场范围内容</view>
+  <view wx:else class="friend-hub-state">排行榜将在好友统计同步后开放</view>
+</view>

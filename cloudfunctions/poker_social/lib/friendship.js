@@ -125,6 +125,15 @@ function createFriendshipHandlers(repository, options) {
     return user
   }
 
+  async function requireAcceptedFriendship(store, actorUserId, friendUserId) {
+    const relationship = await store.get(FRIENDSHIP_COLLECTION, getPairId(actorUserId, friendUserId))
+    if (!relationship || relationship.status !== 'accepted') throw socialError('FORBIDDEN', 'not allowed')
+    if ((relationship.userA !== actorUserId && relationship.userB !== actorUserId) || (relationship.userA !== friendUserId && relationship.userB !== friendUserId)) {
+      throw socialError('FORBIDDEN', 'not allowed')
+    }
+    return relationship
+  }
+
   async function createInvite(event, actor) {
     const actorUser = await findActorUser(repository, actor)
     const action = 'create_invite'
@@ -284,6 +293,15 @@ function createFriendshipHandlers(repository, options) {
         items.push(Object.assign({ friendshipId: relationship._id }, dto))
       }
       return { items, nextOffset: page.nextOffset }
+    },
+
+    async get_friend_detail(event, actor) {
+      const actorUser = await findActorUser(repository, actor)
+      const friendUserId = String(event && event.friendUserId || '').trim()
+      if (!friendUserId) throw socialError('INVALID_FRIENDSHIP', 'invalid friendship')
+      const relationship = await requireAcceptedFriendship(repository, actorUser._id, friendUserId)
+      const friend = await findUserById(repository, friendUserId)
+      return friendDto(relationship, friendUserId, friend, avatarUrl)
     }
   }
 }

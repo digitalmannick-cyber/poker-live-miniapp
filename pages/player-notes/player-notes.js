@@ -39,6 +39,9 @@ function buildListItem(note) {
 
 Page({
   data: {
+    playerSection: 'friends',
+    friendSection: 'friends',
+    friendsLoaded: false,
     query: '',
     selectedType: '',
     typeFilters: [],
@@ -52,13 +55,41 @@ Page({
   },
 
   async onLoad() {
-    await this.refresh()
+    if (this.data.playerSection === 'library') await this.refresh()
+  },
+
+  async onReady() {
+    if (this.data.playerSection === 'friends') await this.ensureFriendsLoaded()
   },
 
   async onShow() {
     tabBar.syncCustomTabBar('/pages/player-notes/player-notes')
-    await this.refresh()
+    if (this.data.playerSection === 'library') await this.refresh()
     this.syncOnboardingGuide()
+  },
+
+  async ensureFriendsLoaded() {
+    if (this.data.friendsLoaded) return
+    const friendHub = this.selectComponent && this.selectComponent('#friendHub')
+    if (!friendHub || typeof friendHub.loadFriends !== 'function') return
+    await friendHub.loadFriends()
+    this.setData({ friendsLoaded: true })
+  },
+
+  async selectPlayerSection(event) {
+    const section = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.section || 'friends')
+    if (section !== 'friends' && section !== 'library') return
+    this.setData({ playerSection: section })
+    if (section === 'friends') {
+      await this.ensureFriendsLoaded()
+      return
+    }
+    await this.refresh()
+  },
+
+  selectFriendSection(event) {
+    const section = String(event && event.detail && event.detail.section || 'friends')
+    this.setData({ friendSection: section })
   },
 
   syncOnboardingGuide() {
@@ -88,7 +119,8 @@ Page({
     const settings = await dataService.getAppSettings()
     const notes = await dataService.getPlayerNotes({
       query: this.data.query,
-      type: this.data.selectedType
+      type: this.data.selectedType,
+      sourceKind: 'library'
     })
     const isSearching = !!(this.data.query || this.data.selectedType)
     this.setData({
@@ -131,5 +163,15 @@ Page({
     const id = event.currentTarget.dataset.id
     if (!id) return
     wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?id=' + encodeURIComponent(id) })
+  },
+
+  openFriend(event) {
+    const friendUserId = String(event && event.detail && event.detail.friendUserId || '')
+    if (!friendUserId) return
+    wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?friendUserId=' + encodeURIComponent(friendUserId) })
+  },
+
+  openMessages() {
+    if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '消息中心即将开放', icon: 'none' })
   }
 })
