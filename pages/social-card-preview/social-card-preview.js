@@ -43,8 +43,24 @@ function clearPendingImport(shareId) {
   wx.removeStorageSync(pendingStorageKey(shareId))
 }
 
-function stableImportedPlayerId(mutationId) {
-  const token = String(mutationId || '')
+function completedStorageKey(shareId) {
+  return 'playerCardImportCompleted:' + String(shareId || '')
+}
+
+function readCompletedImport(shareId) {
+  if (typeof wx === 'undefined' || typeof wx.getStorageSync !== 'function') return null
+  const value = wx.getStorageSync(completedStorageKey(shareId))
+  if (!value || value.shareId !== shareId || !value.playerId) return null
+  return value
+}
+
+function writeCompletedImport(value) {
+  if (typeof wx === 'undefined' || typeof wx.setStorageSync !== 'function') return
+  wx.setStorageSync(completedStorageKey(value && value.shareId), value)
+}
+
+function stableImportedPlayerId(shareId) {
+  const token = String(shareId || '')
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
     .slice(0, 96)
   return 'player_note_card_' + (token || Date.now())
@@ -100,17 +116,27 @@ Page({
       const share = await socialService.getPlayerCardShare(shareId)
       if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
       const pending = readPendingImport(shareId)
-      if (share && share.imported && !pending) {
-        this.setData({ share, status: 'imported', errorMessage: '' })
+      const completed = readCompletedImport(shareId)
+      if (share && share.imported && completed) {
+        this.setData({
+          share,
+          status: 'imported',
+          importedPlayerId: String(completed.playerId),
+          createdPlayerNoteId: String(completed.mode === 'new' ? completed.playerId : '')
+        })
         return
       }
       const notes = await dataService.getPlayerNotes({ sourceKind: 'library' })
       if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
       const duplicate = importer.findDuplicateByName(notes, share && share.card && share.card.name)
       const needsResume = !!(pending && pending.serverConfirmed)
+      const serverConfirmed = !!(pending && pending.serverConfirmed || share && share.imported)
+      const createdPlayerNoteId = String(pending && pending.createdPlayerNoteId || (share && share.imported ? stableImportedPlayerId(shareId) : ''))
       this.setData({
         share,
         duplicate,
+        serverConfirmed,
+        createdPlayerNoteId,
         status: needsResume ? 'error' : 'ready',
         errorMessage: needsResume ? '上次导入尚未写入玩家库，请继续完成。' : ''
       })
@@ -154,7 +180,7 @@ Page({
     if (!this.data.share || !this.data.share.card) return
     if (mode === 'overwrite' && !this.data.duplicate) return
     const createdPlayerNoteId = mode === 'new'
-      ? (this.data.createdPlayerNoteId || stableImportedPlayerId(this.data.importMutationId))
+      ? (this.data.createdPlayerNoteId || stableImportedPlayerId(this.data.share.shareId || this.data.shareId))
       : ''
     const pending = {
       shareId: this.data.share.shareId || this.data.shareId,
@@ -199,6 +225,11 @@ Page({
         this.setData({ createdPlayerNoteId: String(saved && saved._id || '') })
       }
       if (!saved || !saved._id) throw new Error('玩家保存失败，请重试。')
+      writeCompletedImport({
+        shareId: pending.shareId,
+        playerId: String(saved._id),
+        mode
+      })
       clearPendingImport(pending.shareId)
       if (!this._cardPreviewAttached) return
       this.setData({

@@ -199,7 +199,7 @@ test('expiry withdrawal and import confirmation follow the seven-day and ownersh
   repository.set('social_friendships', getPairId('su_a', 'su_b'), {
     _id: getPairId('su_a', 'su_b'), userA: 'su_a', userB: 'su_b', status: 'removed'
   })
-  await assert.rejects(handlers.get_player_card_share({ shareId: shared.shareId }, { ownerOpenId: 'openid-b' }), error => error.code === 'FORBIDDEN')
+  assert.equal((await handlers.get_player_card_share({ shareId: shared.shareId }, { ownerOpenId: 'openid-b' })).imported, true)
   assert.ok(repository.get('social_player_card_shares', shared.shareId).importedAt, 'relationship changes must not erase an imported copy marker')
   repository.set('social_friendships', getPairId('su_a', 'su_b'), {
     _id: getPairId('su_a', 'su_b'), userA: 'su_a', userB: 'su_b', status: 'accepted'
@@ -217,6 +217,68 @@ test('expiry withdrawal and import confirmation follow the seven-day and ownersh
   assert.equal(withdrawn.withdrawn, true)
   assert.deepEqual(await handlers.withdraw_player_card_share({ shareId: third.shareId, clientMutationId: 'owner-withdraw' }, { ownerOpenId: 'openid-a' }), withdrawn)
   await assert.rejects(handlers.get_player_card_share({ shareId: third.shareId }, { ownerOpenId: 'openid-b' }), error => error.code === 'PLAYER_CARD_UNAVAILABLE')
+})
+
+test('an imported target keeps permanent read ownership after removal, withdrawal, and expiry', async () => {
+  const nowRef = { value: 1_000 }
+  const repository = createRepository()
+  const handlers = createHandlers(repository, nowRef)
+  const shared = await handlers.share_player_card({
+    playerNoteId: 'note-a', targetUserId: 'su_b', clientMutationId: 'permanent-share'
+  }, { ownerOpenId: 'openid-a' })
+  const confirmed = await handlers.confirm_player_card_import({
+    shareId: shared.shareId, clientMutationId: 'permanent-import'
+  }, { ownerOpenId: 'openid-b' })
+  assert.equal(confirmed.imported, true)
+
+  repository.set('social_friendships', getPairId('su_a', 'su_b'), {
+    _id: getPairId('su_a', 'su_b'), userA: 'su_a', userB: 'su_b', status: 'removed'
+  })
+  assert.equal((await handlers.get_player_card_share({ shareId: shared.shareId }, { ownerOpenId: 'openid-b' })).card.name, '老张')
+  assert.deepEqual(await handlers.confirm_player_card_import({
+    shareId: shared.shareId, clientMutationId: 'permanent-import'
+  }, { ownerOpenId: 'openid-b' }), confirmed)
+
+  await handlers.withdraw_player_card_share({
+    shareId: shared.shareId, clientMutationId: 'withdraw-after-import'
+  }, { ownerOpenId: 'openid-a' })
+  nowRef.value = shared.expiresAt + 1
+  assert.equal((await handlers.get_player_card_share({ shareId: shared.shareId }, { ownerOpenId: 'openid-b' })).imported, true)
+
+  await assert.rejects(
+    handlers.get_player_card_share({ shareId: shared.shareId }, { ownerOpenId: 'openid-c' }),
+    error => error.code === 'FORBIDDEN'
+  )
+})
+
+test('unimported cards remain unavailable after removal, withdrawal, or expiry', async () => {
+  const nowRef = { value: 1_000 }
+  const repository = createRepository()
+  const handlers = createHandlers(repository, nowRef)
+  const removed = await handlers.share_player_card({
+    playerNoteId: 'note-a', targetUserId: 'su_b', clientMutationId: 'unimported-removed'
+  }, { ownerOpenId: 'openid-a' })
+  repository.set('social_friendships', getPairId('su_a', 'su_b'), {
+    _id: getPairId('su_a', 'su_b'), userA: 'su_a', userB: 'su_b', status: 'removed'
+  })
+  await assert.rejects(handlers.get_player_card_share({ shareId: removed.shareId }, { ownerOpenId: 'openid-b' }), error => error.code === 'FORBIDDEN')
+
+  repository.set('social_friendships', getPairId('su_a', 'su_b'), {
+    _id: getPairId('su_a', 'su_b'), userA: 'su_a', userB: 'su_b', status: 'accepted'
+  })
+  const withdrawn = await handlers.share_player_card({
+    playerNoteId: 'note-a', targetUserId: 'su_b', clientMutationId: 'unimported-withdrawn'
+  }, { ownerOpenId: 'openid-a' })
+  await handlers.withdraw_player_card_share({
+    shareId: withdrawn.shareId, clientMutationId: 'withdraw-unimported'
+  }, { ownerOpenId: 'openid-a' })
+  await assert.rejects(handlers.get_player_card_share({ shareId: withdrawn.shareId }, { ownerOpenId: 'openid-b' }), error => error.code === 'PLAYER_CARD_UNAVAILABLE')
+
+  const expired = await handlers.share_player_card({
+    playerNoteId: 'note-a', targetUserId: 'su_b', clientMutationId: 'unimported-expired'
+  }, { ownerOpenId: 'openid-a' })
+  nowRef.value = expired.expiresAt + 1
+  await assert.rejects(handlers.get_player_card_share({ shareId: expired.shareId }, { ownerOpenId: 'openid-b' }), error => error.code === 'PLAYER_CARD_UNAVAILABLE')
 })
 
 test('unsafe player card avatar resources never reach DTOs while HTTPS resources remain usable', async () => {

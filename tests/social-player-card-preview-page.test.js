@@ -209,7 +209,8 @@ test('unload after server confirmation prevents avatar and local player writes',
 })
 
 test('already-imported and unavailable shares never write the player library', async () => {
-  const imported = loadPage({ getShare: Object.assign(cardShare(), { imported: true }) })
+  const completedStorage = new Map([['playerCardImportCompleted:pcs_1', { shareId: 'pcs_1', playerId: 'saved-player' }]])
+  const imported = loadPage({ storage: completedStorage, getShare: Object.assign(cardShare(), { imported: true }) })
   try {
     const page = createInstance(imported.definition)
     await page.onLoad({ shareId: 'pcs_1' })
@@ -226,6 +227,21 @@ test('already-imported and unavailable shares never write the player library', a
     assert.equal(page.data.status, 'unavailable')
     assert.match(page.data.errorMessage, /不可访问|失效/)
   } finally { unavailable.restore() }
+})
+
+test('an imported share without a local completion receipt can finish on another device', async () => {
+  const loaded = loadPage({ getShare: Object.assign(cardShare(), { imported: true }) })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    assert.equal(page.data.status, 'ready')
+    assert.equal(page.data.serverConfirmed, true)
+    await page.importAsNew()
+    assert.equal(loaded.calls.confirm.length, 0)
+    assert.equal(loaded.calls.create.length, 1)
+    assert.match(loaded.calls.create[0]._id, /pcs_1/)
+    assert.equal(page.data.status, 'imported')
+  } finally { loaded.restore() }
 })
 
 function cardShare() {

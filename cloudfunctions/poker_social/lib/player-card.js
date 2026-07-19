@@ -118,7 +118,7 @@ async function getShareForParticipant(repository, shareId, actorUser, role) {
 
 async function requireReadableShare(repository, share, actorUser, nowMs) {
   if (!isReadableCardShare(share, actorUser._id, nowMs)) throw socialError('PLAYER_CARD_UNAVAILABLE', 'player card unavailable')
-  await requireAcceptedFriendship(repository, share.senderUserId, share.targetUserId)
+  if (!share.importedAt) await requireAcceptedFriendship(repository, share.senderUserId, share.targetUserId)
   return share
 }
 

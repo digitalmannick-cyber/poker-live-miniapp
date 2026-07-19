@@ -18,8 +18,9 @@ async function requireAcceptedFriendship(repository, leftUserId, rightUserId) {
 }
 
 function isReadableCardShare(share, viewerId, nowMs) {
-  if (!share || share.status !== 'active' || share.targetUserId !== viewerId) return false
-  return !!share.importedAt || Number(share.expiresAt) > Number(nowMs)
+  if (!share || share.targetUserId !== viewerId) return false
+  if (share.importedAt) return true
+  return share.status === 'active' && Number(share.expiresAt) > Number(nowMs)
 }
 
 module.exports = { requireAcceptedFriendship, isReadableCardShare }
