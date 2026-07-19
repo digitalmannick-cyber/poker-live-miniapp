@@ -64,6 +64,43 @@ function buildFriendView(remote) {
   }
 }
 
+function buildCardSharePreview(note) {
+  const source = note || {}
+  return {
+    avatarUrl: String(source.avatarDisplayUrl || ''),
+    avatarText: String(source.avatarText || source.name || '').slice(0, 1),
+    name: String(source.name || ''),
+    type: String(source.type || '未分类'),
+    leakTags: Array.isArray(source.leakTags) ? source.leakTags.slice() : [],
+    note: String(source.note || '')
+  }
+}
+
+function normalizeCardFriend(remote) {
+  const source = remote || {}
+  const socialUserId = String(source.socialUserId || '').trim()
+  if (!socialUserId || source.status && source.status !== 'accepted') return null
+  return {
+    socialUserId,
+    nickname: String(source.nickname || '未命名好友'),
+    avatarUrl: String(source.avatarUrl || ''),
+    avatarText: String(source.avatarText || source.nickname || '').slice(0, 1),
+    title: String(source.title || '')
+  }
+}
+
+function appendUniqueCardFriends(current, incoming) {
+  const result = []
+  const seen = Object.create(null)
+  ;[].concat(current || [], incoming || []).forEach(item => {
+    const friend = normalizeCardFriend(item)
+    if (!friend || seen[friend.socialUserId]) return
+    seen[friend.socialUserId] = true
+    result.push(friend)
+  })
+  return result
+}
+
 function safeDecodeQueryValue(value) {
   const source = String(value || '')
   try {
@@ -273,6 +310,17 @@ Page({
     handCandidates: [],
     replayVisible: false,
     replayData: null,
+    cardShareVisible: false,
+    cardShareStatus: 'idle',
+    cardSharePreview: null,
+    cardFriends: [],
+    selectedCardFriendId: '',
+    nextCardFriendOffset: null,
+    cardFriendLoadingMore: false,
+    cardFriendLoadMoreError: '',
+    cardShareError: '',
+    cardShareNeedsFriendRefresh: false,
+    cardShareMutationId: '',
     saving: false,
     saveError: ''
   },
@@ -316,6 +364,7 @@ Page({
   onUnload() {
     this._friendPageAttached = false
     this.invalidateFriendRequests()
+    this.invalidateCardShareRequests()
   },
 
   nextFriendRequest() {
@@ -329,6 +378,30 @@ Page({
 
   isFriendRequestCurrent(sequence) {
     return this._friendPageAttached !== false && this._friendRequestSequence === sequence
+  },
+
+  nextCardFriendRequest() {
+    this._cardFriendRequestSequence = (Number(this._cardFriendRequestSequence) || 0) + 1
+    return this._cardFriendRequestSequence
+  },
+
+  nextCardShareSubmit() {
+    this._cardShareSubmitSequence = (Number(this._cardShareSubmitSequence) || 0) + 1
+    return this._cardShareSubmitSequence
+  },
+
+  invalidateCardShareRequests() {
+    this._cardFriendRequestSequence = (Number(this._cardFriendRequestSequence) || 0) + 1
+    this._cardShareSubmitSequence = (Number(this._cardShareSubmitSequence) || 0) + 1
+    this._cardShareSubmitPromise = null
+  },
+
+  isCardFriendRequestCurrent(sequence) {
+    return this._friendPageAttached !== false && this.data.cardShareVisible && this._cardFriendRequestSequence === sequence
+  },
+
+  isCardShareSubmitCurrent(sequence) {
+    return this._friendPageAttached !== false && this.data.cardShareVisible && this._cardShareSubmitSequence === sequence
   },
 
   async loadFriendMode(friendUserId, options) {
@@ -671,6 +744,176 @@ Page({
         detachError: '好友关系已解除，但本地玩家资料暂未归档。请重试以保留资料。'
       })
     }
+  },
+
+  async openPlayerCardShare() {
+    const note = this.data.note
+    if (this.data.mode !== 'view' || this.data.editMode || this.data.detailState !== 'ready' || !this.data.id || !note || note.sourceKind === 'friend') return
+    const requestSequence = this.nextCardFriendRequest()
+    this.nextCardShareSubmit()
+    this._cardShareMutationUsed = false
+    this.setData({
+      cardShareVisible: true,
+      cardShareStatus: 'loading',
+      cardSharePreview: buildCardSharePreview(note),
+      cardFriends: [],
+      selectedCardFriendId: '',
+      nextCardFriendOffset: null,
+      cardFriendLoadingMore: false,
+      cardFriendLoadMoreError: '',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false,
+      cardShareMutationId: socialMutation.createMutationId('share_player_card')
+    })
+    await this.loadCardFriendPage(0, requestSequence, false)
+  },
+
+  closePlayerCardShare() {
+    if (this.data.cardShareStatus === 'sending') return
+    this.invalidateCardShareRequests()
+    this._cardShareMutationUsed = false
+    this.setData({
+      cardShareVisible: false,
+      cardShareStatus: 'idle',
+      cardSharePreview: null,
+      cardFriends: [],
+      selectedCardFriendId: '',
+      nextCardFriendOffset: null,
+      cardFriendLoadingMore: false,
+      cardFriendLoadMoreError: '',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false,
+      cardShareMutationId: ''
+    })
+  },
+
+  async refreshCardFriends() {
+    if (!this.data.cardShareVisible || this.data.cardShareStatus === 'sending') return
+    const requestSequence = this.nextCardFriendRequest()
+    this.setData({
+      cardShareStatus: 'loading',
+      cardFriends: [],
+      selectedCardFriendId: '',
+      nextCardFriendOffset: null,
+      cardFriendLoadingMore: false,
+      cardFriendLoadMoreError: '',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false
+    })
+    await this.loadCardFriendPage(0, requestSequence, false)
+  },
+
+  async loadMoreCardFriends() {
+    const offset = this.data.nextCardFriendOffset
+    if (!this.data.cardShareVisible || this.data.cardShareStatus !== 'ready' || this.data.cardFriendLoadingMore || offset === null || offset === undefined) return
+    const requestSequence = this._cardFriendRequestSequence
+    this.setData({ cardFriendLoadingMore: true, cardFriendLoadMoreError: '' })
+    await this.loadCardFriendPage(offset, requestSequence, true)
+  },
+
+  async loadCardFriendPage(offset, requestSequence, append) {
+    try {
+      const result = await socialService.listFriends({ offset, limit: 20 })
+      if (!this.isCardFriendRequestCurrent(requestSequence)) return
+      const items = appendUniqueCardFriends(append ? this.data.cardFriends : [], result && result.items)
+      const nextOffset = result && result.nextOffset !== null && result.nextOffset !== undefined
+        ? Math.max(0, Number(result.nextOffset) || 0)
+        : null
+      this.setData({
+        cardFriends: items,
+        nextCardFriendOffset: nextOffset,
+        cardShareStatus: items.length ? 'ready' : 'empty',
+        cardFriendLoadingMore: false,
+        cardFriendLoadMoreError: '',
+        cardShareError: ''
+      })
+    } catch (error) {
+      if (!this.isCardFriendRequestCurrent(requestSequence)) return
+      if (append) {
+        this.setData({ cardFriendLoadingMore: false, cardFriendLoadMoreError: '好友加载失败，请重试' })
+        return
+      }
+      this.setData({
+        cardShareStatus: 'error',
+        cardFriendLoadingMore: false,
+        cardShareError: '好友列表加载失败，请检查网络后重试'
+      })
+    }
+  },
+
+  selectCardFriend(event) {
+    if (!this.data.cardShareVisible || this.data.cardShareStatus === 'sending') return
+    const targetUserId = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.id || '').trim()
+    if (!targetUserId || !this.data.cardFriends.some(item => item.socialUserId === targetUserId)) return
+    const previous = this.data.selectedCardFriendId
+    const selectedCardFriendId = previous === targetUserId ? '' : targetUserId
+    let mutationId = this.data.cardShareMutationId
+    if (this._cardShareMutationUsed && selectedCardFriendId && selectedCardFriendId !== previous) {
+      mutationId = socialMutation.createMutationId('share_player_card')
+      this._cardShareMutationUsed = false
+    }
+    this.setData({
+      selectedCardFriendId,
+      cardShareStatus: this.data.cardFriends.length ? 'ready' : 'empty',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false,
+      cardShareMutationId: mutationId
+    })
+  },
+
+  confirmSharePlayerCard() {
+    const targetUserId = String(this.data.selectedCardFriendId || '').trim()
+    if (!targetUserId) {
+      if (this._friendPageAttached !== false) wx.showToast({ title: '请选择一位好友', icon: 'none' })
+      return Promise.resolve()
+    }
+    if (this.data.cardShareStatus === 'sending' || this.data.cardShareStatus === 'success') return this._cardShareSubmitPromise || Promise.resolve()
+    const clientMutationId = this.data.cardShareMutationId || socialMutation.createMutationId('share_player_card')
+    const submitSequence = this.nextCardShareSubmit()
+    this._cardShareMutationUsed = true
+    this.setData({
+      cardShareStatus: 'sending',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false,
+      cardShareMutationId: clientMutationId
+    })
+    const task = socialService.sharePlayerCard({
+      playerNoteId: this.data.id,
+      targetUserId,
+      clientMutationId
+    }).then(result => {
+      if (!this.isCardShareSubmitCurrent(submitSequence)) return result
+      this._cardShareMutationUsed = false
+      this.setData({ cardShareStatus: 'success', cardShareError: '' })
+      wx.showToast({ title: '名片已分享', icon: 'success' })
+      this.setData({
+        cardShareVisible: false,
+        cardShareStatus: 'idle',
+        cardSharePreview: null,
+        cardFriends: [],
+        selectedCardFriendId: '',
+        nextCardFriendOffset: null,
+        cardFriendLoadingMore: false,
+        cardFriendLoadMoreError: '',
+        cardShareError: '',
+        cardShareNeedsFriendRefresh: false,
+        cardShareMutationId: ''
+      })
+      return result
+    }).catch(error => {
+      if (!this.isCardShareSubmitCurrent(submitSequence)) return
+      const code = String(error && error.code || '')
+      const relationshipLost = code === 'FRIENDSHIP_REQUIRED' || code === 'FRIENDSHIP_NOT_FOUND' || code === 'FORBIDDEN'
+      this.setData({
+        cardShareStatus: 'failure',
+        cardShareError: relationshipLost ? '该用户已不是好友，请刷新好友列表后重新选择' : '名片分享失败，请稍后重试',
+        cardShareNeedsFriendRefresh: relationshipLost
+      })
+    }).finally(() => {
+      if (this._cardShareSubmitPromise === task) this._cardShareSubmitPromise = null
+    })
+    this._cardShareSubmitPromise = task
+    return task
   },
 
   async openHandPicker() {

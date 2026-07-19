@@ -102,6 +102,14 @@
     <view wx:if="{{friend.friendshipDate}}" class="friend-since">成为好友：{{friend.friendshipDate}}</view>
   </view>
 
+  <view wx:if="{{mode === 'view' && !editMode && detailState === 'ready' && id && note && note.sourceKind !== 'friend'}}" class="player-card-share-entry" bindtap="openPlayerCardShare">
+    <view>
+      <view class="player-card-share-entry-title">分享玩家名片</view>
+      <view class="player-card-share-entry-sub">预览后发送给一位好友</view>
+    </view>
+    <view class="player-card-share-entry-arrow">›</view>
+  </view>
+
   <view wx:if="{{!editMode && note}}" class="detail-card battle-section">
     <view class="section-head">
       <view>
@@ -197,5 +205,81 @@
   <view class="sheet-mask" bindtap="closeReplay"></view>
   <view class="replay-panel" catchtap="stopModalTap">
     <hand-replay-player replay="{{replayData}}" bindclose="closeReplay" />
+  </view>
+</view>
+
+<view wx:if="{{cardShareVisible}}" class="sheet player-card-share-sheet">
+  <view class="sheet-mask" bindtap="closePlayerCardShare"></view>
+  <view class="sheet-panel player-card-share-panel" catchtap="stopModalTap">
+    <view class="sheet-head">
+      <view>
+        <view class="sheet-title">分享玩家名片</view>
+        <view class="card-share-sheet-sub">先确认内容，再选择一位好友</view>
+      </view>
+      <view class="sheet-close {{cardShareStatus === 'sending' ? 'is-disabled' : ''}}" bindtap="closePlayerCardShare">关闭</view>
+    </view>
+
+    <scroll-view scroll-y="true" class="card-share-scroll">
+      <view class="card-share-preview">
+        <view class="card-share-preview-head">
+          <view class="card-preview-avatar">
+            <image wx:if="{{cardSharePreview.avatarUrl}}" class="card-preview-avatar-img" src="{{cardSharePreview.avatarUrl}}" mode="aspectFill"></image>
+            <text wx:else>{{cardSharePreview.avatarText}}</text>
+          </view>
+          <view class="card-share-preview-main">
+            <view class="card-preview-label">玩家名称</view>
+            <view class="card-preview-name">{{cardSharePreview.name}}</view>
+            <view class="card-preview-type-label">玩家类型 · {{cardSharePreview.type}}</view>
+          </view>
+        </view>
+        <view class="card-preview-section">
+          <view class="card-preview-label">Leak 标签</view>
+          <view wx:if="{{cardSharePreview.leakTags.length}}" class="card-preview-tags">
+            <view wx:for="{{cardSharePreview.leakTags}}" wx:key="*this" class="detail-tag">{{item}}</view>
+          </view>
+          <view wx:else class="card-preview-empty">暂无标签</view>
+        </view>
+        <view class="card-preview-section">
+          <view class="card-preview-label">完整 Note</view>
+          <view class="card-preview-note">{{cardSharePreview.note || '暂无 Note'}}</view>
+        </view>
+      </view>
+
+      <view class="card-friend-picker-title">选择接收好友</view>
+      <view wx:if="{{cardShareStatus === 'loading'}}" class="card-share-state">正在加载好友…</view>
+      <view wx:elif="{{cardShareStatus === 'error'}}" class="card-share-state is-error">
+        <view>{{cardShareError}}</view>
+        <view class="card-share-state-action" bindtap="refreshCardFriends">重试</view>
+      </view>
+      <view wx:elif="{{cardShareStatus === 'empty'}}" class="card-share-state">
+        <view>还没有可分享的好友</view>
+        <view class="card-share-state-action" bindtap="refreshCardFriends">刷新好友列表</view>
+      </view>
+      <view wx:else class="card-friend-list">
+        <view wx:for="{{cardFriends}}" wx:key="socialUserId" class="card-friend-row {{selectedCardFriendId === item.socialUserId ? 'is-selected' : ''}}" data-id="{{item.socialUserId}}" bindtap="selectCardFriend">
+          <view class="card-friend-avatar">
+            <image wx:if="{{item.avatarUrl}}" class="card-friend-avatar-img" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+            <text wx:else>{{item.avatarText}}</text>
+          </view>
+          <view class="card-friend-main">
+            <view class="card-friend-name">{{item.nickname}}</view>
+            <view wx:if="{{item.title}}" class="card-friend-title">{{item.title}}</view>
+          </view>
+          <view class="card-friend-radio"><view class="card-friend-radio-dot"></view></view>
+        </view>
+        <view wx:if="{{nextCardFriendOffset !== null}}" class="card-load-more {{cardFriendLoadingMore ? 'is-loading' : ''}}" bindtap="loadMoreCardFriends">{{cardFriendLoadingMore ? '加载中…' : '加载更多'}}</view>
+        <view wx:if="{{cardFriendLoadMoreError}}" class="card-load-more-error" bindtap="loadMoreCardFriends">{{cardFriendLoadMoreError}} · 点击重试</view>
+      </view>
+
+      <view wx:if="{{cardShareStatus === 'failure'}}" class="card-share-failure">
+        <view>{{cardShareError}}</view>
+        <view wx:if="{{cardShareNeedsFriendRefresh}}" class="card-share-state-action" bindtap="refreshCardFriends">刷新好友列表</view>
+      </view>
+      <view wx:if="{{cardShareStatus === 'success'}}" class="card-share-success">名片已分享</view>
+    </scroll-view>
+
+    <view class="card-share-submit {{!selectedCardFriendId || cardShareStatus === 'sending' ? 'is-disabled' : ''}}" bindtap="confirmSharePlayerCard">
+      {{cardShareStatus === 'sending' ? '发送中…' : '确认分享'}}
+    </view>
   </view>
 </view>
