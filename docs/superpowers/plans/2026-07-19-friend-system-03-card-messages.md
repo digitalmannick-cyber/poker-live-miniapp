@@ -102,7 +102,7 @@ git commit -m "feat: add restricted player card sharing"
 - 入口只显示在已保存的玩家库记录详情；好友私人资料、新建未保存和编辑状态不显示分享入口。
 - 好友选择必须支持分页或加载全部 accepted 好友，不能只展示第一页；打开面板时不默认选择任何人。
 
-- [ ] **Step 1: 写单选和预览字段失败测试**
+- [x] **Step 1: 写单选和预览字段失败测试**
 
 ```js
 assert.match(detailWxml, /分享玩家名片/)
@@ -113,13 +113,13 @@ assert.match(detailJs, /selectedCardFriendId/)
 assert.doesNotMatch(detailJs, /selectedCardFriendIds/)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-player-card-share-ui.test.js`
 
 Expected: FAIL because card sharing UI is absent。
 
-- [ ] **Step 3: 实现完整预览与单好友确认**
+- [x] **Step 3: 实现完整预览与单好友确认**
 
 ```js
 const socialMutation = require('../../utils/social-mutation')
@@ -141,7 +141,7 @@ async confirmSharePlayerCard() {
 
 底部面板展示当前已保存名片的五类内容，不默认选择好友，不提供“全部好友”或多选入口。好友列表加载、分享提交和页面卸载必须有旧请求防回写；提交中的重复点击复用同一个 `clientMutationId`，避免“服务端成功、客户端超时”后生成重复分享。
 
-- [ ] **Step 4: 运行详情与分享 UI 回归**
+- [x] **Step 4: 运行详情与分享 UI 回归**
 
 Run:
 
@@ -153,7 +153,7 @@ node tests/player-notes-navigation.test.js
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交分享入口**
+- [x] **Step 5: 提交分享入口**
 
 ```powershell
 git add pages/player-note-detail tests/social-player-card-share-ui.test.js
