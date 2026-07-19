@@ -1,5 +1,5 @@
 module.exports = {
-  version: '3.15',
+  version: '3.16',
   eyebrow: 'VERSION UPDATE',
   title: '手牌录入体验升级',
   summary: '完整录入、金额输入与手牌数据处理进一步优化。',
