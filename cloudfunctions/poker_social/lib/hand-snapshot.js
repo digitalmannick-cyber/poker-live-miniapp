@@ -5,19 +5,18 @@ const ACTIVE_SLOTS = Object.freeze({
   8: Object.freeze(['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'HJ', 'CO']),
   9: Object.freeze(['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'LJ', 'HJ', 'CO'])
 })
-const ALIASES = Object.freeze(['夜鸦', '赤狐', '黑猫', '银狼', '幻蝶', '灰隼', '绿蛇', '白鲨'])
+const ALIASES = Object.freeze(['夜鸦', '赤狐', '黑猫', '银狼', '幻蝶', '灰隼', '绿蛇', '白鲸'])
 const POSITIONS = new Set(['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'LJ', 'HJ', 'CO'])
 const STREETS = Object.freeze({
-  Pre: 'preflop',
-  Flop: 'flop',
-  Turn: 'turn',
-  River: 'river',
+  pre: 'preflop',
   preflop: 'preflop',
   flop: 'flop',
   turn: 'turn',
-  river: 'river'
+  river: 'river',
+  showdown: 'showdown'
 })
 const ACTION_TYPES = new Set(['fold', 'check', 'call', 'bet', 'raise', 'all_in', 'show', 'muck'])
+const LEGACY_CARD_SOURCES = new Set(['manual', 'verified'])
 const CARD_PATTERN = /^(?:[2-9TJQKA][shdc])*$/
 
 function invalidSnapshot() {
@@ -62,7 +61,10 @@ function resolveBigBlind(hand, session) {
 function toBb(value, bigBlind) {
   if (typeof bigBlind !== 'number' || !Number.isFinite(bigBlind) || bigBlind <= 0) throw blindRequired()
   if (!isFiniteNonNegative(value)) throw invalidSnapshot()
-  const rounded = Math.round((value / bigBlind + Number.EPSILON) * 100) / 100
+  const quotient = value / bigBlind
+  if (!Number.isFinite(quotient)) throw invalidSnapshot()
+  const rounded = Math.round((quotient + Number.EPSILON) * 100) / 100
+  if (!Number.isFinite(rounded)) throw invalidSnapshot()
   return Object.is(rounded, -0) ? 0 : rounded
 }
 
@@ -85,10 +87,28 @@ function normalizePosition(value) {
   return normalized
 }
 
+function normalizeSlot(value) {
+  const text = String(value || '').trim()
+  return text === 'UTG+1' ? 'UTG1' : text
+}
+
+function normalizePlayerCount(value, allowPersistedString) {
+  if (Number.isInteger(value) && value >= 2 && value <= 9) return value
+  if (allowPersistedString && typeof value === 'string' && /^[2-9]$/.test(value)) return Number(value)
+  throw invalidSnapshot()
+}
+
+function normalizeStreet(value) {
+  const text = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  const street = STREETS[text]
+  if (!street) throw invalidSnapshot()
+  return street
+}
+
 function parseActorLabel(value) {
   const text = String(value || '').trim()
   const heroMatch = text.match(/^Hero(?:\s+(.+))?$/)
-  if (heroMatch) return { hero: true, position: normalizePosition(heroMatch[1]) }
+  if (heroMatch) return { hero: true, position: heroMatch[1] ? normalizePosition(heroMatch[1]) : null }
   return { hero: false, position: normalizePosition(text) }
 }
 
@@ -139,7 +159,7 @@ function validateFullSeats(hand, bigBlind, playerCount, heroSeat, heroPosition) 
   const positions = new Set()
   hand.playerSnapshots.forEach(snapshot => {
     if (!snapshot || typeof snapshot !== 'object') throw invalidSnapshot()
-    const seat = activeSlots.indexOf(String(snapshot.slot || '').trim()) + 1
+    const seat = activeSlots.indexOf(normalizeSlot(snapshot.slot)) + 1
     if (!seat || bySeat.has(seat)) throw invalidSnapshot()
     const position = normalizePosition(snapshot.position)
     if (activeSlots.indexOf(position) === -1 || positions.has(position)) throw invalidSnapshot()
@@ -162,24 +182,25 @@ function validateActions(actions, options) {
     const sequence = action.sequence
     if (!Number.isInteger(sequence) || sequence <= 0 || sequenceSeen.has(sequence)) throw invalidSnapshot()
     sequenceSeen.add(sequence)
-    const street = STREETS[action.street]
+    const street = normalizeStreet(action.street)
     const type = String(action.actionType || '').trim()
     const seat = action.actorSeat
     if (!street || !ACTION_TYPES.has(type) || !Number.isInteger(seat) || seat < 1 || seat > options.playerCount) throw invalidSnapshot()
     const actorLabel = parseActorLabel(action.actorLabel)
     const isHero = seat === options.heroSeat
     if (actorLabel.hero !== isHero) throw invalidSnapshot()
+    const actorPosition = actorLabel.position || options.heroPosition
 
     if (options.fullSeats) {
       const player = options.fullSeats.get(seat)
-      if (!player || player.position !== actorLabel.position) throw invalidSnapshot()
+      if (!player || player.position !== actorPosition) throw invalidSnapshot()
     } else {
-      if (isHero && actorLabel.position !== options.heroPosition) throw invalidSnapshot()
-      if (legacySeats.has(seat) && legacySeats.get(seat) !== actorLabel.position) throw invalidSnapshot()
+      if (isHero && actorPosition !== options.heroPosition) throw invalidSnapshot()
+      if (legacySeats.has(seat) && legacySeats.get(seat) !== actorPosition) throw invalidSnapshot()
       for (const [otherSeat, position] of legacySeats.entries()) {
-        if (otherSeat !== seat && position === actorLabel.position) throw invalidSnapshot()
+        if (otherSeat !== seat && position === actorPosition) throw invalidSnapshot()
       }
-      legacySeats.set(seat, actorLabel.position)
+      legacySeats.set(seat, actorPosition)
     }
 
     const item = { sequence, seat, street, type }
@@ -195,14 +216,14 @@ function buildHandSnapshot(input) {
   const actions = source.actions
   const session = source.session || {}
   const bigBlind = resolveBigBlind(hand, session)
-  const playerCount = hand.playerCount
+  if (hasOwn(hand, 'playerSnapshots') && hand.playerSnapshots != null && !Array.isArray(hand.playerSnapshots)) throw invalidSnapshot()
+  const isFullLedger = Array.isArray(hand.playerSnapshots) && hand.playerSnapshots.length > 0
+  const playerCount = normalizePlayerCount(hand.playerCount, !isFullLedger)
   const heroSeat = hand.heroSeat
-  if (!Number.isInteger(playerCount) || playerCount < 2 || playerCount > 9 || !Number.isInteger(heroSeat) || heroSeat < 1 || heroSeat > playerCount) throw invalidSnapshot()
+  if (!Number.isInteger(heroSeat) || heroSeat < 1 || heroSeat > playerCount) throw invalidSnapshot()
   const heroPosition = normalizePosition(hand.heroPosition)
   const heroCards = parseCards(hand.heroCardsInput, [2])
   const board = buildBoard(hand.board)
-  if (hasOwn(hand, 'playerSnapshots') && hand.playerSnapshots != null && !Array.isArray(hand.playerSnapshots)) throw invalidSnapshot()
-  const isFullLedger = Array.isArray(hand.playerSnapshots) && hand.playerSnapshots.length > 0
   const fullSeats = isFullLedger ? validateFullSeats(hand, bigBlind, playerCount, heroSeat, heroPosition) : null
   const actionResult = validateActions(actions, { bigBlind, playerCount, heroSeat, heroPosition, fullSeats })
   const nonHeroSeats = fullSeats
@@ -234,6 +255,10 @@ function buildHandSnapshot(input) {
   })
   const nonHeroShowSeats = showSeats.filter(seat => seat !== heroSeat)
   if (!fullSeats && nonHeroShowSeats.length > 1) throw invalidSnapshot()
+  if (!fullSeats && nonHeroShowSeats.length === 1) {
+    const showPosition = actionResult.legacySeats.get(nonHeroShowSeats[0])
+    if (showPosition !== normalizePosition(hand.villainPosition) || !LEGACY_CARD_SOURCES.has(hand.opponentCardsSource)) throw invalidSnapshot()
+  }
   const showdown = showSeats.map(seat => {
     if (seat === heroSeat) return { actor: 'Hero', cards: heroCards.slice() }
     const cards = fullSeats

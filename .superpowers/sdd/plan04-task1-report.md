@@ -78,3 +78,26 @@ node --test $handTests
 - 本任务按合同保持纯函数，不负责仓储读取或权限判断；后续 publish/preview 任务必须在授权读取完成后把三类权威记录显式传入 builder。
 - 本地 `services/cloud-repo.js` 与云端 `poker_data` 对 full-ledger 字段保留范围存在历史差异。当前 CloudBase 权威路径和真实保存 payload 满足 Task 1，但未来若复用本地 repo 构造分享源，必须先统一持久字段，不能在 snapshot builder 内补文本或客户端 fallback。
 - 本任务未接入公开发布 action，也未新增客户端 payload 支持；这些属于后续 Plan 04 tasks。
+
+## 审查修复追加记录
+
+审查后先新增真实 schema 探针并运行 focused gate。RED 为 `21` 项中 `7` 项失败，失败点精确对应缺失行为：strict string `playerCount` 与 bare `Hero` label、persisted `UTG+1` slot、legacy villain/source 约束、完整八别名末项、BB 除法溢出、canonical showdown street；没有导入或 fixture 错误。
+
+最小修复后证据：
+
+- focused：`21/21` 通过；
+- 全部 social：`209/209` 通过；
+- hand/ledger/agent-export/store-full-entry：`62/62` 通过；
+- full-ledger `Hero CO` 的 seat/position/label 交叉校验保持通过。
+
+审查修复后的精确语义：
+
+- legacy quick-record 仅把严格单字符十进制字符串 `2`–`9` 转为人数；空白、小数、前导零、后缀和超范围值均拒绝；
+- bare `actorLabel: 'Hero'` 只允许回落到权威 `hand.heroPosition`，非 Hero 缺失位置仍拒绝；
+- 8/9 人 persisted slot `UTG+1` 只规范化为 canonical `UTG1`，测试 fixture 使用独立真实 slot literals，不从被测常量构造；
+- legacy `opponentCards` 只在唯一非 Hero `show` actor 的规范位置等于 `hand.villainPosition`，且 `opponentCardsSource` 精确为 `manual` 或 `verified` 时使用；
+- 第八个匿名别名固定为“白鲸”；
+- `toBb` 对除法商和两位小数舍入结果再次执行有限数检查，拒绝 `MAX_VALUE / MIN_VALUE` 溢出；
+- action street 接受大小写安全规范化后的 canonical `showdown`，其它未知 street 继续 fail closed。
+
+审查修复提交信息：`fix: harden bb hand snapshot compatibility`；最终哈希以 Git 提交记录为准。

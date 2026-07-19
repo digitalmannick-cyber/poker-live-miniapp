@@ -1,10 +1,16 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { ACTIVE_SLOTS, buildHandSnapshot } = require('../cloudfunctions/poker_social/lib/hand-snapshot')
+const { buildHandSnapshot } = require('../cloudfunctions/poker_social/lib/hand-snapshot')
+
+const REAL_ACTIVE_SLOTS = {
+  6: ['BTN', 'SB', 'BB', 'UTG', 'HJ', 'CO'],
+  8: ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO'],
+  9: ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'LJ', 'HJ', 'CO']
+}
 
 function fullLedgerFixture(size) {
-  const slots = ACTIVE_SLOTS[size]
+  const slots = REAL_ACTIVE_SLOTS[size]
   return {
     hand: {
       _id: `hand_security_${size}`,
@@ -20,7 +26,7 @@ function fullLedgerFixture(size) {
       allInPot: 0,
       playerSnapshots: slots.map((slot, index) => ({
         slot,
-        position: slot === 'UTG1' ? 'UTG+1' : slot,
+        position: slot,
         stack: 40000 - index * 400,
         initialStack: 40000 - index * 400,
         cards: ''
@@ -66,7 +72,7 @@ test('rejects missing actions instead of parsing hand text or hand.players fallb
 
 test('rejects unknown street, action, seats, sequences and full-ledger position mismatches', () => {
   const mutations = [
-    actions => { actions[0].street = 'Showdown' },
+    actions => { actions[0].street = 'Future' },
     actions => { actions[0].actionType = 'squeeze' },
     actions => { actions[0].actorSeat = 0 },
     actions => { actions[0].actorSeat = 7 },
@@ -160,6 +166,41 @@ test('uses only structured show evidence and fails closed for missing or ambiguo
     ]
   }
   expectCode(() => buildHandSnapshot(ambiguousLegacy), 'INVALID_HAND_SNAPSHOT')
+})
+
+test('legacy showdown requires one matching villain position and an approved card source', () => {
+  function legacy(overrides) {
+    return {
+      hand: Object.assign({
+        playerCount: '4', heroSeat: 1, heroPosition: 'BTN', villainPosition: 'BB', heroCardsInput: 'AsKs',
+        stakeLevel: '100/200', board: { flop: '', turn: '', river: '' },
+        opponentCards: 'QhQs', opponentCardsSource: 'manual'
+      }, overrides || {}),
+      session: {},
+      actions: [
+        { street: 'Pre', actorSeat: 1, actorLabel: 'Hero', actionType: 'raise', amount: 600, sequence: 1 },
+        { street: 'Showdown', actorSeat: 3, actorLabel: 'BB', actionType: 'show', amount: 0, sequence: 2 }
+      ]
+    }
+  }
+
+  assert.deepEqual(buildHandSnapshot(legacy()).showdown, [{ actor: '夜鸦', cards: ['Qh', 'Qs'] }])
+  assert.deepEqual(buildHandSnapshot(legacy({ opponentCardsSource: 'verified' })).showdown, [{ actor: '夜鸦', cards: ['Qh', 'Qs'] }])
+  for (const patch of [
+    { villainPosition: 'SB' },
+    { villainPosition: '' },
+    { opponentCardsSource: '' },
+    { opponentCardsSource: 'voice' },
+    { opponentCardsSource: 'MANUAL' }
+  ]) {
+    expectCode(() => buildHandSnapshot(legacy(patch)), 'INVALID_HAND_SNAPSHOT')
+  }
+})
+
+test('bare non-Hero actor labels remain invalid', () => {
+  const source = fullLedgerFixture(6)
+  source.actions[0].actorLabel = ''
+  expectCode(() => buildHandSnapshot(source), 'INVALID_HAND_SNAPSHOT')
 })
 
 test('constructs an exact whitelist snapshot and drops recursive private keys and canary values', () => {
