@@ -1425,6 +1425,8 @@ async function createPlayerNoteAction(event, ownerOpenId) {
       const existingFriendNote = (await fetchWhere(COLLECTIONS.playerNotes, { playerId, ownerOpenId }))
         .find(item => item && item.sourceKind === 'friend' && item.linkedFriendUserId === doc.linkedFriendUserId)
       if (existingFriendNote) {
+        const existingUpdatedAt = Number(existingFriendNote.updatedAt || existingFriendNote.createdAt) || 0
+        const incomingUpdatedAt = Number(event.payload && (event.payload.updatedAt || event.payload.createdAt)) || 0
         if (existingFriendNote.archived) {
           const restored = withOwnerScope(Object.assign({}, buildPlayerNoteDoc(existingFriendNote, { archived: false }), {
             _id: existingFriendNote._id
@@ -1432,6 +1434,15 @@ async function createPlayerNoteAction(event, ownerOpenId) {
           await setDocById(COLLECTIONS.playerNotes, existingFriendNote._id, restored)
           await writeAuditLog(ownerOpenId, playerId, 'restore_friend_player_note', existingFriendNote._id, existingFriendNote, restored, clientMutationId)
           return { playerNote: cleanCloudDoc(restored) }
+        }
+        if (incomingUpdatedAt >= existingUpdatedAt) {
+          const mergedPatch = Object.assign({}, event.payload || {}, { archived: false })
+          const next = withOwnerScope(Object.assign({}, buildPlayerNoteDoc(existingFriendNote, mergedPatch), {
+            _id: existingFriendNote._id
+          }), playerId, ownerOpenId)
+          await setDocById(COLLECTIONS.playerNotes, existingFriendNote._id, next)
+          await writeAuditLog(ownerOpenId, playerId, 'merge_friend_player_note', existingFriendNote._id, existingFriendNote, next, clientMutationId)
+          return { playerNote: cleanCloudDoc(next) }
         }
         return { playerNote: cleanCloudDoc(existingFriendNote) }
       }

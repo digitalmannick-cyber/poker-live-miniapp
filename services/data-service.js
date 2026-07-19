@@ -1601,13 +1601,12 @@ async function createPlayerNote(payload) {
 
 async function ensureFriendPlayerNote(snapshot) {
   const adapter = getLocalAdapter()
-  const existing = await adapter.getFriendPlayerNote(snapshot && (snapshot.socialUserId || snapshot.friendUserId))
   const result = await adapter.ensureFriendPlayerNote(snapshot || {})
-  if (!existing && cloudUtils.canUseCloud() && canStartCloudTask()) {
+  if (cloudUtils.canUseCloud() && canStartCloudTask()) {
     try {
       const response = await cloudDataApi.createPlayerNote({
         playerId: getCurrentPlayerId(),
-        clientMutationId: createClientMutationId('ensure_friend_player_note', result._id),
+        clientMutationId: createClientMutationId('ensure_friend_player_note', result.linkedFriendUserId),
         payload: result
       })
       if (response && response.playerNote) {

@@ -65,6 +65,7 @@ function createCollections(seed) {
 
 function loadPokerData(seed, ownerOpenId) {
   const mock = createCollections(seed)
+  let activeOwnerOpenId = ownerOpenId || 'owner_a'
   const originalLoad = Module._load
   Module._load = function load(request, parent, isMain) {
     if (request === 'wx-server-sdk') {
@@ -75,7 +76,7 @@ function loadPokerData(seed, ownerOpenId) {
           return { collection: mock.collection }
         },
         getWXContext() {
-          return { OPENID: ownerOpenId || 'owner_a' }
+          return { OPENID: activeOwnerOpenId }
         }
       }
     }
@@ -84,7 +85,13 @@ function loadPokerData(seed, ownerOpenId) {
   const modulePath = require.resolve('../cloudfunctions/poker_data/index')
   delete require.cache[modulePath]
   try {
-    return { pokerData: require('../cloudfunctions/poker_data/index'), collections: mock.collections }
+    return {
+      pokerData: require('../cloudfunctions/poker_data/index'),
+      collections: mock.collections,
+      setOwnerOpenId(value) {
+        activeOwnerOpenId = value
+      }
+    }
   } finally {
     Module._load = originalLoad
   }
@@ -197,4 +204,80 @@ test('friend source transitions are constrained while detach remains allowed', a
   assert.equal(detached.code, 0)
   assert.equal(detached.data.playerNote.sourceKind, 'library')
   assert.equal(detached.data.playerNote.linkedFriendUserId, '')
+})
+
+test('owner-scoped friend creates use updatedAt last-write-wins without changing the binding', async () => {
+  const { pokerData, collections } = loadPokerData({
+    player_notes: [{
+      _id: 'legacy_lww',
+      playerId: 'WX-OWNER',
+      ownerOpenId: 'owner_a',
+      sourceKind: 'friend',
+      linkedFriendUserId: 'su_friend',
+      name: 'Remote old',
+      avatarUrl: 'https://remote.example/old.png',
+      type: 'RemoteType',
+      leakTags: ['remote'],
+      note: 'remote note',
+      battleHandIds: ['remote-hand'],
+      archived: false,
+      createdAt: 1,
+      updatedAt: 10
+    }]
+  })
+  const localNewer = await pokerData.main(Object.assign(createFriendEvent('local_newer', 'local_newer', 'su_friend'), {
+    payload: {
+      _id: 'local_newer',
+      sourceKind: 'friend',
+      linkedFriendUserId: 'su_friend',
+      name: 'Local newer',
+      avatarUrl: 'wxfile://local.png',
+      type: 'LocalType',
+      leakTags: ['local'],
+      note: 'local note',
+      battleHandIds: ['local-hand'],
+      updatedAt: 20
+    }
+  }))
+  assert.equal(localNewer.data.playerNote._id, 'legacy_lww')
+  assert.equal(localNewer.data.playerNote.name, 'Local newer')
+  assert.equal(localNewer.data.playerNote.avatarUrl, 'wxfile://local.png')
+  assert.equal(localNewer.data.playerNote.type, 'LocalType')
+  assert.deepEqual(localNewer.data.playerNote.leakTags, ['local'])
+  assert.equal(localNewer.data.playerNote.note, 'local note')
+  assert.deepEqual(localNewer.data.playerNote.battleHandIds, ['local-hand'])
+  assert.equal(localNewer.data.playerNote.linkedFriendUserId, 'su_friend')
+
+  const remoteNewer = await pokerData.main(Object.assign(createFriendEvent('remote_newer', 'local_older', 'su_friend'), {
+    payload: {
+      _id: 'local_older',
+      sourceKind: 'friend',
+      linkedFriendUserId: 'su_friend',
+      name: 'Offline older',
+      note: 'must not replace newer cloud note',
+      updatedAt: 15
+    }
+  }))
+  assert.equal(remoteNewer.data.playerNote.name, 'Local newer')
+  assert.equal(remoteNewer.data.playerNote.note, 'local note')
+  assert.equal(collections.player_notes[0].linkedFriendUserId, 'su_friend')
+})
+
+test('same linked friend ID is isolated across owners and player IDs', async () => {
+  const { pokerData, collections, setOwnerOpenId } = loadPokerData()
+  const first = await pokerData.main(createFriendEvent('owner_a_player_1', 'local_a', 'su_shared'))
+  setOwnerOpenId('owner_b')
+  const otherOwner = await pokerData.main(createFriendEvent('owner_b_player_1', 'local_b', 'su_shared'))
+  setOwnerOpenId('owner_a')
+  const otherPlayer = await pokerData.main(Object.assign(createFriendEvent('owner_a_player_2', 'local_c', 'su_shared'), {
+    playerId: 'WX-OTHER'
+  }))
+
+  assert.notEqual(first.data.playerNote._id, otherOwner.data.playerNote._id)
+  assert.notEqual(first.data.playerNote._id, otherPlayer.data.playerNote._id)
+  assert.notEqual(otherOwner.data.playerNote._id, otherPlayer.data.playerNote._id)
+  assert.equal(collections.player_notes.length, 3)
+  assert.equal(collections.player_notes.filter(item => item.ownerOpenId === 'owner_a' && item.playerId === 'WX-OWNER').length, 1)
+  assert.equal(collections.player_notes.filter(item => item.ownerOpenId === 'owner_b' && item.playerId === 'WX-OWNER').length, 1)
+  assert.equal(collections.player_notes.filter(item => item.ownerOpenId === 'owner_a' && item.playerId === 'WX-OTHER').length, 1)
 })
