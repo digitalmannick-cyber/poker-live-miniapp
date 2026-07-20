@@ -141,12 +141,15 @@ function createProfileHandlers(repository, options) {
         throw socialError('INVALID_SOCIAL_SETTINGS', 'invalid social settings')
       }
       return runIdempotent(repository, record._id, 'update_social_settings', event, async store => {
-        if (typeof store.patchSocialSettings !== 'function') throw new Error('social repository settings support unavailable')
-        const updated = await store.patchSocialSettings(record._id, {
+        const current = await store.get(PROFILE_COLLECTION, record._id)
+        requireActiveSocialUser(current)
+        if (current.ownerOpenId !== actor.ownerOpenId) throw socialError('FORBIDDEN', 'not allowed')
+        const updated = Object.assign({}, current, {
           statsVisible: event.statsVisible,
           defaultShareScope: event.defaultShareScope,
           updatedAt: Date.now()
         })
+        await store.set(PROFILE_COLLECTION, record._id, updated)
         return {
           statsVisible: updated.statsVisible !== false,
           defaultShareScope: SHARE_SCOPES.has(updated.defaultShareScope) ? updated.defaultShareScope : 'friends'

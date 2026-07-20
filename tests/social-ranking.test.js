@@ -132,9 +132,18 @@ test('settings action applies an idempotent field patch and preserves concurrent
   const repository = {
     find(collection, query) { return users.find(row => Object.keys(query).every(key => row[key] === query[key])) || null },
     get(collection, id) { return collection === 'social_mutations' ? mutations.find(row => row._id === id) || null : users.find(row => row._id === id) || null },
-    set(collection, id, value) { const row = Object.assign({}, value, { _id: id }); mutations.push(row); return row },
+    set(collection, id, value) {
+      const row = Object.assign({}, value, { _id: id })
+      if (collection === 'social_users') {
+        const index = users.findIndex(user => user._id === id)
+        if (index >= 0) users[index] = row
+        else users.push(row)
+      } else {
+        mutations.push(row)
+      }
+      return row
+    },
     runTransaction(callback) { return callback(this) },
-    patchSocialSettings(id, patch) { Object.assign(users.find(row => row._id === id), patch); return users.find(row => row._id === id) }
   }
   const app = createSocialApp({ repository, identity: { resolve: () => ({ ownerOpenId: 'open-me' }) }, requestId: () => 'settings-request' })
   const event = { action: 'update_social_settings', statsVisible: false, defaultShareScope: 'selected', clientMutationId: 'mut-1' }
