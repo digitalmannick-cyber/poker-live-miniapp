@@ -89,7 +89,7 @@ test('deployment never accepts secrets as parameters and never contains destruct
 test('administrator capability is enabled only after disabled staging and database verification', () => {
   const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
   const disabledStage = source.indexOf("$stagedEnvironment.Remove('SOCIAL_ADMIN_OPENIDS')")
-  const permissionVerify = source.indexOf('$postPermissionMap = Get-StableCollectionPermissionMap', disabledStage)
+  const permissionVerify = source.indexOf('$postPermissionMap = if ($databasePermissionsMutated)', disabledStage)
   const indexVerify = source.indexOf("Post-deploy index verification failed", permissionVerify)
   const stagedDeploy = source.indexOf('$stagedCheck = Deploy-AndWaitFunctionEnvironment', indexVerify)
   const enabledDeploy = source.indexOf('$enabledCheck = Deploy-AndWaitFunctionEnvironment', stagedDeploy)
@@ -102,6 +102,8 @@ test('administrator capability is enabled only after disabled staging and databa
   assert.match(source, /function Get-StableCollectionPermissionMap/)
   assert.match(source, /two consecutive identical snapshots/)
   assert.match(source, /continue\s*\n\s*}/)
+  assert.match(source, /\$databasePermissionsMutated/)
+  assert.match(source, /else \{\s*\$permissionByCollection\s*}/)
 })
 
 test('PowerShell 5.1 compatibility and tracked-input gate are explicit', () => {

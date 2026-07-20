@@ -765,7 +765,12 @@ try {
     $null = Invoke-TcbApi 'UpdateTable' $body $plan.envId $region
   }
 
-  $postPermissionMap = Get-StableCollectionPermissionMap $plan.envId $trackedPermissionCollections
+  $databasePermissionsMutated = $missingCollections.Count -gt 0 -or $permissionDrift.Count -gt 0
+  $postPermissionMap = if ($databasePermissionsMutated) {
+    Get-StableCollectionPermissionMap $plan.envId $trackedPermissionCollections
+  } else {
+    $permissionByCollection
+  }
   foreach ($collection in $plan.managedCollections) {
     if ($postPermissionMap[$collection] -ne 'ADMINONLY') { throw "Post-deploy ACL verification failed for $collection" }
   }
