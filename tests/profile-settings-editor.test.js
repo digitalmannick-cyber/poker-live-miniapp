@@ -235,8 +235,28 @@ test('unknown or failed social settings are read-only until a successful reload'
   assert.equal(await page.loadSocialSettings(), null)
   assert.equal(page.data.socialSettingsStatus, 'error')
   assert.equal(await page.toggleSocialStatsVisible(), null)
+  assert.equal(lastToast.title, '社交服务暂不可用，请重试')
   assert.equal(await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'square' } } }), null)
+  assert.equal(lastToast.title, '社交服务暂不可用，请重试')
   assert.equal(await page.saveSocialSettings({ statsVisible: false, defaultShareScope: 'selected' }), null)
   assert.equal(saveCalls, 0)
   assert.deepEqual(page.data.socialSettings, { statsVisible: true, defaultShareScope: 'friends' }, 'unknown server privacy must not be overwritten by local defaults')
+})
+
+test('a failed scope tap reloads settings and applies the intended choice after recovery', async () => {
+  const page = installProfilePage()
+  let loadCalls = 0
+  socialProfileLoader = () => {
+    loadCalls += 1
+    if (loadCalls === 1) return Promise.reject(new Error('temporary'))
+    return Promise.resolve({ statsVisible: true, defaultShareScope: 'friends' })
+  }
+
+  assert.equal(await page.loadSocialSettings(), null)
+  await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'square' } } })
+
+  assert.equal(loadCalls, 2)
+  assert.equal(socialSettingsPatch.defaultShareScope, 'square')
+  assert.equal(page.data.socialSettings.defaultShareScope, 'square')
+  assert.equal(lastToast.title, '社交设置已保存')
 })

@@ -341,7 +341,9 @@ Page({
   async onShow() {
     this._socialSettingsAttached = true
     tabBar.syncCustomTabBar('/pages/profile/profile')
-    await this.refresh()
+    await this.refresh().catch(error => {
+      console.warn('refresh profile page failed', error)
+    })
     await this.syncOwnSocialProfile(this.data.profile).catch(() => null)
     this.loadSocialSettings()
     this.consumeOpenAiReminderEditorRequest()
@@ -423,6 +425,24 @@ Page({
     return this._socialSettingsAttached !== false && this.data.socialSettingsStatus === 'ready' && !this.data.socialSettingsSaving
   },
 
+  async ensureSocialSettingsReady() {
+    if (this.canEditSocialSettings()) return true
+    if (this.data.socialSettingsSaving) {
+      wx.showToast({ title: '设置正在保存', icon: 'none' })
+      return false
+    }
+    if (this.data.socialSettingsStatus === 'loading') {
+      wx.showToast({ title: '设置读取中，请稍候', icon: 'none' })
+      return false
+    }
+    wx.showToast({ title: '正在重新连接社交服务', icon: 'none' })
+    const loaded = await this.loadSocialSettings()
+    if (!loaded && this._socialSettingsAttached !== false) {
+      wx.showToast({ title: '社交服务暂不可用，请重试', icon: 'none' })
+    }
+    return this.canEditSocialSettings()
+  },
+
   async saveSocialSettings(nextSettings) {
     if (!this.canEditSocialSettings()) return null
     const current = this.data.socialSettings || { statsVisible: true, defaultShareScope: 'friends' }
@@ -456,14 +476,21 @@ Page({
   },
 
   toggleSocialStatsVisible() {
-    if (!this.canEditSocialSettings()) return null
-    return this.saveSocialSettings({ statsVisible: this.data.socialSettings.statsVisible === false })
+    if (this.canEditSocialSettings()) {
+      return this.saveSocialSettings({ statsVisible: this.data.socialSettings.statsVisible === false })
+    }
+    return this.ensureSocialSettingsReady().then(ready => ready
+      ? this.saveSocialSettings({ statsVisible: this.data.socialSettings.statsVisible === false })
+      : null)
   },
 
   selectDefaultShareScope(event) {
     const scope = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.scope || '')
-    if (!['square', 'friends', 'selected'].includes(scope) || !this.canEditSocialSettings()) return null
-    return this.saveSocialSettings({ defaultShareScope: scope })
+    if (!['square', 'friends', 'selected'].includes(scope)) return null
+    if (this.canEditSocialSettings()) return this.saveSocialSettings({ defaultShareScope: scope })
+    return this.ensureSocialSettingsReady().then(ready => ready
+      ? this.saveSocialSettings({ defaultShareScope: scope })
+      : null)
   },
 
   consumeOpenAiReminderEditorRequest() {

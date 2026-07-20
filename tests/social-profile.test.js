@@ -284,6 +284,52 @@ test('CloudBase repository uses the real transaction API shape and returns the c
   assert.deepEqual(records.get('social_users/su_1'), { nickname: 'Alice' })
 })
 
+test('CloudBase repository supports the wx-server-sdk wrapped transaction and treats a missing document as null', async () => {
+  const records = new Map()
+  const makeDocument = (name, id) => ({
+    async get() {
+      const key = name + '/' + id
+      if (!records.has(key)) {
+        const error = new Error('document.get:fail document with _id ' + id + ' does not exist')
+        error.errCode = -1
+        error.errMsg = error.message
+        throw error
+      }
+      return { data: Object.assign({ _id: id }, records.get(key)) }
+    },
+    async set(input) {
+      records.set(name + '/' + id, Object.assign({}, input.data))
+    },
+    async remove() {
+      records.delete(name + '/' + id)
+    }
+  })
+  const database = {
+    collection(name) {
+      return { doc: id => makeDocument(name, id) }
+    },
+    async runTransaction(callback) {
+      const transaction = {
+        collection(name) {
+          return { doc: id => makeDocument(name, id) }
+        }
+      }
+      assert.equal(transaction.get, undefined)
+      return callback(transaction)
+    }
+  }
+  const { createCloudSocialRepository } = require('../cloudfunctions/poker_social/lib/repository')
+  const repository = createCloudSocialRepository(database)
+
+  const result = await repository.runTransaction(async store => {
+    assert.equal(await store.get('social_user_owners', 'missing'), null)
+    await store.set('social_user_owners', 'owner-1', { socialUserId: 'su_1' })
+    return store.get('social_user_owners', 'owner-1')
+  })
+
+  assert.deepEqual(result, { _id: 'owner-1', socialUserId: 'su_1' })
+})
+
 test('uninitialized profile returns the stable public initialization error', async () => {
   const { createSocialApp } = require('../cloudfunctions/poker_social/app')
   const app = createSocialApp({

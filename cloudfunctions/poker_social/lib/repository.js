@@ -65,7 +65,9 @@ const ACCOUNT_CLEAR_BATCH_SIZE = 50
 
 function isDocumentNotFound(error) {
   const code = String(error && (error.errCode || error.code) || '')
-  return code === 'DATABASE_DOCUMENT_NOT_EXIST'
+  const message = String(error && (error.errMsg || error.message) || '')
+  return code === 'DATABASE_DOCUMENT_NOT_EXIST' ||
+    /^document\.get:fail document with _id .+ does not exist$/.test(message)
 }
 
 function createCloudSocialRepository(database) {
@@ -126,7 +128,7 @@ function createCloudSocialRepository(database) {
     const store = {
     async get(collection, id) {
       try {
-        if (transactionMode) {
+        if (transactionMode && typeof client.get === 'function') {
           const snapshot = await client.get(database.collection(collection).doc(id))
           const data = snapshot && typeof snapshot.data === 'function' ? snapshot.data() : snapshot && snapshot.data
           return data ? Object.assign({}, data, { _id: id }) : null
@@ -351,13 +353,13 @@ function createCloudSocialRepository(database) {
       const record = Object.assign({}, value, { _id: id })
       const data = Object.assign({}, record)
       delete data._id
-      if (transactionMode) await client.set(database.collection(collection).doc(id), data)
+      if (transactionMode && typeof client.set === 'function') await client.set(database.collection(collection).doc(id), data)
       else await client.collection(collection).doc(id).set({ data })
       return record
     },
 
     async remove(collection, id) {
-      if (transactionMode) await client.delete(database.collection(collection).doc(id))
+      if (transactionMode && typeof client.delete === 'function') await client.delete(database.collection(collection).doc(id))
       else await client.collection(collection).doc(id).remove()
       return true
     },
