@@ -4,7 +4,7 @@ const { runIdempotent, restoreIdempotent, requireClientMutationId } = require('.
 const { requireReadableLiveShare, getLikeId } = require('./hand-feed')
 const { createNotificationWriter } = require('./notification')
 const { POKER_STICKER_IDS } = require('./poker-stickers')
-const { requireActiveSocialUser } = require('./social-lifecycle')
+const { lifecycleOf, requireActiveSocialUser, SOCIAL_LIFECYCLE } = require('./social-lifecycle')
 const {
   normalizeId,
   normalizeCommentInput,
@@ -16,10 +16,12 @@ const COLLECTIONS = Object.freeze({
   USERS: 'social_users',
   SHARES: 'social_hand_shares',
   COMMENTS: 'social_comments',
-  LIKES: 'social_likes'
+  LIKES: 'social_likes',
+  AUDITS: 'social_moderation_audits'
 })
 const MAX_COMMENT_ID_LENGTH = 128
 const MAX_CURSOR_LENGTH = 2048
+const MODERATION_REASONS = Object.freeze(['spam', 'abuse', 'privacy', 'illegal', 'other'])
 
 function invalidPagination() {
   return socialError('INVALID_PAGINATION', 'invalid pagination')
@@ -98,6 +100,10 @@ function toCommentDto(row) {
     throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
   }
   const deleted = row.deleted === true
+  const deletionKind = deleted && row.deletionKind !== undefined ? row.deletionKind : 'author'
+  if (deleted && deletionKind !== 'author' && deletionKind !== 'admin') {
+    throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
+  }
   if (!deleted) {
     const validText = row.kind === 'text' && typeof row.text === 'string' && row.text.trim() === row.text &&
       Array.from(row.text).length >= 1 && Array.from(row.text).length <= 300 && row.stickerId === ''
@@ -111,7 +117,7 @@ function toCommentDto(row) {
     parentCommentId: row.parentCommentId,
     author: publicAuthor(row.authorSnapshot),
     kind: deleted ? 'text' : row.kind === 'sticker' ? 'sticker' : 'text',
-    text: deleted ? '该评论已删除' : typeof row.text === 'string' ? row.text : '',
+    text: deleted ? deletionKind === 'admin' ? '该评论已被管理员移除' : '该评论已删除' : typeof row.text === 'string' ? row.text : '',
     stickerId: deleted ? '' : typeof row.stickerId === 'string' ? row.stickerId : '',
     deleted,
     createdAt: row.createdAt
@@ -144,6 +150,24 @@ function createInteractionHandlers(repository, options) {
     : () => 'sc_' + crypto.randomBytes(18).toString('hex')
   const avatarUrl = typeof config.avatarUrl === 'function' ? config.avatarUrl : async () => ''
   const notificationWriter = config.notificationWriter || createNotificationWriter({ now })
+  const isAdminActor = typeof config.isAdminActor === 'function' ? config.isAdminActor : () => false
+  const auditId = typeof config.auditId === 'function'
+    ? config.auditId
+    : (moderatorId, commentId, clientMutationId) => 'sma_' + crypto.createHash('sha256')
+      .update(JSON.stringify([moderatorId, 'admin_delete_comment', commentId, clientMutationId]))
+      .digest('hex')
+
+  function requireAdmin(actor) {
+    if (!isAdminActor(actor)) throw socialError('FORBIDDEN', 'not allowed')
+  }
+
+  function moderationReason(event) {
+    const value = event && event.reason
+    if (typeof value !== 'string' || !MODERATION_REASONS.includes(value)) {
+      throw socialError('INVALID_MODERATION_REASON', 'invalid moderation reason')
+    }
+    return value
+  }
 
   async function createComment(event, actor) {
     const user = await resolveUser(repository, actor)
@@ -241,7 +265,7 @@ function createInteractionHandlers(repository, options) {
       let next = comment
       let commentCount = safeCount(share.commentCount)
       if (comment.deleted !== true) {
-        next = Object.assign({}, comment, { deleted: true, deletedAt: at, updatedAt: at })
+        next = Object.assign({}, comment, { deleted: true, deletedAt: at, updatedAt: at, deletionKind: 'author' })
         commentCount = Math.max(0, commentCount - 1)
         await store.set(COLLECTIONS.COMMENTS, commentId, next)
         await store.set(COLLECTIONS.SHARES, share._id, Object.assign({}, share, { commentCount, updatedAt: at }))
@@ -267,6 +291,93 @@ function createInteractionHandlers(repository, options) {
         }
         const result = { comment: toCommentDto(comment) }
         if (readable) result.commentCount = safeCount(share.commentCount)
+        return result
+      }
+    })
+  }
+
+  async function adminDeleteComment(event, actor) {
+    requireAdmin(actor)
+    const user = await resolveUser(repository, actor)
+    const commentId = normalizeId(event && event.commentId, MAX_COMMENT_ID_LENGTH)
+    if (!commentId) throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
+    const reason = moderationReason(event)
+    const clientMutationId = requireClientMutationId(event)
+    const inputFingerprint = fingerprint('admin_delete_comment', { commentId, reason })
+    return runIdempotent(repository, user._id, 'admin_delete_comment', event, async store => {
+      requireAdmin(actor)
+      const transactionalUser = await store.get(COLLECTIONS.USERS, user._id)
+      if (!transactionalUser || String(transactionalUser.ownerOpenId || '') !== String(actor && actor.ownerOpenId || '')) {
+        throw socialError('FORBIDDEN', 'not allowed')
+      }
+      const comment = await store.get(COLLECTIONS.COMMENTS, commentId)
+      if (!comment || comment._id !== commentId || !normalizeId(comment.shareId, 128) ||
+        !normalizeId(comment.authorId, 128) || typeof comment.deleted !== 'boolean') {
+        throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
+      }
+      if (comment.authorId === user._id) throw socialError('FORBIDDEN', 'not allowed')
+      const share = await store.get(COLLECTIONS.SHARES, comment.shareId)
+      if (!share || share._id !== comment.shareId || !normalizeId(share.publisherId, 128)) {
+        throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
+      }
+      if (share.status !== 'active' && share.status !== 'withdrawn') {
+        throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
+      }
+      if (comment.deleted === true) {
+        if (comment.deletionKind !== 'admin') throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
+        const result = { comment: toCommentDto(comment) }
+        if (share.status === 'active') result.commentCount = safeCount(share.commentCount)
+        return result
+      }
+      const at = Number(now())
+      if (!Number.isSafeInteger(at) || at <= 0) throw new Error('interaction clock unavailable')
+      const next = Object.assign({}, comment, {
+        deleted: true,
+        deletedAt: at,
+        updatedAt: at,
+        deletionKind: 'admin',
+        moderationReason: reason
+      })
+      const commentCount = Math.max(0, safeCount(share.commentCount) - 1)
+      await store.set(COLLECTIONS.COMMENTS, commentId, next)
+      await store.set(COLLECTIONS.SHARES, share._id, Object.assign({}, share, { commentCount, updatedAt: at }))
+      const target = await store.get(COLLECTIONS.USERS, comment.authorId)
+      const targetRedacted = lifecycleOf(target) !== SOCIAL_LIFECYCLE.ACTIVE
+      const moderationAuditId = String(auditId(user._id, commentId, clientMutationId) || '')
+      if (!/^sma_[0-9a-f]{64}$/.test(moderationAuditId)) throw new Error('moderation audit id unavailable')
+      if (await store.get(COLLECTIONS.AUDITS, moderationAuditId)) throw new Error('moderation audit unavailable')
+      await store.set(COLLECTIONS.AUDITS, moderationAuditId, {
+        action: 'admin_delete_comment',
+        targetType: 'comment',
+        commentId: targetRedacted ? '' : commentId,
+        shareId: targetRedacted ? '' : comment.shareId,
+        targetAuthorId: targetRedacted ? '' : comment.authorId,
+        moderatorId: user._id,
+        reason,
+        clientMutationId: targetRedacted ? '' : clientMutationId,
+        targetRedacted,
+        moderatorRedacted: false,
+        createdAt: at
+      })
+      const result = { comment: toCommentDto(next) }
+      if (share.status === 'active') result.commentCount = commentCount
+      return result
+    }, {
+      inputFingerprint,
+      async restoreResult(_persisted, _mutationId, store) {
+        requireAdmin(actor)
+        const transactionalUser = await store.get(COLLECTIONS.USERS, user._id)
+        if (!transactionalUser || String(transactionalUser.ownerOpenId || '') !== String(actor && actor.ownerOpenId || '')) {
+          throw socialError('FORBIDDEN', 'not allowed')
+        }
+        const comment = await store.get(COLLECTIONS.COMMENTS, commentId)
+        if (!comment || comment.authorId === user._id || comment.deleted !== true || comment.deletionKind !== 'admin') {
+          throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
+        }
+        const share = await store.get(COLLECTIONS.SHARES, comment.shareId)
+        if (!share || (share.status !== 'active' && share.status !== 'withdrawn')) throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
+        const result = { comment: toCommentDto(comment) }
+        if (share.status === 'active') result.commentCount = safeCount(share.commentCount)
         return result
       }
     })
@@ -336,6 +447,7 @@ function createInteractionHandlers(repository, options) {
     },
     create_comment: createComment,
     delete_comment: deleteComment,
+    admin_delete_comment: adminDeleteComment,
     set_like: setLike
   }
 }
@@ -347,5 +459,6 @@ module.exports = {
   decodeCursor,
   encodeCursor,
   toCommentDto,
+  MODERATION_REASONS,
   createInteractionHandlers
 }

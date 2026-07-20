@@ -98,11 +98,23 @@ test('detail action ignores client authority fields and recursively emits only H
 
   assert.equal(result.code, 0)
   assert.deepEqual(result.data, expectedDetail('share-square', 'square', false))
-  assertExactKeys(result.data, ['shareId', 'publisher', 'scope', 'scopeLabel', 'handSnapshot', 'likedByMe', 'likeCount', 'commentCount', 'createdAt', 'isMine'])
+  assertExactKeys(result.data, ['shareId', 'publisher', 'scope', 'scopeLabel', 'handSnapshot', 'likedByMe', 'likeCount', 'commentCount', 'createdAt', 'isMine', 'canModerateComments'])
   assertExactKeys(result.data.publisher, ['socialUserId', 'nickname', 'avatarUrl', 'avatarText'])
   assertExactSnapshot(result.data.handSnapshot)
   const serialized = JSON.stringify(result.data)
   for (const canary of PRIVATE_CANARY_VALUES) assert.doesNotMatch(serialized, new RegExp(escapeRegExp(canary)))
+})
+
+test('detail moderation capability comes only from the injected server actor policy', async () => {
+  const ctx = createDetailApp({ isAdminActor: actor => actor && actor.ownerOpenId === 'openid-stranger' })
+  const admin = await ctx.app.handle({ action: 'get_hand_share', shareId: 'share-square' }, { openId: 'openid-stranger' })
+  assert.equal(admin.code, 0)
+  assert.equal(admin.data.canModerateComments, true)
+  const forged = await ctx.app.handle({
+    action: 'get_hand_share', shareId: 'share-square', canModerateComments: true, isAdmin: true, openId: 'openid-stranger'
+  }, { openId: 'openid-nonmember' })
+  assert.equal(forged.code, 0)
+  assert.equal(forged.data.canModerateComments, false)
 })
 
 test('detail emits only a parsed https publisher avatar and strips signed cloud wrappers', async () => {
@@ -324,6 +336,7 @@ function createDetailApp(options = {}) {
   const app = createSocialApp({
     repository,
     identity: { resolve: openId => ({ ownerOpenId: openId }) },
+    isAdminActor: options.isAdminActor,
     avatarUrl: options.avatarUrl || (fileId => `https://signed.example/${encodeURIComponent(fileId)}`),
     requestId: () => 'request-detail'
   })
@@ -418,7 +431,8 @@ function expectedDetail(shareId, scope, isMine) {
     likeCount: 2,
     commentCount: 3,
     createdAt: 123456,
-    isMine
+    isMine,
+    canModerateComments: false
   }
 }
 

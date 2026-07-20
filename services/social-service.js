@@ -182,6 +182,15 @@ function deleteComment(input) {
   })
 }
 
+function adminDeleteComment(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('admin_delete_comment', {
+    commentId: String(source.commentId || '').trim(),
+    reason: String(source.reason || '').trim(),
+    clientMutationId: source.clientMutationId
+  })
+}
+
 function setLike(input) {
   const source = requireMutation(input)
   return callSocialFunction('set_like', {
@@ -268,6 +277,7 @@ module.exports = {
   listComments,
   createComment,
   deleteComment,
+  adminDeleteComment,
   setLike,
   previewHandShare,
   publishHand,

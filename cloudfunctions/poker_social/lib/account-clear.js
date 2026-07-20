@@ -47,6 +47,8 @@ const STAGES = Object.freeze([
   'rate_publisher',
   'mutations',
   'daily_stats',
+  'moderation_target_audits',
+  'moderation_actor_audits',
   'complete'
 ])
 
@@ -151,15 +153,20 @@ async function processRows(store, stage, sourceRows, socialUserId, at) {
       }
     } else if (stage === 'comments') {
       const row = await store.get('social_comments', source._id)
-      if (row && row.authorId === socialUserId && row.deleted === false) {
+      if (row && row.authorId === socialUserId) {
+        const wasActive = row.deleted === false
         await store.set('social_comments', row._id, Object.assign({}, row, {
+          authorId: ANONYMOUS_SOCIAL_USER_ID,
           authorSnapshot: ANONYMOUS_COMMENT_AUTHOR,
           deleted: true,
-          deletedAt: at,
+          deletedAt: Number.isSafeInteger(row.deletedAt) && row.deletedAt > 0 ? row.deletedAt : at,
+          deletionKind: row.deletionKind === 'admin' ? 'admin' : 'author',
+          text: '',
+          stickerId: '',
           updatedAt: at
         }))
-        const share = await store.get('social_hand_shares', row.shareId)
-        if (share) {
+        const share = wasActive && await store.get('social_hand_shares', row.shareId)
+        if (wasActive && share) {
           const commentCount = Number.isSafeInteger(share.commentCount) && share.commentCount > 0 ? share.commentCount - 1 : 0
           await store.set('social_hand_shares', share._id, Object.assign({}, share, { commentCount, updatedAt: at }))
         }
@@ -218,6 +225,20 @@ async function processRows(store, stage, sourceRows, socialUserId, at) {
     } else if (stage === 'daily_stats') {
       const row = await store.get('social_daily_stats', source._id)
       if (row && row.socialUserId === socialUserId) await store.remove('social_daily_stats', row._id)
+    } else if (stage === 'moderation_target_audits') {
+      const row = await store.get('social_moderation_audits', source._id)
+      if (row && row.targetAuthorId === socialUserId) {
+        await store.set('social_moderation_audits', row._id, Object.assign({}, row, {
+          commentId: '', shareId: '', targetAuthorId: '', clientMutationId: '', targetRedacted: true
+        }))
+      }
+    } else if (stage === 'moderation_actor_audits') {
+      const row = await store.get('social_moderation_audits', source._id)
+      if (row && row.moderatorId === socialUserId) {
+        await store.set('social_moderation_audits', row._id, Object.assign({}, row, {
+          moderatorId: '', moderatorRedacted: true
+        }))
+      }
     }
   }
 }

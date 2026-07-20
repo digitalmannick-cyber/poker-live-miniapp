@@ -54,6 +54,7 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   RATE_LIMITED: 'rate limited',
   CONTENT_UNAVAILABLE: 'content unavailable',
   INVALID_COMMENT: 'invalid comment',
+  INVALID_MODERATION_REASON: 'invalid moderation reason',
   INVALID_LIKE: 'invalid like'
 })
 
@@ -86,13 +87,15 @@ function createSocialApp(deps) {
     : {}
   const handFeedHandlers = config.repository
     ? createHandFeedHandlers(config.repository, Object.assign({}, config.handFeed || {}, {
-      avatarUrl: config.avatarUrl || config.handFeed && config.handFeed.avatarUrl
+      avatarUrl: config.avatarUrl || config.handFeed && config.handFeed.avatarUrl,
+      isAdminActor: config.isAdminActor
     }))
     : {}
   const interactionHandlers = config.repository
     ? createInteractionHandlers(config.repository, Object.assign({}, config.interaction || {}, {
       avatarUrl: config.avatarUrl || config.interaction && config.interaction.avatarUrl,
-      notificationWriter
+      notificationWriter,
+      isAdminActor: config.isAdminActor
     }))
     : {}
   const compensateSelectedHands = config.repository

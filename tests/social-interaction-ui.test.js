@@ -26,9 +26,120 @@ test('interaction surface uses icon actions, one-level replies and the frozen st
   assert.match(wxml, /bindtap="chooseSticker"/)
   assert.match(wxml, /bindtap="replyToComment"/)
   assert.match(wxml, /wx:if="\{\{item\.canDelete\}\}"/)
+  assert.match(wxml, /wx:if="\{\{item\.canModerate\}\}"/)
+  assert.match(wxml, /bindtap="moderateComment"/)
   assert.match(wxml, /item\.parentCommentId \? 'comment-row reply-row'/)
   assert.match(wxml, /commentsStatus !== 'ready' \? 'interaction-disabled'/)
   assert.doesNotMatch(wxml, /互动将在后续版本开放/)
+})
+
+test('administrator capability derives mutually exclusive author delete and moderation actions', async () => {
+  const loaded = loadPage({
+    details: [detail({ canModerateComments: true })],
+    profiles: [{ socialUserId: 'su-me' }],
+    commentPages: [{
+      items: [
+        comment('c-other', 'su-other'),
+        comment('c-mine', 'su-me'),
+        comment('c-deleted', 'su-other', { deleted: true, text: '该评论已被管理员移除' })
+      ],
+      nextCursor: null
+    }]
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'share-1' })
+    assert.deepEqual(page.data.comments.map(item => [item.commentId, item.canDelete, item.canModerate]), [
+      ['c-other', false, true],
+      ['c-mine', true, false],
+      ['c-deleted', false, false]
+    ])
+  } finally { loaded.restore() }
+})
+
+test('moderation ActionSheet maps fixed reasons and applies only authoritative server state', async () => {
+  const removed = comment('c-other', 'su-other', { deleted: true, text: '该评论已被管理员移除' })
+  const loaded = loadPage({
+    details: [detail({ canModerateComments: true })],
+    commentPages: [{ items: [comment('c-other', 'su-other')], nextCursor: null }],
+    actionSheets: [{ tapIndex: 1 }],
+    moderations: [{ comment: removed, commentCount: 1 }]
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'share-1' })
+    await page.moderateComment({ currentTarget: { dataset: { commentId: 'c-other' } } })
+    assert.deepEqual(loaded.calls.actionSheets, [['垃圾广告', '骚扰或攻击', '泄露隐私', '违法或欺诈', '其他违规']])
+    assert.equal(loaded.calls.moderations.length, 1)
+    assert.equal(loaded.calls.moderations[0].commentId, 'c-other')
+    assert.equal(loaded.calls.moderations[0].reason, 'abuse')
+    assert.equal(typeof loaded.calls.moderations[0].clientMutationId, 'string')
+    assert.equal(page.data.comments[0].text, '该评论已被管理员移除')
+    assert.equal(page.data.comments[0].canModerate, false)
+    assert.equal(page.data.detail.commentCount, 1)
+  } finally { loaded.restore() }
+})
+
+test('cancelled or stale moderation sheets never send an administrator request', async () => {
+  const pending = {}
+  const loaded = loadPage({
+    details: [detail({ canModerateComments: true })],
+    commentPages: [{ items: [comment('c-other', 'su-other')], nextCursor: null }],
+    actionSheets: [typedError('CANCEL'), { pending }]
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'share-1' })
+    await page.moderateComment({ currentTarget: { dataset: { commentId: 'c-other' } } })
+    assert.equal(loaded.calls.moderations.length, 0)
+    const stale = page.moderateComment({ currentTarget: { dataset: { commentId: 'c-other' } } })
+    page.onHide()
+    pending.success({ tapIndex: 0 })
+    await stale
+    assert.equal(loaded.calls.moderations.length, 0)
+  } finally { loaded.restore() }
+})
+
+test('revoked moderator permission reloads the still-readable detail instead of marking the hand unavailable', async () => {
+  const loaded = loadPage({
+    details: [detail({ canModerateComments: true }), detail({ canModerateComments: false })],
+    profiles: [{ socialUserId: 'su-me' }, { socialUserId: 'su-me' }],
+    commentPages: [
+      { items: [comment('c-other', 'su-other')], nextCursor: null },
+      { items: [comment('c-other', 'su-other')], nextCursor: null }
+    ],
+    actionSheets: [{ tapIndex: 0 }],
+    moderations: [typedError('FORBIDDEN')]
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'share-1' })
+    await page.moderateComment({ currentTarget: { dataset: { commentId: 'c-other' } } })
+    assert.equal(page.data.status, 'ready')
+    assert.equal(page.data.detail.canModerateComments, false)
+    assert.equal(page.data.comments[0].canModerate, false)
+    assert.equal(loaded.calls.detail.length, 2)
+    assert.equal(loaded.calls.toast.at(-1).title, '管理权限已变化')
+  } finally { loaded.restore() }
+})
+
+test('response-lost administrator delete retries with the same mutation id', async () => {
+  const removed = comment('c-other', 'su-other', { deleted: true, text: '该评论已被管理员移除' })
+  const loaded = loadPage({
+    details: [detail({ canModerateComments: true })],
+    commentPages: [{ items: [comment('c-other', 'su-other')], nextCursor: null }],
+    actionSheets: [{ tapIndex: 4 }, { tapIndex: 4 }],
+    moderations: [typedError('NETWORK_ERROR'), { comment: removed, commentCount: 1 }]
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'share-1' })
+    await page.moderateComment({ currentTarget: { dataset: { commentId: 'c-other' } } })
+    const lostId = loaded.calls.moderations[0].clientMutationId
+    await page.moderateComment({ currentTarget: { dataset: { commentId: 'c-other' } } })
+    assert.equal(loaded.calls.moderations[1].clientMutationId, lostId)
+    assert.equal(page.data.comments[0].deleted, true)
+  } finally { loaded.restore() }
 })
 
 test('detail loads strict comments and derives delete authority only from my public social id', async () => {
@@ -467,7 +578,7 @@ function detail(patch = {}) {
       actions: [{ street: 'preflop', actor: 'Hero', type: 'raise', amountBb: 2.5 }],
       showdown: []
     },
-    likedByMe: false, likeCount: 2, commentCount: 2, createdAt: 123456, isMine: false
+    likedByMe: false, likeCount: 2, commentCount: 2, createdAt: 123456, isMine: false, canModerateComments: false
   }, patch)
 }
 
@@ -489,9 +600,11 @@ function loadPage(options = {}) {
     commentPages: (options.commentPages || [{ items: [], nextCursor: null }]).slice(),
     likes: (options.likes || []).slice(),
     creates: (options.creates || []).slice(),
-    deletes: (options.deletes || []).slice()
+    deletes: (options.deletes || []).slice(),
+    moderations: (options.moderations || []).slice(),
+    actionSheets: (options.actionSheets || []).slice()
   }
-  const calls = { detail: [], profile: [], comments: [], likes: [], creates: [], deletes: [], toast: [] }
+  const calls = { detail: [], profile: [], comments: [], likes: [], creates: [], deletes: [], moderations: [], actionSheets: [], toast: [] }
   const originalLoad = Module._load
   Module._load = function load(request, parent, isMain) {
     if (parent && /pages[\\/]social-hand-detail[\\/]social-hand-detail\.js$/.test(parent.filename || '') && request === '../../services/social-service') {
@@ -501,13 +614,25 @@ function loadPage(options = {}) {
         listComments(input) { calls.comments.push(input); return next(queues.commentPages) },
         setLike(input) { calls.likes.push(input); return next(queues.likes) },
         createComment(input) { calls.creates.push(input); return next(queues.creates) },
-        deleteComment(input) { calls.deletes.push(input); return next(queues.deletes) }
+        deleteComment(input) { calls.deletes.push(input); return next(queues.deletes) },
+        adminDeleteComment(input) { calls.moderations.push(input); return next(queues.moderations) }
       }
     }
     return originalLoad.call(this, request, parent, isMain)
   }
   global.Page = value => { definition = value }
-  global.wx = { showToast(input) { calls.toast.push(input) } }
+  global.wx = {
+    showToast(input) { calls.toast.push(input) },
+    showActionSheet(input) {
+      calls.actionSheets.push(input.itemList)
+      const outcome = queues.actionSheets.shift()
+      if (outcome && outcome.pending) {
+        outcome.pending.success = input.success
+        outcome.pending.fail = input.fail
+      } else if (outcome instanceof Error) input.fail(outcome)
+      else input.success(outcome || { tapIndex: -1 })
+    }
+  }
   const resolved = require.resolve(pageJs)
   delete require.cache[resolved]
   try { require(resolved) } finally { Module._load = originalLoad; delete global.Page }

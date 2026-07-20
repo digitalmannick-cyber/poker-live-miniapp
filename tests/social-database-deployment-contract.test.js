@@ -174,15 +174,6 @@ test('deployment index manifest preserves exact compound field order and array s
       ]
     },
     {
-      collection: 'social_comments',
-      fields: [
-        { field: 'authorId', order: 'ASC' },
-        { field: 'deleted', order: 'ASC' },
-        { field: 'createdAt', order: 'DESC' },
-        { field: '_id', order: 'DESC' }
-      ]
-    },
-    {
       collection: 'social_likes',
       fields: [
         { field: 'actorId', order: 'ASC' },
@@ -302,6 +293,22 @@ test('deployment index manifest preserves exact compound field order and array s
         { field: 'playerId', order: 'ASC' },
         { field: '_id', order: 'ASC' }
       ]
+    },
+    {
+      collection: 'social_moderation_audits',
+      fields: [
+        { field: 'targetAuthorId', order: 'ASC' },
+        { field: 'createdAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_moderation_audits',
+      fields: [
+        { field: 'moderatorId', order: 'ASC' },
+        { field: 'createdAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
     }
   ])
   assert.deepEqual(manifest.pointReadOnly, [
@@ -407,7 +414,7 @@ function expectedAccountClearShape(stage, id) {
     hand_shares: ['social_hand_shares', { publisherId: id, status: 'active' }, [['createdAt', 'desc'], ['_id', 'desc']]],
     card_shares_sent: ['social_player_card_shares', { senderUserId: id, status: 'active' }, [['createdAt', 'desc'], ['_id', 'desc']]],
     card_shares_received: ['social_player_card_shares', { targetUserId: id, status: 'active', importedAt: 0 }, [['createdAt', 'desc'], ['_id', 'desc']]],
-    comments: ['social_comments', { authorId: id, deleted: false }, [['createdAt', 'desc'], ['_id', 'desc']]],
+    comments: ['social_comments', { authorId: id }, [['createdAt', 'desc'], ['_id', 'desc']]],
     likes: ['social_likes', { actorId: id, active: true }, [['updatedAt', 'desc'], ['_id', 'desc']]],
     recipient_notifications: ['social_notifications', { recipientId: id }, [['createdAt', 'desc'], ['_id', 'desc']]],
     recipient_heads: ['social_notification_heads', { recipientId: id }, [['latestAt', 'asc'], ['_id', 'asc']]],
@@ -418,7 +425,9 @@ function expectedAccountClearShape(stage, id) {
     rate_actor: ['social_rate_limits', { actorId: id }, [['_id', 'asc']]],
     rate_publisher: ['social_rate_limits', { publisherId: id }, [['_id', 'asc']]],
     mutations: ['social_mutations', { actorId: id }, [['createdAt', 'asc'], ['_id', 'asc']]],
-    daily_stats: ['social_daily_stats', { socialUserId: id }, [['dateKey', 'asc'], ['_id', 'asc']]]
+    daily_stats: ['social_daily_stats', { socialUserId: id }, [['dateKey', 'asc'], ['_id', 'asc']]],
+    moderation_target_audits: ['social_moderation_audits', { targetAuthorId: id }, [['createdAt', 'asc'], ['_id', 'asc']]],
+    moderation_actor_audits: ['social_moderation_audits', { moderatorId: id }, [['createdAt', 'asc'], ['_id', 'asc']]]
   }
   const shape = shapes[stage]
   return shape && { collection: shape[0], where: shape[1], orders: shape[2], limit: 50 }

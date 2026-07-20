@@ -301,6 +301,7 @@ function chunk(values, size) {
 function createHandFeedHandlers(repository, options) {
   const config = options || {}
   const avatarUrl = typeof config.avatarUrl === 'function' ? config.avatarUrl : async () => ''
+  const isAdminActor = typeof config.isAdminActor === 'function' ? config.isAdminActor : () => false
   const configuredChunk = Number(config.friendIdQueryChunkSize)
   const friendChunkSize = Number.isInteger(configuredChunk) && configuredChunk >= 1 && configuredChunk <= FRIEND_ID_QUERY_CHUNK_SIZE
     ? configuredChunk
@@ -368,7 +369,8 @@ function createHandFeedHandlers(repository, options) {
         likeCount: safeCount(readable.share.likeCount),
         commentCount: safeCount(readable.share.commentCount),
         createdAt: detailCreatedAt(readable.share.createdAt),
-        isMine: viewerId === text(readable.share.publisherId)
+        isMine: viewerId === text(readable.share.publisherId),
+        canModerateComments: isAdminActor(actor) === true
       }
     }
   }

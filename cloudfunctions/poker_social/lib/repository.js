@@ -18,7 +18,8 @@ const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_RATE_LIMITS: 'social_rate_limits',
   SOCIAL_NOTIFICATION_OUTBOX: 'social_notification_outbox',
   SOCIAL_LIKES: 'social_likes',
-  SOCIAL_COMMENTS: 'social_comments'
+  SOCIAL_COMMENTS: 'social_comments',
+  SOCIAL_MODERATION_AUDITS: 'social_moderation_audits'
 })
 
 const SERVER_ONLY_SOCIAL_COLLECTIONS = Object.freeze(Object.values(SOCIAL_COLLECTIONS))
@@ -53,7 +54,9 @@ const ACCOUNT_CLEAR_QUERY_STAGES = Object.freeze([
   'rate_actor',
   'rate_publisher',
   'mutations',
-  'daily_stats'
+  'daily_stats',
+  'moderation_target_audits',
+  'moderation_actor_audits'
 ])
 
 const PRIVATE_PAGE_SIZE = 100
@@ -171,7 +174,7 @@ function createCloudSocialRepository(database) {
           hand_shares: [SOCIAL_COLLECTIONS.SOCIAL_HAND_SHARES, { publisherId: id, status: 'active' }, [['createdAt', 'desc'], ['_id', 'desc']]],
           card_shares_sent: [SOCIAL_COLLECTIONS.SOCIAL_PLAYER_CARD_SHARES, { senderUserId: id, status: 'active' }, [['createdAt', 'desc'], ['_id', 'desc']]],
           card_shares_received: [SOCIAL_COLLECTIONS.SOCIAL_PLAYER_CARD_SHARES, { targetUserId: id, status: 'active', importedAt: 0 }, [['createdAt', 'desc'], ['_id', 'desc']]],
-          comments: [SOCIAL_COLLECTIONS.SOCIAL_COMMENTS, { authorId: id, deleted: false }, [['createdAt', 'desc'], ['_id', 'desc']]],
+          comments: [SOCIAL_COLLECTIONS.SOCIAL_COMMENTS, { authorId: id }, [['createdAt', 'desc'], ['_id', 'desc']]],
           likes: [SOCIAL_COLLECTIONS.SOCIAL_LIKES, { actorId: id, active: true }, [['updatedAt', 'desc'], ['_id', 'desc']]],
           recipient_notifications: [SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATIONS, { recipientId: id }, [['createdAt', 'desc'], ['_id', 'desc']]],
           recipient_heads: [SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_HEADS, { recipientId: id }, [['latestAt', 'asc'], ['_id', 'asc']]],
@@ -181,7 +184,9 @@ function createCloudSocialRepository(database) {
           rate_actor: [SOCIAL_COLLECTIONS.SOCIAL_RATE_LIMITS, { actorId: id }, [['_id', 'asc']]],
           rate_publisher: [SOCIAL_COLLECTIONS.SOCIAL_RATE_LIMITS, { publisherId: id }, [['_id', 'asc']]],
           mutations: [SOCIAL_COLLECTIONS.SOCIAL_MUTATIONS, { actorId: id }, [['createdAt', 'asc'], ['_id', 'asc']]],
-          daily_stats: [SOCIAL_COLLECTIONS.SOCIAL_DAILY_STATS, { socialUserId: id }, [['dateKey', 'asc'], ['_id', 'asc']]]
+          daily_stats: [SOCIAL_COLLECTIONS.SOCIAL_DAILY_STATS, { socialUserId: id }, [['dateKey', 'asc'], ['_id', 'asc']]],
+          moderation_target_audits: [SOCIAL_COLLECTIONS.SOCIAL_MODERATION_AUDITS, { targetAuthorId: id }, [['createdAt', 'asc'], ['_id', 'asc']]],
+          moderation_actor_audits: [SOCIAL_COLLECTIONS.SOCIAL_MODERATION_AUDITS, { moderatorId: id }, [['createdAt', 'asc'], ['_id', 'asc']]]
         }
         const value = definitions[stage]
         if (value) definition = { collection: value[0], filters: value[1], orders: value[2] }

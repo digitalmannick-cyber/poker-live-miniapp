@@ -127,15 +127,6 @@
       ]
     },
     {
-      "collection": "social_comments",
-      "fields": [
-        { "field": "authorId", "order": "ASC" },
-        { "field": "deleted", "order": "ASC" },
-        { "field": "createdAt", "order": "DESC" },
-        { "field": "_id", "order": "DESC" }
-      ]
-    },
-    {
       "collection": "social_likes",
       "fields": [
         { "field": "actorId", "order": "ASC" },
@@ -253,6 +244,22 @@
       "fields": [
         { "field": "ownerOpenId", "order": "ASC" },
         { "field": "playerId", "order": "ASC" },
+        { "field": "_id", "order": "ASC" }
+      ]
+    },
+    {
+      "collection": "social_moderation_audits",
+      "fields": [
+        { "field": "targetAuthorId", "order": "ASC" },
+        { "field": "createdAt", "order": "ASC" },
+        { "field": "_id", "order": "ASC" }
+      ]
+    },
+    {
+      "collection": "social_moderation_audits",
+      "fields": [
+        { "field": "moderatorId", "order": "ASC" },
+        { "field": "createdAt", "order": "ASC" },
         { "field": "_id", "order": "ASC" }
       ]
     }

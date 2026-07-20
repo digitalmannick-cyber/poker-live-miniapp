@@ -68,7 +68,7 @@ function memoryRepository(seed) {
         hand_shares: ['social_hand_shares', row => row.publisherId === socialUserId && row.status === 'active'],
         card_shares_sent: ['social_player_card_shares', row => row.senderUserId === socialUserId && row.status === 'active'],
         card_shares_received: ['social_player_card_shares', row => row.targetUserId === socialUserId && row.status === 'active' && row.importedAt === 0],
-        comments: ['social_comments', row => row.authorId === socialUserId && row.deleted === false],
+        comments: ['social_comments', row => row.authorId === socialUserId],
         likes: ['social_likes', row => row.actorId === socialUserId && row.active === true],
         recipient_notifications: ['social_notifications', row => row.recipientId === socialUserId],
         recipient_heads: ['social_notification_heads', row => row.recipientId === socialUserId],
@@ -79,7 +79,9 @@ function memoryRepository(seed) {
         rate_actor: ['social_rate_limits', row => row.actorId === socialUserId],
         rate_publisher: ['social_rate_limits', row => row.publisherId === socialUserId],
         mutations: ['social_mutations', row => row.actorId === socialUserId],
-        daily_stats: ['social_daily_stats', row => row.socialUserId === socialUserId]
+        daily_stats: ['social_daily_stats', row => row.socialUserId === socialUserId],
+        moderation_target_audits: ['social_moderation_audits', row => row.targetAuthorId === socialUserId],
+        moderation_actor_audits: ['social_moderation_audits', row => row.moderatorId === socialUserId]
       }
       const config = filters[stage]
       if (!config) throw new Error('unexpected account clear stage: ' + stage)
@@ -132,7 +134,7 @@ function baseSeed(patch) {
     social_users: [USER, OTHER], social_invites: [], social_friendships: [], social_hand_shares: [], social_hand_share_slots: [],
     social_player_card_shares: [], social_comments: [], social_likes: [], social_notifications: [], social_notification_state: [],
     social_notification_heads: [], social_notification_actors: [], social_notification_outbox: [], social_rate_limits: [],
-    social_mutations: [], social_daily_stats: []
+    social_mutations: [], social_daily_stats: [], social_moderation_audits: []
   }, patch || {})
 }
 
@@ -189,6 +191,7 @@ test('account clear converges every social collection while preserving replies a
     ],
     social_comments: [
       { _id: 'comment-top', shareId: otherShare._id, parentCommentId: '', authorId: USER._id, authorSnapshot: { socialUserId: USER._id, nickname: 'Clear Me', avatarUrl: '', avatarText: 'C' }, kind: 'text', text: 'erase', stickerId: '', deleted: false, createdAt: 1 },
+      { _id: 'comment-admin-deleted', shareId: otherShare._id, parentCommentId: '', authorId: USER._id, authorSnapshot: { socialUserId: USER._id, nickname: 'Clear Me', avatarUrl: '', avatarText: 'C' }, kind: 'text', text: 'private old text', stickerId: '', deleted: true, deletionKind: 'admin', moderationReason: 'abuse', createdAt: 1, deletedAt: 2 },
       { _id: 'comment-reply', shareId: otherShare._id, parentCommentId: 'comment-top', authorId: OTHER._id, authorSnapshot: { socialUserId: OTHER._id, nickname: 'Other', avatarUrl: '', avatarText: 'O' }, kind: 'text', text: 'keep reply', stickerId: '', deleted: false, createdAt: 2 }
     ],
     social_likes: [
@@ -211,7 +214,11 @@ test('account clear converges every social collection while preserving replies a
     ],
     social_rate_limits: [{ _id: 'rate-a', actorId: USER._id }, { _id: 'rate-p', publisherId: USER._id }],
     social_mutations: [{ _id: 'mutation', actorId: USER._id, action: 'x', createdAt: 1 }],
-    social_daily_stats: [{ _id: 'stats', socialUserId: USER._id, dateKey: '20260720' }]
+    social_daily_stats: [{ _id: 'stats', socialUserId: USER._id, dateKey: '20260720' }],
+    social_moderation_audits: [
+      { _id: 'audit-target', action: 'admin_delete_comment', targetType: 'comment', commentId: 'comment-admin-deleted', shareId: otherShare._id, targetAuthorId: USER._id, moderatorId: OTHER._id, reason: 'abuse', clientMutationId: 'secret-target', targetRedacted: false, moderatorRedacted: false, createdAt: 3 },
+      { _id: 'audit-moderator', action: 'admin_delete_comment', targetType: 'comment', commentId: 'comment-other', shareId: otherShare._id, targetAuthorId: OTHER._id, moderatorId: USER._id, reason: 'spam', clientMutationId: 'secret-moderator', targetRedacted: false, moderatorRedacted: false, createdAt: 4 }
+    ]
   }))
   const handlers = createAccountClearHandlers(repository, { now: () => 20_000 })
   await clearUntilComplete(handlers, ['clear-all'])
@@ -227,6 +234,12 @@ test('account clear converges every social collection while preserving replies a
   const deletedComment = data.social_comments.find(row => row._id === 'comment-top')
   assert.equal(deletedComment.deleted, true)
   assert.deepEqual(deletedComment.authorSnapshot, ANONYMOUS_COMMENT_AUTHOR)
+  assert.equal(deletedComment.authorId, ANONYMOUS_COMMENT_AUTHOR.socialUserId)
+  const previouslyDeleted = data.social_comments.find(row => row._id === 'comment-admin-deleted')
+  assert.deepEqual(previouslyDeleted.authorSnapshot, ANONYMOUS_COMMENT_AUTHOR)
+  assert.equal(previouslyDeleted.authorId, ANONYMOUS_COMMENT_AUTHOR.socialUserId)
+  assert.equal(previouslyDeleted.text, '')
+  assert.equal(previouslyDeleted.deletionKind, 'admin')
   assert.equal(data.social_comments.find(row => row._id === 'comment-reply').deleted, false)
   assert.equal(data.social_hand_shares.find(row => row._id === otherShare._id).commentCount, 1)
   assert.equal(data.social_likes.find(row => row._id === 'like-active').active, false)
@@ -249,6 +262,13 @@ test('account clear converges every social collection while preserving replies a
   assert.equal(data.social_rate_limits.length, 0)
   assert.equal(data.social_mutations.length, 0)
   assert.equal(data.social_daily_stats.length, 0)
+  const targetAudit = data.social_moderation_audits.find(row => row._id === 'audit-target')
+  assert.equal(targetAudit.targetRedacted, true)
+  for (const key of ['commentId', 'shareId', 'targetAuthorId', 'clientMutationId']) assert.equal(targetAudit[key], '')
+  assert.equal(targetAudit.moderatorId, OTHER._id)
+  const moderatorAudit = data.social_moderation_audits.find(row => row._id === 'audit-moderator')
+  assert.equal(moderatorAudit.moderatorId, '')
+  assert.equal(moderatorAudit.moderatorRedacted, true)
 })
 
 test('social app routes clear_my_social_data and returns only the public checkpoint envelope', async () => {
@@ -295,13 +315,14 @@ test('cloud repository exposes exact fail-closed account-clear batch queries wit
     'friendships_b_pending', 'friendships_b_accepted', 'friendships_b_rejected', 'hand_shares',
     'card_shares_sent', 'card_shares_received', 'comments', 'likes', 'recipient_notifications',
     'recipient_heads', 'actor_notifications', 'actor_memberships', 'outbox_publisher', 'outbox_target',
-    'rate_actor', 'rate_publisher', 'mutations', 'daily_stats'
+    'rate_actor', 'rate_publisher', 'mutations', 'daily_stats',
+    'moderation_target_audits', 'moderation_actor_audits'
   ]) {
     await repository.listAccountClearBatch(stage, USER._id, BATCH_SIZE)
   }
   await repository.listAccountClearNotificationActors('notification-id', BATCH_SIZE)
 
-  assert.equal(calls.length, 24)
+  assert.equal(calls.length, 26)
   assert.ok(calls.every(call => call.limit > 0 && call.limit <= BATCH_SIZE))
   assert.ok(calls.every(call => call.skip === false))
   const outboxTarget = calls.find(call => call.collection === 'social_notification_outbox' && call.where && call.where.targetUserIds)

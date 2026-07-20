@@ -223,7 +223,8 @@ function setup(seed, options) {
   const fake = createFeedRepository(seed, options)
   const handlers = api.createHandFeedHandlers(fake.repository, {
     avatarUrl: async fileId => `https://cdn.example/${encodeURIComponent(fileId)}`,
-    friendIdQueryChunkSize: options && options.friendIdQueryChunkSize
+    friendIdQueryChunkSize: options && options.friendIdQueryChunkSize,
+    isAdminActor: options && options.isAdminActor
   })
   assert.equal(typeof handlers.list_feed, 'function')
   assert.equal(typeof handlers.get_hand_share, 'function')

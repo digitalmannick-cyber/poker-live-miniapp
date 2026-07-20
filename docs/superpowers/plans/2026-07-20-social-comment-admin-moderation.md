@@ -28,11 +28,11 @@
 - Test: `tests/social-hand-feed-cloud.test.js`
 - Test: `tests/social-security-matrix.test.js`
 
-- [ ] 先补环境变量解析、能力位白名单、非管理员拒绝、固定原因校验、幂等冲突、计数一次性递减、撤回分享残留评论处置和审计一次性写入测试，并确认 RED。
-- [ ] 实现 `admin_delete_comment`，只接受 `commentId/reason/clientMutationId`，原因仅允许 `spam/abuse/privacy/illegal/other`。
-- [ ] `get_hand_share` 增加 `canModerateComments` 布尔字段，不暴露管理员名单或 OpenID。
-- [ ] 作者删除写入 `deletionKind: 'author'`；管理员删除写入 `deletionKind: 'admin'` 与 `moderationReason`；DTO 对旧数据保持兼容。
-- [ ] 运行聚焦测试、语法检查和社交安全矩阵。
+- [x] 先补环境变量解析、能力位白名单、非管理员拒绝、固定原因校验、幂等冲突、计数一次性递减、撤回分享残留评论处置和审计一次性写入测试，并确认 RED。
+- [x] 实现 `admin_delete_comment`，只接受 `commentId/reason/clientMutationId`，原因仅允许 `spam/abuse/privacy/illegal/other`。
+- [x] `get_hand_share` 增加 `canModerateComments` 布尔字段，不暴露管理员名单或 OpenID。
+- [x] 作者删除写入 `deletionKind: 'author'`；管理员删除写入 `deletionKind: 'admin'` 与 `moderationReason`；DTO 对旧数据保持兼容。
+- [x] 运行聚焦测试、语法检查和社交安全矩阵。
 
 ### Task 2: 审计集合、账号清除、安全规则与索引
 
@@ -45,11 +45,11 @@
 - Test: `tests/social-account-clear.test.js`
 - Test: `tests/social-database-deployment-contract.test.js`
 
-- [ ] 先补审计私有规则、确定性审计 ID、两种角色脱敏、重复清除收敛和所需查询索引测试，并确认 RED。
-- [ ] 新增 `social_moderation_audits` 事务写入和账号清除查询/更新能力。
-- [ ] 清除被处置者时清空目标关联；清除管理员时清空处置者关联；同一人兼具两种角色时两边均脱敏。
-- [ ] 将两个清除查询索引加入部署清单，并更新运维说明。
-- [ ] 运行账号清除、部署契约和全体社交后端测试。
+- [x] 先补审计私有规则、确定性审计 ID、两种角色脱敏、重复清除收敛和所需查询索引测试，并确认 RED。
+- [x] 新增 `social_moderation_audits` 事务写入和账号清除查询/更新能力。
+- [x] 清除被处置者时清空目标关联；清除管理员时清空处置者关联；同一人兼具两种角色时两边均脱敏。
+- [x] 将两个清除查询索引加入部署清单，并更新运维说明。
+- [x] 运行账号清除、部署契约和全体社交后端测试。
 
 ### Task 3: 客户端服务与手牌详情处置交互
 
@@ -61,16 +61,16 @@
 - Test: `tests/social-interaction-service.test.js`
 - Test: `tests/social-hand-detail-page.test.js`
 
-- [ ] 先补服务参数、权限显示、本人评论去重、固定原因 ActionSheet、取消不请求、失败恢复、账号切换/卸载过期响应测试，并确认 RED。
-- [ ] 增加 `adminDeleteComment` 服务方法，复用稳定 mutation ID 和现有重试语义。
-- [ ] 仅在 `canModerateComments` 且目标为他人未删除评论时显示“移除”；管理员自己的评论仍只显示普通删除。
-- [ ] 选择固定原因后调用管理员接口；成功后使用严格 DTO 更新评论和计数，失败不伪造本地成功。
-- [ ] 运行页面、服务、统一动态和账号生命周期回归测试。
+- [x] 先补服务参数、权限显示、本人评论去重、固定原因 ActionSheet、取消不请求、失败恢复、账号切换/卸载过期响应测试，并确认 RED。
+- [x] 增加 `adminDeleteComment` 服务方法，复用稳定 mutation ID 和现有重试语义。
+- [x] 仅在 `canModerateComments` 且目标为他人未删除评论时显示“移除”；管理员自己的评论仍只显示普通删除。
+- [x] 选择固定原因后调用管理员接口；成功后使用严格 DTO 更新评论和计数，失败不伪造本地成功。
+- [x] 运行页面、服务、统一动态和账号生命周期回归测试。
 
 ### Task 4: 全量验证与真实环境交付门槛
 
-- [ ] 运行全部相关 `social-*.test.js`、完整串行测试、语法检查、敏感字段扫描与工作树差异审查。
-- [ ] 已知基线异常单独复测并保持范围不扩散：隔离 worktree 缺少私有预览配置；版本号与旧发布海报不一致。
+- [x] 运行全部相关 `social-*.test.js`、完整串行测试、语法检查、敏感字段扫描与工作树差异审查。
+- [x] 已知基线异常单独复测并保持范围不扩散：隔离 worktree 缺少私有预览配置；版本号与旧发布海报不一致。
 - [ ] 在真实主工作区执行微信开发者工具 `auto-preview`，只预览不上传开发版本。
 - [ ] 输出真实环境部署清单：配置 `SOCIAL_ADMIN_OPENIDS`、部署云函数/规则/索引、使用管理员与普通用户双账号验证。
 - [ ] 未获得明确授权前，不修改真实云环境、不部署云函数、不上传版本。

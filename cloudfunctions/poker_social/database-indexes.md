@@ -32,7 +32,6 @@ The second action index is legacy `_openid` compatibility. Source hand, session,
 - `social_invites`: `inviterId ASC, revokedAt ASC, createdAt ASC, _id ASC`
 - `social_player_card_shares`: `senderUserId ASC, status ASC, createdAt DESC, _id DESC`
 - `social_player_card_shares`: `targetUserId ASC, status ASC, importedAt ASC, createdAt DESC, _id DESC`
-- `social_comments`: `authorId ASC, deleted ASC, createdAt DESC, _id DESC`
 - `social_likes`: `actorId ASC, active ASC, updatedAt DESC, _id DESC`
 - `social_notifications`: `actorSnapshot.socialUserId ASC, createdAt ASC, _id ASC`
 - `social_notification_heads`: `recipientId ASC, latestAt ASC, _id ASC`
@@ -43,6 +42,8 @@ The second action index is legacy `_openid` compatibility. Source hand, session,
 - `social_rate_limits`: `publisherId ASC, _id ASC`
 - `social_mutations`: `actorId ASC, createdAt ASC, _id ASC`
 - `social_daily_stats`: `socialUserId ASC, dateKey ASC, _id ASC`
+- `social_moderation_audits`: `targetAuthorId ASC, createdAt ASC, _id ASC`
+- `social_moderation_audits`: `moderatorId ASC, createdAt ASC, _id ASC`
 
 ## Private poker-data clear query
 

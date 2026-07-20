@@ -37,6 +37,7 @@ test('interaction service exposes exact read and write payloads without forwardi
     clientMutationId: ' comment-1 ', authorId: 'attacker', source: { handId: 'private' }
   })
   await service.deleteComment({ commentId: ' comment-1 ', clientMutationId: ' delete-1 ', shareId: 'must-not-forward' })
+  await service.adminDeleteComment({ commentId: ' comment-2 ', reason: ' abuse ', clientMutationId: ' moderate-1 ', isAdmin: true, moderatorId: 'attacker' })
   await service.setLike({ shareId: ' share-1 ', liked: true, clientMutationId: ' like-1 ', likeCount: 999 })
 
   assert.deepEqual(calls, [
@@ -45,6 +46,7 @@ test('interaction service exposes exact read and write payloads without forwardi
       shareId: 'share-1', parentCommentId: 'parent-1', kind: 'text', text: ' hello ', stickerId: '', clientMutationId: 'comment-1'
     } },
     { action: 'delete_comment', payload: { commentId: 'comment-1', clientMutationId: 'delete-1' } },
+    { action: 'admin_delete_comment', payload: { commentId: 'comment-2', reason: 'abuse', clientMutationId: 'moderate-1' } },
     { action: 'set_like', payload: { shareId: 'share-1', liked: true, clientMutationId: 'like-1' } }
   ])
 })
@@ -66,6 +68,7 @@ test('interaction service enforces comment pagination and the 1..128 string muta
   const writes = [
     input => service.createComment(Object.assign({ shareId: 'share-1', parentCommentId: '', kind: 'text', text: 'x', stickerId: '' }, input)),
     input => service.deleteComment(Object.assign({ commentId: 'comment-1' }, input)),
+    input => service.adminDeleteComment(Object.assign({ commentId: 'comment-1', reason: 'spam' }, input)),
     input => service.setLike(Object.assign({ shareId: 'share-1', liked: true }, input))
   ]
   for (const write of writes) {

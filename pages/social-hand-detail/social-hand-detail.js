@@ -11,6 +11,13 @@ const COMMENT_KEYS = ['commentId', 'shareId', 'parentCommentId', 'author', 'kind
 const COMMENT_AUTHOR_KEYS = ['socialUserId', 'nickname', 'avatarUrl', 'avatarText']
 const COMMENT_PAGE_KEYS = ['items', 'nextCursor']
 const EMOJIS = Object.freeze(['👍', '🔥', '👏', '😂', '🤔', '😮'])
+const MODERATION_OPTIONS = Object.freeze([
+  { label: '垃圾广告', reason: 'spam' },
+  { label: '骚扰或攻击', reason: 'abuse' },
+  { label: '泄露隐私', reason: 'privacy' },
+  { label: '违法或欺诈', reason: 'illegal' },
+  { label: '其他违规', reason: 'other' }
+])
 let mutationSequence = 0
 
 function text(value) {
@@ -124,12 +131,12 @@ function copyPublisher(value) {
 }
 
 function copyDetail(value) {
-  const keys = ['shareId', 'publisher', 'scope', 'scopeLabel', 'handSnapshot', 'likedByMe', 'likeCount', 'commentCount', 'createdAt', 'isMine']
+  const keys = ['shareId', 'publisher', 'scope', 'scopeLabel', 'handSnapshot', 'likedByMe', 'likeCount', 'commentCount', 'createdAt', 'isMine', 'canModerateComments']
   const source = assertExactObject(value, keys, keys)
   const scope = protocolText(source.scope)
   const shareId = protocolText(source.shareId)
   if (!shareId || SCOPES.indexOf(scope) < 0 || protocolText(source.scopeLabel) !== SCOPE_LABELS[scope] ||
-    typeof source.likedByMe !== 'boolean' || typeof source.isMine !== 'boolean' ||
+    typeof source.likedByMe !== 'boolean' || typeof source.isMine !== 'boolean' || typeof source.canModerateComments !== 'boolean' ||
     !Number.isSafeInteger(source.likeCount) || source.likeCount < 0 ||
     !Number.isSafeInteger(source.commentCount) || source.commentCount < 0 ||
     !Number.isSafeInteger(source.createdAt) || source.createdAt <= 0) throw contractError()
@@ -143,11 +150,12 @@ function copyDetail(value) {
     likeCount: source.likeCount,
     commentCount: source.commentCount,
     createdAt: source.createdAt,
-    isMine: source.isMine
+    isMine: source.isMine,
+    canModerateComments: source.canModerateComments
   }
 }
 
-function copyComment(value, shareId, mySocialUserId) {
+function copyComment(value, shareId, mySocialUserId, canModerateComments) {
   const source = assertExactObject(value, COMMENT_KEYS, COMMENT_KEYS)
   const author = assertExactObject(source.author, COMMENT_AUTHOR_KEYS, COMMENT_AUTHOR_KEYS)
   const commentId = protocolText(source.commentId)
@@ -160,7 +168,7 @@ function copyComment(value, shareId, mySocialUserId) {
   if (!commentId || commentShareId !== shareId || typeof deleted !== 'boolean' ||
     !Number.isSafeInteger(source.createdAt) || source.createdAt <= 0) throw contractError()
   if (deleted) {
-    if (kind !== 'text' || content !== '该评论已删除' || stickerId) throw contractError()
+    if (kind !== 'text' || (content !== '该评论已删除' && content !== '该评论已被管理员移除') || stickerId) throw contractError()
   } else if (kind === 'text') {
     const length = Array.from(content).length
     if (!length || length > 300 || stickerId) throw contractError()
@@ -188,11 +196,12 @@ function copyComment(value, shareId, mySocialUserId) {
     createdAt: source.createdAt,
     isReply: !!parentCommentId,
     canDelete: !deleted && !!mySocialUserId && copiedAuthor.socialUserId === mySocialUserId,
+    canModerate: !deleted && canModerateComments === true && !!mySocialUserId && copiedAuthor.socialUserId !== mySocialUserId,
     sticker: kind === 'sticker' ? POKER_STICKER_BY_ID[stickerId] : null
   }
 }
 
-function copyCommentPage(value, shareId, mySocialUserId) {
+function copyCommentPage(value, shareId, mySocialUserId, canModerateComments) {
   const source = assertExactObject(value, COMMENT_PAGE_KEYS, COMMENT_PAGE_KEYS)
   if (!Array.isArray(source.items)) throw contractError()
   let nextCursor = null
@@ -201,7 +210,7 @@ function copyCommentPage(value, shareId, mySocialUserId) {
     if (!nextCursor || nextCursor.length > 2048) throw contractError()
   }
   return {
-    items: source.items.map(item => copyComment(item, shareId, mySocialUserId)),
+    items: source.items.map(item => copyComment(item, shareId, mySocialUserId, canModerateComments)),
     nextCursor
   }
 }
@@ -211,15 +220,15 @@ function copyMySocialUserId(value) {
   return value.socialUserId.trim()
 }
 
-function copyInteractionResult(value, keys, shareId, mySocialUserId) {
+function copyInteractionResult(value, keys, shareId, mySocialUserId, canModerateComments) {
   const source = assertExactObject(value, keys, keys)
   if (!Number.isSafeInteger(source.commentCount) || source.commentCount < 0) throw contractError()
-  return { comment: copyComment(source.comment, shareId, mySocialUserId), commentCount: source.commentCount }
+  return { comment: copyComment(source.comment, shareId, mySocialUserId, canModerateComments), commentCount: source.commentCount }
 }
 
-function copyDeleteResult(value, shareId, mySocialUserId) {
+function copyDeleteResult(value, shareId, mySocialUserId, canModerateComments) {
   const source = assertExactObject(value, ['comment', 'commentCount'], ['comment'])
-  const result = { comment: copyComment(source.comment, shareId, mySocialUserId) }
+  const result = { comment: copyComment(source.comment, shareId, mySocialUserId, canModerateComments) }
   if (Object.prototype.hasOwnProperty.call(source, 'commentCount')) {
     if (!Number.isSafeInteger(source.commentCount) || source.commentCount < 0) throw contractError()
     result.commentCount = source.commentCount
@@ -402,7 +411,7 @@ Page({
     return Promise.all([profileTask, commentsTask]).then(values => {
       if (!this.isCurrentDetail(generation, shareId)) return
       const mySocialUserId = values[0]
-      const page = copyCommentPage(values[1], shareId, mySocialUserId)
+      const page = copyCommentPage(values[1], shareId, mySocialUserId, this.data.detail && this.data.detail.canModerateComments)
       this.setData({
         mySocialUserId,
         comments: page.items,
@@ -432,7 +441,8 @@ Page({
         const page = copyCommentPage(
           await socialService.listComments({ shareId, cursor, limit: 20 }),
           shareId,
-          this.data.mySocialUserId
+          this.data.mySocialUserId,
+          this.data.detail && this.data.detail.canModerateComments
         )
         if (!this.isCurrentDetail(generation, shareId)) return this.data.comments
         const comments = mergeComments(this.data.comments, page.items, false)
@@ -555,7 +565,7 @@ Page({
           text: input.text,
           stickerId: input.stickerId,
           clientMutationId: mutation.id
-        }), ['comment', 'commentCount'], shareId, this.data.mySocialUserId)
+        }), ['comment', 'commentCount'], shareId, this.data.mySocialUserId, this.data.detail && this.data.detail.canModerateComments)
         if (!this.isCurrentDetail(generation, shareId)) return
         this.setData({
           comments: mergeComments(this.data.comments, [result.comment], true),
@@ -595,7 +605,7 @@ Page({
         const result = copyDeleteResult(await socialService.deleteComment({
           commentId,
           clientMutationId: mutation.id
-        }), shareId, this.data.mySocialUserId)
+        }), shareId, this.data.mySocialUserId, this.data.detail && this.data.detail.canModerateComments)
         if (result.comment.commentId !== commentId || !result.comment.deleted) throw contractError()
         if (!this.isCurrentDetail(generation, shareId)) return
         clearMutationChain(this, 'delete_comment', shareId, mutation)
@@ -621,6 +631,83 @@ Page({
         else {
           this.setData({ commentSubmitting: false })
           if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '删除失败', icon: 'none' })
+        }
+      }
+    })()
+    this._commentWriteFlight = flight
+    flight.then(() => { if (this._commentWriteFlight === flight) this._commentWriteFlight = null }, () => { if (this._commentWriteFlight === flight) this._commentWriteFlight = null })
+    return flight
+  },
+
+  moderateComment(event) {
+    if (this._moderationSheetOpen || this._commentWriteFlight) return this._commentWriteFlight || Promise.resolve()
+    const commentId = text(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.commentId)
+    const shareId = text(this.data.shareId)
+    const generation = this._detailGeneration
+    const target = this.data.comments.find(item => item.commentId === commentId)
+    if (!target || !target.canModerate || target.deleted || !shareId || this.data.commentsStatus !== 'ready' ||
+      typeof wx === 'undefined' || typeof wx.showActionSheet !== 'function') return Promise.resolve()
+    this._moderationSheetOpen = true
+    return new Promise(resolve => {
+      wx.showActionSheet({
+        itemList: MODERATION_OPTIONS.map(item => item.label),
+        success: resolve,
+        fail: () => resolve(null)
+      })
+    }).then(selection => {
+      if (!selection || !Number.isInteger(selection.tapIndex) || !MODERATION_OPTIONS[selection.tapIndex]) return
+      if (!this.isCurrentDetail(generation, shareId)) return
+      const current = this.data.comments.find(item => item.commentId === commentId)
+      if (!current || !current.canModerate || current.deleted) return
+      return this.adminDeleteCommentRequest(commentId, MODERATION_OPTIONS[selection.tapIndex].reason, generation, shareId)
+    }).finally(() => {
+      this._moderationSheetOpen = false
+    })
+  },
+
+  adminDeleteCommentRequest(commentId, reason, generation, shareId) {
+    if (this._commentWriteFlight || !this.isCurrentDetail(generation, shareId)) return this._commentWriteFlight || Promise.resolve()
+    const target = this.data.comments.find(item => item.commentId === commentId)
+    if (!target || !target.canModerate || target.deleted) return Promise.resolve()
+    const mutation = mutationChain(this, 'admin_delete_comment', shareId, [commentId, reason])
+    this.setData({ commentSubmitting: true })
+    const flight = (async () => {
+      try {
+        const result = copyDeleteResult(await socialService.adminDeleteComment({
+          commentId,
+          reason,
+          clientMutationId: mutation.id
+        }), shareId, this.data.mySocialUserId, this.data.detail && this.data.detail.canModerateComments)
+        if (result.comment.commentId !== commentId || !result.comment.deleted || result.comment.text !== '该评论已被管理员移除') throw contractError()
+        if (!this.isCurrentDetail(generation, shareId)) return
+        clearMutationChain(this, 'admin_delete_comment', shareId, mutation)
+        if (!Object.prototype.hasOwnProperty.call(result, 'commentCount')) {
+          this.setData({
+            detail: null,
+            status: 'unavailable',
+            comments: [],
+            commentsStatus: 'unavailable',
+            commentsNextCursor: null,
+            commentSubmitting: false
+          })
+          return
+        }
+        this.setData({
+          comments: this.data.comments.map(item => item.commentId === commentId ? result.comment : item),
+          detail: Object.assign({}, this.data.detail, { commentCount: result.commentCount }),
+          commentSubmitting: false
+        })
+      } catch (error) {
+        if (!this.isCurrentDetail(generation, shareId)) return
+        if (text(error && error.code) === 'FORBIDDEN') {
+          this.setData({ commentSubmitting: false })
+          if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '管理权限已变化', icon: 'none' })
+          this.invalidateDetail()
+          await this.loadDetail()
+        } else if (unavailableError(error)) this.setData({ detail: null, status: 'unavailable', comments: [], commentsStatus: 'unavailable', commentSubmitting: false })
+        else {
+          this.setData({ commentSubmitting: false })
+          if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '移除失败', icon: 'none' })
         }
       }
     })()

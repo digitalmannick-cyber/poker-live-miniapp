@@ -120,6 +120,7 @@
             <view wx:if="{{!item.deleted}}" class="comment-actions">
               <view wx:if="{{!item.parentCommentId}}" class="comment-action" data-comment-id="{{item.commentId}}" bindtap="replyToComment">↩</view>
               <view wx:if="{{item.canDelete}}" class="comment-action delete-action" data-comment-id="{{item.commentId}}" bindtap="deleteComment">删除</view>
+              <view wx:if="{{item.canModerate}}" class="comment-action moderate-action" data-comment-id="{{item.commentId}}" bindtap="moderateComment">移除</view>
             </view>
           </view>
         </view>

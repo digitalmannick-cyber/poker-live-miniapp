@@ -2,12 +2,14 @@ const cloud = require('wx-server-sdk')
 const { createSocialApp } = require('./app')
 const identity = require('./lib/identity')
 const { createCloudSocialRepository } = require('./lib/repository')
+const { createAdminPolicy } = require('./lib/admin-policy')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
 const repository = typeof cloud.database === 'function'
   ? createCloudSocialRepository(cloud.database())
   : null
+const adminPolicy = createAdminPolicy(process.env.SOCIAL_ADMIN_OPENIDS)
 
 async function avatarUrl(fileId) {
   if (!fileId || typeof cloud.getTempFileURL !== 'function') return ''
@@ -26,6 +28,7 @@ async function uploadTempFile(payload) {
 const app = createSocialApp({
   identity,
   repository,
+  isAdminActor: adminPolicy.isAdminActor,
   avatarUrl,
   friendship: {
     qrCode: cloud.openapi && cloud.openapi.wxacode,
