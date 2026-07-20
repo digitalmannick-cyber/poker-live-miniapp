@@ -11,6 +11,22 @@ const repository = typeof cloud.database === 'function'
   : null
 const adminPolicy = createAdminPolicy(process.env.SOCIAL_ADMIN_OPENIDS)
 
+function reportError(details) {
+  const source = details || {}
+  const message = String(source.message || '')
+    .replace(/cloud:\/\/\S+/gi, '[cloud-file]')
+    .replace(/[A-Za-z0-9_-]{28,}/g, '[redacted]')
+    .slice(0, 500)
+  console.error('[poker_social_error]', JSON.stringify({
+    action: String(source.action || ''),
+    requestId: String(source.requestId || ''),
+    code: String(source.code || ''),
+    errCode: String(source.errCode || ''),
+    name: String(source.name || ''),
+    message
+  }))
+}
+
 async function avatarUrl(fileId) {
   if (!fileId || typeof cloud.getTempFileURL !== 'function') return ''
   const response = await cloud.getTempFileURL({ fileList: [fileId] })
@@ -29,6 +45,7 @@ const app = createSocialApp({
   identity,
   repository,
   isAdminActor: adminPolicy.isAdminActor,
+  reportError,
   avatarUrl,
   friendship: {
     qrCode: cloud.openapi && cloud.openapi.wxacode,

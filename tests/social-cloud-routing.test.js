@@ -184,6 +184,40 @@ test('social app maps unknown errors to the fixed public failure response', asyn
   })
 })
 
+test('social app reports internal diagnostics without changing the public response', async () => {
+  const reports = []
+  const { createSocialApp } = require('../cloudfunctions/poker_social/app')
+  const app = createSocialApp({
+    identity: { resolve: () => ({ ownerOpenId: 'openid-private' }) },
+    handlers: {
+      fail() {
+        const error = new Error('database write failed')
+        error.errCode = 'DATABASE_WRITE_ERROR'
+        throw error
+      }
+    },
+    reportError: details => reports.push(details),
+    requestId: () => 'request-safe-diagnostic'
+  })
+
+  const result = await app.handle({ action: 'fail' }, { openId: 'openid-private' })
+
+  assert.deepEqual(result, {
+    code: 'SOCIAL_ERROR',
+    data: null,
+    message: 'social function failed',
+    requestId: 'request-safe-diagnostic'
+  })
+  assert.deepEqual(reports, [{
+    action: 'fail',
+    requestId: 'request-safe-diagnostic',
+    code: '',
+    errCode: 'DATABASE_WRITE_ERROR',
+    name: 'Error',
+    message: 'database write failed'
+  }])
+})
+
 test('memory social repository isolates seed data and limits transactions to point operations', async () => {
   const { createMemorySocialRepository } = require('./helpers/social-fixture')
   const repository = createMemorySocialRepository({ profiles: [{ _id: 'profile-1', label: 'original' }] })

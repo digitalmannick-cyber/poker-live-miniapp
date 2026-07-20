@@ -146,6 +146,18 @@ function createSocialApp(deps) {
         return { code: 0, data: withoutPrivateIdentifiers(data || {}), requestId: currentRequestId }
       } catch (error) {
         const publicResult = publicError(error)
+        if (typeof config.reportError === 'function') {
+          try {
+            config.reportError({
+              action,
+              requestId: currentRequestId,
+              code: String(error && error.code || ''),
+              errCode: String(error && error.errCode || ''),
+              name: String(error && error.name || ''),
+              message: String(error && (error.errMsg || error.message) || '')
+            })
+          } catch (reportError) {}
+        }
         return {
           code: publicResult.code,
           data: null,
