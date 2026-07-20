@@ -552,21 +552,33 @@ $permissionDrift = @($plan.managedCollections | Where-Object {
 })
 $missingIndexes = @()
 $indexesByCollection = $plan.indexes | Group-Object collection
-foreach ($group in $indexesByCollection) {
-  if ($existingTables -notcontains $group.Name) {
-    foreach ($index in $group.Group) { $missingIndexes += $index }
-    continue
+$plannedIndexSmokeCommands = @($plan.indexes | ForEach-Object { New-IndexSmokeCommand $_ ([string]$_.name) })
+$plannedIndexNamesVerified = $false
+if ($missingCollections.Count -eq 0) {
+  try {
+    Invoke-IndexSmokeBatches $plannedIndexSmokeCommands $tag $plan.envId $region
+    $plannedIndexNamesVerified = $true
+  } catch {
+    if (Test-TransientCloudReadFailure ([string]$_.Exception.Message)) { throw }
   }
-  $description = Invoke-TcbApi 'DescribeTable' @{
-    EnvId = $plan.envId; Tag = $tag; TableName = $group.Name
-  } $plan.envId $region
-  $remoteIndexes = @($description.data.Indexes)
-  foreach ($index in $group.Group) {
-    $compatible = @($remoteIndexes | Where-Object { Test-RemoteIndexCompatible $_ $index })
-    if ($compatible.Count -eq 0) {
-      $sameName = @($remoteIndexes | Where-Object { $_.Name -eq $index.name })
-      if ($sameName.Count -gt 0) { throw "Index name collision with a different shape: $($index.name)" }
-      $missingIndexes += $index
+}
+if (-not $plannedIndexNamesVerified) {
+  foreach ($group in $indexesByCollection) {
+    if ($existingTables -notcontains $group.Name) {
+      foreach ($index in $group.Group) { $missingIndexes += $index }
+      continue
+    }
+    $description = Invoke-TcbApi 'DescribeTable' @{
+      EnvId = $plan.envId; Tag = $tag; TableName = $group.Name
+    } $plan.envId $region
+    $remoteIndexes = @($description.data.Indexes)
+    foreach ($index in $group.Group) {
+      $compatible = @($remoteIndexes | Where-Object { Test-RemoteIndexCompatible $_ $index })
+      if ($compatible.Count -eq 0) {
+        $sameName = @($remoteIndexes | Where-Object { $_.Name -eq $index.name })
+        if ($sameName.Count -gt 0) { throw "Index name collision with a different shape: $($index.name)" }
+        $missingIndexes += $index
+      }
     }
   }
 }
@@ -744,16 +756,20 @@ try {
   }
 
   # DescribeTable has no ready flag. A hinted read proves that each exact index can be selected by the database.
-  $indexSmokeCommands = @()
-  foreach ($group in $indexesByCollection) {
-    $description = Invoke-TcbApi 'DescribeTable' @{
-      EnvId = $plan.envId; Tag = $tag; TableName = $group.Name
-    } $plan.envId $region
-    $remoteIndexes = @($description.data.Indexes)
-    foreach ($index in $group.Group) {
-      $compatible = @($remoteIndexes | Where-Object { Test-RemoteIndexCompatible $_ $index })
-      if ($compatible.Count -eq 0) { throw "Index disappeared before smoke query: $($index.canonical)" }
-      $indexSmokeCommands += New-IndexSmokeCommand $index ([string]$compatible[0].Name)
+  if ($plannedIndexNamesVerified -and $missingIndexes.Count -eq 0) {
+    $indexSmokeCommands = $plannedIndexSmokeCommands
+  } else {
+    $indexSmokeCommands = @()
+    foreach ($group in $indexesByCollection) {
+      $description = Invoke-TcbApi 'DescribeTable' @{
+        EnvId = $plan.envId; Tag = $tag; TableName = $group.Name
+      } $plan.envId $region
+      $remoteIndexes = @($description.data.Indexes)
+      foreach ($index in $group.Group) {
+        $compatible = @($remoteIndexes | Where-Object { Test-RemoteIndexCompatible $_ $index })
+        if ($compatible.Count -eq 0) { throw "Index disappeared before smoke query: $($index.canonical)" }
+        $indexSmokeCommands += New-IndexSmokeCommand $index ([string]$compatible[0].Name)
+      }
     }
   }
   Invoke-IndexSmokeBatches $indexSmokeCommands $tag $plan.envId $region

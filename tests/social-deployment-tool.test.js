@@ -172,6 +172,8 @@ test('every planned index is verified with a hinted read before function staging
   assert.match(source, /CommandType = 'QUERY'/)
   assert.match(source, /hint = \$RemoteIndexName/)
   assert.match(source, /\$batchSize = 10/)
+  assert.match(source, /\$plannedIndexNamesVerified = \$true/)
+  assert.match(source, /if \(-not \$plannedIndexNamesVerified\)/)
 })
 
 test('function convergence uses the remote code digest and a staged startup smoke', () => {
