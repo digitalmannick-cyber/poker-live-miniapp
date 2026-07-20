@@ -429,8 +429,12 @@ test('feed cache stores only an exact first-page whitelist under the public acco
     item.publisher.privatePlayerId = 'private-canary'
     item.summary.sourceHandId = 'hand-canary'
     item.summary.targets = ['su_target']
-    assert.doesNotThrow(() => cache.write('su/a', { items: [item], nextCursor: 'next-private-page' }, 1000000))
+    assert.equal(cache.write('su/a', { items: [item], nextCursor: 'next-private-page' }, 1000000), false)
     const key = 'socialFeedFirstPage:' + encodeURIComponent('su/a')
+    assert.equal(storage.has(key), false)
+
+    const cleanItem = feedItem('sh_cache')
+    assert.equal(cache.write('su/a', { items: [cleanItem], nextCursor: 'next-private-page' }, 1000000), true)
     const stored = storage.get(key)
     assert.deepEqual(Object.keys(stored).sort(), ['items', 'nextCursor', 'savedAt', 'socialUserId'])
     assert.equal(stored.socialUserId, 'su/a')
@@ -439,6 +443,21 @@ test('feed cache stores only an exact first-page whitelist under the public acco
     assert.deepEqual(Object.keys(stored.items[0].publisher).sort(), ['avatarText', 'avatarUrl', 'nickname', 'socialUserId'])
     assert.deepEqual(Object.keys(stored.items[0].summary).sort(), ['actionCount', 'board', 'effectiveStackBb', 'heroCards', 'playerCount', 'potBb'])
     assert.doesNotMatch(JSON.stringify(stored), /openid-canary|private-canary|hand-canary|su_target|ownerOpenId|privatePlayerId|sourceHandId|targets/)
+  })
+})
+
+test('feed cache rejects nested private field variants on write and malformed legacy reads', () => {
+  withStorage(storage => {
+    const cache = cacheApi(requireFeedCache())
+    const privateItem = feedItem('sh_private_variant')
+    privateItem.publisher.profile = { nested: [{ Owner_Open_ID: 'private-canary' }] }
+    assert.equal(cache.write('su_viewer', { items: [privateItem], nextCursor: null }, 1000), false)
+
+    const key = 'socialFeedFirstPage:su_viewer'
+    const legacyItem = feedItem('sh_legacy_private')
+    legacyItem.summary.metadata = [{ leak_tags: ['private-canary'] }]
+    storage.set(key, { socialUserId: 'su_viewer', items: [legacyItem], nextCursor: '', savedAt: 1000 })
+    assert.equal(cache.read('su_viewer', 1000), null)
   })
 })
 

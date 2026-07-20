@@ -2,6 +2,7 @@
   "version": 1,
   "collections": {
     "social_users": { "read": false, "write": false },
+    "social_user_owners": { "read": false, "write": false },
     "social_friendships": { "read": false, "write": false },
     "social_invites": { "read": false, "write": false },
     "social_mutations": { "read": false, "write": false },

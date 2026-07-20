@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { socialError } = require('./social-error')
+const { requireActiveSocialUser } = require('./social-lifecycle')
 
 const MUTATION_COLLECTION = 'social_mutations'
 
@@ -21,6 +22,7 @@ async function runIdempotent(repository, actorId, action, event, callback, optio
   const fingerprint = hasFingerprint ? String(config.inputFingerprint || '') : ''
   if (hasFingerprint && !/^[0-9a-f]{64}$/.test(fingerprint)) throw socialError('MUTATION_CONFLICT', 'mutation conflict')
   return repository.runTransaction(async store => {
+    requireActiveSocialUser(await store.get('social_users', actorId))
     const existing = await store.get(MUTATION_COLLECTION, id)
     if (existing) {
       if (existing.actorId !== actorId || existing.action !== action) throw socialError('MUTATION_CONFLICT', 'mutation conflict')

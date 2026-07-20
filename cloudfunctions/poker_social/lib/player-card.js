@@ -3,6 +3,7 @@ const { socialError } = require('./social-error')
 const { runIdempotent, requireClientMutationId } = require('./idempotency')
 const { requireAcceptedFriendship, isReadableCardShare } = require('./visibility')
 const { createNotificationWriter } = require('./notification')
+const { requireActiveSocialUser } = require('./social-lifecycle')
 
 const USER_COLLECTION = 'social_users'
 const PLAYER_NOTE_COLLECTION = 'player_notes'
@@ -106,8 +107,7 @@ async function toCardShareDto(share, options) {
 
 async function findActorUser(repository, actor) {
   const user = await repository.find(USER_COLLECTION, { ownerOpenId: actor && actor.ownerOpenId })
-  if (!user) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
-  return user
+  return requireActiveSocialUser(user)
 }
 
 async function getShareForParticipant(repository, shareId, actorUser, role) {

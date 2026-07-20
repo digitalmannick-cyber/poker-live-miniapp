@@ -4,6 +4,7 @@ const { getPairId } = require('./friendship')
 const { canReadShare } = require('./visibility')
 const { copyHandSnapshot, ownerIdentity, playerIdentity } = require('./hand-share')
 const { FRIEND_ID_QUERY_CHUNK_SIZE } = require('./repository')
+const { requireActiveSocialUser } = require('./social-lifecycle')
 
 const SOURCE_READ_CONCURRENCY = 8
 const STREAM_HEAD_CONCURRENCY = 8
@@ -109,6 +110,7 @@ async function resolveViewer(repository, actor) {
   if (!repository || typeof repository.findSocialUserByOpenId !== 'function') throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
   const ownerOpenId = text(actor && actor.ownerOpenId)
   const viewer = ownerOpenId && await repository.findSocialUserByOpenId(ownerOpenId)
+  requireActiveSocialUser(viewer)
   if (!viewer || !text(viewer._id)) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
   return viewer
 }

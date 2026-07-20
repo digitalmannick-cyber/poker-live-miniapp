@@ -4,7 +4,7 @@ const Module = require('node:module')
 
 const FEED_PREFIX = 'socialFeedFirstPage:'
 
-test('clearAllFeedCaches removes every feed namespace key and preserves unrelated storage', () => {
+test('clearAccountCaches removes only one account namespace and preserves other accounts', () => {
   const storage = seededStorage()
   const originalWx = global.wx
   global.wx = storageWx(storage)
@@ -12,10 +12,11 @@ test('clearAllFeedCaches removes every feed namespace key and preserves unrelate
     const cachePath = require.resolve('../utils/social-cache')
     delete require.cache[cachePath]
     const cache = require(cachePath)
-    assert.equal(typeof cache.clearAllFeedCaches, 'function')
-    assert.equal(cache.clearAllFeedCaches(), 2)
+    cache.registerAccountIdentity({ accountId: 'P5-ACCOUNT', socialUserId: 'su_a' })
+    assert.equal(typeof cache.clearAccountCaches, 'function')
+    assert.ok(cache.clearAccountCaches({ accountId: 'P5-ACCOUNT' }) >= 1)
     assert.equal(storage.has(FEED_PREFIX + 'su_a'), false)
-    assert.equal(storage.has(FEED_PREFIX + 'su_b'), false)
+    assert.equal(storage.has(FEED_PREFIX + 'su_b'), true)
     assert.deepEqual(storage.get('unrelated:key'), { keep: true })
   } finally {
     global.wx = originalWx
@@ -23,20 +24,20 @@ test('clearAllFeedCaches removes every feed namespace key and preserves unrelate
 })
 
 for (const action of ['logoutAccount', 'clearAllData']) {
-  test(`${action} clears all feed caches without touching other storage`, async () => {
+  test(`${action} clears only the current account caches without touching another account`, async () => {
     const storage = seededStorage()
     const loaded = loadDataService(storage)
     try {
       const result = await loaded.service[action]()
       assert.ok(result)
       assert.equal(storage.has(FEED_PREFIX + 'su_a'), false)
-      assert.equal(storage.has(FEED_PREFIX + 'su_b'), false)
+      assert.equal(storage.has(FEED_PREFIX + 'su_b'), true)
       assert.deepEqual(storage.get('unrelated:key'), { keep: true })
       assert.equal(loaded.calls[action], 1, 'the original account operation must still run')
     } finally { loaded.restore() }
   })
 
-  test(`${action} survives feed-cache storage enumeration and removal failures`, async t => {
+  test(`${action} survives scoped-cache storage failures`, async t => {
     for (const failure of ['info', 'remove']) {
       await t.test(failure, async () => {
         const storage = seededStorage()
@@ -56,6 +57,9 @@ function seededStorage() {
   return new Map([
     [FEED_PREFIX + 'su_a', { account: 'a' }],
     [FEED_PREFIX + 'su_b', { account: 'b' }],
+    ['socialCacheAccountIdentity:P5-ACCOUNT', { accountId: 'P5-ACCOUNT', socialUserId: 'su_a' }],
+    ['socialFriendsFirstPage:P5-ACCOUNT', { account: 'a' }],
+    ['socialFriendsFirstPage:OTHER', { account: 'b' }],
     ['unrelated:key', { keep: true }]
   ])
 }
@@ -69,9 +73,10 @@ function storageWx(storage, options = {}) {
       return { keys: Array.from(storage.keys()) }
     },
     removeStorageSync(key) {
-      if (options.failure === 'remove' && String(key).startsWith(FEED_PREFIX)) throw new Error('storage remove failed')
+      if (options.failure === 'remove' && (String(key).startsWith(FEED_PREFIX) || String(key).includes('P5-ACCOUNT'))) throw new Error('storage remove failed')
       storage.delete(key)
-    }
+    },
+    cloud: { callFunction: async () => ({ result: {} }) }
   }
 }
 
@@ -91,13 +96,17 @@ function loadDataService(storage, options = {}) {
     if (parent && /services[\\/]data-service\.js$/.test(parent.filename || '')) {
       if (request === '../utils/store') return store
       if (request === './cloud-repo') return {}
-      if (request === '../utils/cloud') return { canUseCloud: () => false }
+      if (request === '../utils/cloud') return { canUseCloud: () => true }
       if (request === '../config/cloud') return { AUTO_CLOUD_BOOTSTRAP: false, AI_REMINDER_SUBSCRIBE_TEMPLATE_ID: '' }
-      if (request === './social-service') return {}
+      if (request === './social-service') return {
+        clearMySocialData: async () => ({ completed: true, remainingStage: '', socialUserId: 'su_a' }),
+        scheduleMyStatsSync: async () => true
+      }
+      if (request === './cloud-data-api') return { clearAllData: async () => ({ completed: true }) }
       if ([
         '../utils/session-rules', '../utils/review-session-status', '../utils/stats-analytics',
         '../utils/onboarding-guide', '../utils/onboarding-demo-data', '../utils/pbt-notes-import',
-        '../utils/pbt-bankroll-import', './cloud-data-api'
+        '../utils/pbt-bankroll-import'
       ].includes(request)) return {}
     }
     return originalLoad.call(this, request, parent, isMain)

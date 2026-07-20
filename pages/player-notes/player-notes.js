@@ -54,6 +54,7 @@ Page({
     playerSection: 'friends',
     friendSection: 'feed',
     friendsLoaded: false,
+    socialAccountKey: '',
     socialUserId: '',
     query: '',
     selectedType: '',
@@ -125,11 +126,13 @@ Page({
     const previousAccountKey = String(this._socialProfileAccountKey || '')
     if (previousAccountKey !== currentAccountKey) {
       const previousSocialUserId = String(this.data.socialUserId || '')
-      if (previousSocialUserId) socialCache.removeFeedFirstPage(previousSocialUserId)
+      if (previousAccountKey || previousSocialUserId) {
+        socialCache.clearAccountCaches({ accountId: previousAccountKey, socialUserId: previousSocialUserId })
+      }
       this._socialProfileAccountKey = currentAccountKey
       this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
       this._socialProfileFlight = null
-      this.setData({ socialUserId: '' })
+      this.setData({ socialAccountKey: currentAccountKey, socialUserId: '' })
     }
     if (!currentAccountKey || this._socialProfileAttached !== true) return Promise.resolve('')
     if (this.data.socialUserId) return Promise.resolve(this.data.socialUserId)
@@ -138,8 +141,9 @@ Page({
     const promise = Promise.resolve()
       .then(() => socialService.getMySocialProfile())
       .then(profile => {
-        const socialUserId = String(profile && profile.socialUserId || '')
+        const socialUserId = profile && typeof profile.socialUserId === 'string' ? profile.socialUserId.trim() : ''
         if (this._socialProfileAttached !== true || generation !== this._socialProfileGeneration || currentAccountKey !== this._socialProfileAccountKey) return ''
+        if (socialUserId) socialCache.registerAccountIdentity({ accountId: currentAccountKey, socialUserId })
         this.setData({ socialUserId })
         return socialUserId
       })
@@ -258,6 +262,7 @@ Page({
   },
 
   openInvite() {
+    if (this.isSocialSurfaceReadOnly()) return
     wx.navigateTo({ url: '/pages/social-invite/social-invite' })
   },
 
@@ -268,18 +273,30 @@ Page({
   },
 
   openFriend(event) {
+    if (this.isSocialSurfaceReadOnly()) return
     const friendUserId = String(event && event.detail && event.detail.friendUserId || '')
     if (!friendUserId) return
     wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?friendUserId=' + encodeURIComponent(friendUserId) })
   },
 
   openHand(event) {
+    if (this.isSocialSurfaceReadOnly()) return
     const shareId = String(event && event.detail && event.detail.shareId || '')
     if (!shareId) return
     wx.navigateTo({ url: '/pages/social-hand-detail/social-hand-detail?shareId=' + encodeURIComponent(shareId) })
   },
 
   openMessages() {
+    if (this.isSocialSurfaceReadOnly()) return
     if (typeof wx !== 'undefined' && wx.navigateTo) wx.navigateTo({ url: '/pages/social-messages/social-messages' })
+  },
+
+  isSocialSurfaceReadOnly() {
+    if (this.data.playerSection !== 'friends') return false
+    const friendHub = this.selectComponent && this.selectComponent('#friendHub')
+    if (!friendHub || !friendHub.data) return false
+    if (this.data.friendSection === 'feed') return friendHub.data.feedReadOnly === true
+    if (this.data.friendSection === 'ranking') return friendHub.data.rankingReadOnly === true
+    return friendHub.data.friendsReadOnly === true
   }
 })

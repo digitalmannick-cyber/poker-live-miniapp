@@ -4,6 +4,7 @@ const { deriveInviteToken, buildInviteRecord, getInviteId, assertActiveInvite } 
 const { MUTATION_COLLECTION, mutationRecordId, runIdempotent, requireClientMutationId } = require('./idempotency')
 const { toProfileDto } = require('./profile')
 const { COLLECTIONS: NOTIFICATION_COLLECTIONS, stateDocumentId, createNotificationWriter } = require('./notification')
+const { requireActiveSocialUser } = require('./social-lifecycle')
 
 const USER_COLLECTION = 'social_users'
 const FRIENDSHIP_COLLECTION = 'social_friendships'
@@ -70,8 +71,7 @@ async function findActorUser(repository, actor) {
   const user = typeof repository.find === 'function'
     ? await repository.find(USER_COLLECTION, { ownerOpenId: actor.ownerOpenId })
     : repository.where(USER_COLLECTION, row => row.ownerOpenId === actor.ownerOpenId)[0]
-  if (!user) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
-  return user
+  return requireActiveSocialUser(user)
 }
 
 async function publicUserDto(user, avatarUrl) {
@@ -179,6 +179,7 @@ function createFriendshipHandlers(repository, options) {
     const clientMutationId = requireClientMutationId(event)
     const token = String(event && event.token || '').trim()
     const result = await repository.runTransaction(async store => {
+      requireActiveSocialUser(await store.get(USER_COLLECTION, actorUser._id))
       let invite
       try {
         invite = await getActiveInvite(store, token, now())

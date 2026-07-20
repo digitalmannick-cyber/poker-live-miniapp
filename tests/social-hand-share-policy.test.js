@@ -170,7 +170,7 @@ test('scope validation enforces exact square, friends and selected contracts at 
 })
 
 test('fingerprint restores exact retries and conflicts on action or normalized payload changes', async () => {
-  const repository = createMemorySocialRepository()
+  const repository = createMemorySocialRepository({ social_users: [{ _id: 'su_a', ownerOpenId: 'openid-a' }] })
   let callbacks = 0
   const event = { clientMutationId: 'same' }
   const fpA = 'a'.repeat(64)
@@ -414,20 +414,22 @@ test('public mutation responses recursively exclude private source, OpenID, play
 })
 
 test('repository constants and deployment indexes declare exact point/query shapes', () => {
-  const { SOCIAL_COLLECTIONS, ACCOUNT_CLEAR_SOCIAL_COLLECTIONS } = require('../cloudfunctions/poker_social/lib/repository')
+  const { SOCIAL_COLLECTIONS, SERVER_ONLY_SOCIAL_COLLECTIONS } = require('../cloudfunctions/poker_social/lib/repository')
   assert.equal(SOCIAL_COLLECTIONS.SOCIAL_HAND_SHARES, COLLECTIONS.SHARES)
   assert.equal(SOCIAL_COLLECTIONS.SOCIAL_HAND_SHARE_SLOTS, COLLECTIONS.SLOTS)
   assert.equal(SOCIAL_COLLECTIONS.SOCIAL_RATE_LIMITS, COLLECTIONS.RATE_LIMITS)
   assert.equal(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_OUTBOX, COLLECTIONS.OUTBOX)
+  assert.deepEqual(SERVER_ONLY_SOCIAL_COLLECTIONS, Object.values(SOCIAL_COLLECTIONS))
   for (const collection of [COLLECTIONS.SHARES, COLLECTIONS.SLOTS, COLLECTIONS.RATE_LIMITS, COLLECTIONS.OUTBOX]) {
-    assert.equal(ACCOUNT_CLEAR_SOCIAL_COLLECTIONS.includes(collection), true, collection)
+    assert.equal(SERVER_ONLY_SOCIAL_COLLECTIONS.includes(collection), true, collection)
   }
   const indexes = require('node:fs').readFileSync(require('node:path').join(__dirname, '../cloudfunctions/poker_social/database-indexes.md'), 'utf8')
   assert.match(indexes, /social_hand_shares.*status ASC.*scope ASC.*createdAt DESC.*_id DESC/i)
   assert.match(indexes, /social_hand_shares.*publisherId ASC.*status ASC.*createdAt DESC.*_id DESC/i)
   assert.match(indexes, /social_hand_shares.*targetUserIds ARRAY.*status ASC.*createdAt DESC.*_id DESC/i)
   assert.match(indexes, /social_hand_share_slots.*point-read/i)
-  assert.match(indexes, /social_rate_limits.*point-read/i)
+  assert.match(indexes, /social_rate_limits.*actorId ASC.*_id ASC/i)
+  assert.match(indexes, /social_rate_limits.*publisherId ASC.*_id ASC/i)
   assert.match(indexes, /social_notification_outbox.*status ASC.*targetUserIds ARRAY.*createdAt ASC.*_id ASC/i)
 })
 

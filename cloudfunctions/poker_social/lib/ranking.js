@@ -1,4 +1,5 @@
 const { socialError } = require('./social-error')
+const { requireActiveSocialUser } = require('./social-lifecycle')
 
 const USER_COLLECTION = 'social_users'
 const BEIJING_OFFSET_MINUTES = 8 * 60
@@ -252,7 +253,7 @@ function createRankingHandlers(repository, options) {
   return {
     async sync_my_social_stats(event, actor) {
       const user = await repository.find(USER_COLLECTION, { ownerOpenId: actor.ownerOpenId })
-      if (!user) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
+      requireActiveSocialUser(user)
       const playerId = normalizePlayerId(event && event.playerId)
       if (!playerId || playerId !== normalizePlayerId(user.privatePlayerId)) {
         throw socialError('FORBIDDEN', 'not allowed')
@@ -265,21 +266,30 @@ function createRankingHandlers(repository, options) {
         repository.listPrivateOwned('hands', actor.ownerOpenId, playerId)
       ])
       const buckets = buildDailyBuckets({ sessions, hands, timezoneOffsetMinutes })
-      await repository.replaceDailyStats(user._id, buckets)
       const totalDurationMinutes = buckets.reduce((sum, item) => sum + item.durationMinutes, 0)
       const totalRecordedHandCount = buckets.reduce((sum, item) => sum + item.recordedHandCount, 0)
       const title = calculateTitle(totalDurationMinutes)
-      await repository.patchSocialUserStats(user._id, {
+      const statsPatch = {
         title,
         publicStats: { durationMinutes: totalDurationMinutes, recordedHandCount: totalRecordedHandCount },
         updatedAt: Date.now()
-      })
+      }
+      if (typeof repository.replaceSocialStatsIfActive === 'function') {
+        await repository.replaceSocialStatsIfActive(user._id, buckets, statsPatch)
+      } else {
+        const liveUser = typeof repository.get === 'function'
+          ? await repository.get(USER_COLLECTION, user._id)
+          : await repository.find(USER_COLLECTION, { _id: user._id })
+        requireActiveSocialUser(liveUser)
+        await repository.replaceDailyStats(user._id, buckets)
+        await repository.patchSocialUserStats(user._id, statsPatch)
+      }
       return { title, totalDurationMinutes, totalRecordedHandCount, syncedDayCount: buckets.length }
     },
 
     async list_ranking(event, actor) {
       const viewer = await repository.find(USER_COLLECTION, { ownerOpenId: actor.ownerOpenId })
-      if (!viewer) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
+      requireActiveSocialUser(viewer)
       if (typeof repository.listAcceptedFriendships !== 'function' || typeof repository.listDailyStats !== 'function') {
         throw new Error('social repository ranking support unavailable')
       }

@@ -136,18 +136,152 @@ test('deployment index manifest preserves exact compound field order and array s
         { field: 'createdAt', order: 'DESC' },
         { field: '_id', order: 'DESC' }
       ]
+    },
+    {
+      collection: 'social_users',
+      fields: [
+        { field: 'ownerOpenId', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_invites',
+      fields: [
+        { field: 'inviterId', order: 'ASC' },
+        { field: 'revokedAt', order: 'ASC' },
+        { field: 'createdAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_player_card_shares',
+      fields: [
+        { field: 'senderUserId', order: 'ASC' },
+        { field: 'status', order: 'ASC' },
+        { field: 'createdAt', order: 'DESC' },
+        { field: '_id', order: 'DESC' }
+      ]
+    },
+    {
+      collection: 'social_player_card_shares',
+      fields: [
+        { field: 'targetUserId', order: 'ASC' },
+        { field: 'status', order: 'ASC' },
+        { field: 'importedAt', order: 'ASC' },
+        { field: 'createdAt', order: 'DESC' },
+        { field: '_id', order: 'DESC' }
+      ]
+    },
+    {
+      collection: 'social_comments',
+      fields: [
+        { field: 'authorId', order: 'ASC' },
+        { field: 'deleted', order: 'ASC' },
+        { field: 'createdAt', order: 'DESC' },
+        { field: '_id', order: 'DESC' }
+      ]
+    },
+    {
+      collection: 'social_likes',
+      fields: [
+        { field: 'actorId', order: 'ASC' },
+        { field: 'active', order: 'ASC' },
+        { field: 'updatedAt', order: 'DESC' },
+        { field: '_id', order: 'DESC' }
+      ]
+    },
+    {
+      collection: 'social_notifications',
+      fields: [
+        { field: 'actorSnapshot.socialUserId', order: 'ASC' },
+        { field: 'createdAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_notification_heads',
+      fields: [
+        { field: 'recipientId', order: 'ASC' },
+        { field: 'latestAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_notification_actors',
+      fields: [
+        { field: 'notificationId', order: 'ASC' },
+        { field: 'createdAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_notification_actors',
+      fields: [
+        { field: 'actorId', order: 'ASC' },
+        { field: 'createdAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_notification_outbox',
+      fields: [
+        { field: 'publisherId', order: 'ASC' },
+        { field: 'status', order: 'ASC' },
+        { field: 'createdAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_rate_limits',
+      fields: [
+        { field: 'actorId', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_rate_limits',
+      fields: [
+        { field: 'publisherId', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_mutations',
+      fields: [
+        { field: 'actorId', order: 'ASC' },
+        { field: 'createdAt', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'social_daily_stats',
+      fields: [
+        { field: 'socialUserId', order: 'ASC' },
+        { field: 'dateKey', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
+    },
+    {
+      collection: 'player_card_import_receipts',
+      fields: [
+        { field: 'ownerOpenId', order: 'ASC' },
+        { field: 'playerId', order: 'ASC' },
+        { field: '_id', order: 'ASC' }
+      ]
     }
   ])
   assert.deepEqual(manifest.pointReadOnly, [
+    'social_user_owners',
     'social_hand_share_slots',
-    'social_rate_limits',
-    'social_notification_state',
-    'social_notification_heads',
-    'social_notification_actors',
-    'social_likes'
+    'social_notification_state'
   ])
 
   const markdown = fs.readFileSync(path.join(socialRoot, 'database-indexes.md'), 'utf8')
   const declaration = '`social_comments`: `shareId ASC, createdAt DESC, _id DESC`'
   assert.equal(markdown.split(declaration).length - 1, 1, 'Markdown must declare the same real comment-list index exactly once')
+  for (const index of actual) {
+    const fields = index.fields.map(field => `${field.field} ${field.array ? 'ARRAY' : field.order}`).join(', ')
+    const synchronizedDeclaration = `\`${index.collection}\`: \`${fields}\``
+    assert.equal(markdown.split(synchronizedDeclaration).length - 1, 1, `Markdown must declare ${synchronizedDeclaration} exactly once`)
+  }
 })

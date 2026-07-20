@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const { socialError } = require('./social-error')
 const { runIdempotent } = require('./idempotency')
+const { SOCIAL_LIFECYCLE, lifecycleOf, requireActiveSocialUser } = require('./social-lifecycle')
 
 const COLLECTIONS = Object.freeze({
   NOTIFICATIONS: 'social_notifications',
@@ -212,6 +213,9 @@ function createNotificationWriter(options) {
   async function write(store, input) {
     const normalized = validateWrite(input)
     if (normalized.recipientId === normalized.actor.socialUserId) return null
+    if (lifecycleOf(await store.get('social_users', normalized.recipientId)) !== SOCIAL_LIFECYCLE.ACTIVE) return null
+    const actorUser = await store.get('social_users', normalized.actor.socialUserId)
+    if (actorUser && lifecycleOf(actorUser) !== SOCIAL_LIFECYCLE.ACTIVE) return null
     const id = notificationDocumentId(normalized.recipientId, normalized.kind, normalized.sourceEventId)
     const existing = await store.get(COLLECTIONS.NOTIFICATIONS, id)
     if (existing) return existing
@@ -359,8 +363,7 @@ async function findActorUser(repository, actor) {
   const user = typeof repository.find === 'function'
     ? await repository.find('social_users', query)
     : repository.where('social_users', row => row.ownerOpenId === query.ownerOpenId)[0]
-  if (!user) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
-  return user
+  return requireActiveSocialUser(user)
 }
 
 function parseLimit(value) {

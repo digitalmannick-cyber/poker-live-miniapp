@@ -1301,10 +1301,14 @@ Page({
       confirmColor: '#e60012',
       success: async res => {
         if (!res.confirm) return
-        await dataService.clearAllData()
-        wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
-        wx.showToast({ title: '已重置', icon: 'success' })
-        this.refresh()
+        try {
+          await dataService.clearAllData()
+          wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
+          wx.showToast({ title: '已重置', icon: 'success' })
+          this.refresh()
+        } catch (error) {
+          wx.showToast({ title: '未全部清除，可重试', icon: 'none' })
+        }
       }
     })
   },

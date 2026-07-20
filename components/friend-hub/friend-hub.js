@@ -3,6 +3,7 @@ const dataService = require('../../services/data-service')
 const socialCache = require('../../utils/social-cache')
 
 const FEED_PAGE_SIZE = 20
+const SOCIAL_CACHE_SCHEMA_VERSION = socialCache.SOCIAL_CACHE_SCHEMA_VERSION || 1
 const FEED_SCOPE_LABELS = Object.freeze({ square: '广场', friends: '全部好友', selected: '指定好友' })
 
 function isNetworkError(error) {
@@ -100,6 +101,53 @@ function buildRankingRow(row, position) {
   }
 }
 
+function copyPublicFriend(value) {
+  const source = value || {}
+  if (typeof source.socialUserId !== 'string' || !source.socialUserId || typeof source.nickname !== 'string') throw feedContractError()
+  const copied = {
+    socialUserId: source.socialUserId,
+    nickname: source.nickname,
+    avatarUrl: typeof source.avatarUrl === 'string' ? source.avatarUrl : '',
+    avatarText: typeof source.avatarText === 'string' ? source.avatarText : '',
+    title: typeof source.title === 'string' ? source.title : '',
+    statsVisible: source.statsVisible !== false
+  }
+  if (typeof source.friendshipId === 'string') copied.friendshipId = source.friendshipId
+  if (copied.statsVisible && Number.isFinite(source.durationMinutes) && source.durationMinutes >= 0) copied.durationMinutes = source.durationMinutes
+  if (copied.statsVisible && Number.isSafeInteger(source.recordedHandCount) && source.recordedHandCount >= 0) copied.recordedHandCount = source.recordedHandCount
+  return copied
+}
+
+function copyFriendsResponse(value) {
+  const source = value || {}
+  if (!Array.isArray(source.items)) throw feedContractError()
+  const nextOffset = source.nextOffset
+  if (nextOffset !== null && (!Number.isSafeInteger(nextOffset) || nextOffset < 0)) throw feedContractError()
+  return { items: source.items.map(copyPublicFriend), nextOffset }
+}
+
+function copyPublicRankingRow(value) {
+  const source = value || {}
+  if (typeof source.socialUserId !== 'string' || !source.socialUserId || typeof source.nickname !== 'string' ||
+    !Number.isSafeInteger(source.rank) || source.rank < 1) throw feedContractError()
+  return {
+    socialUserId: source.socialUserId,
+    nickname: source.nickname,
+    avatarUrl: typeof source.avatarUrl === 'string' ? source.avatarUrl : '',
+    avatarText: typeof source.avatarText === 'string' ? source.avatarText : '',
+    title: typeof source.title === 'string' ? source.title : '',
+    rank: source.rank,
+    durationMinutes: Number.isFinite(source.durationMinutes) && source.durationMinutes >= 0 ? source.durationMinutes : 0,
+    recordedHandCount: Number.isSafeInteger(source.recordedHandCount) && source.recordedHandCount >= 0 ? source.recordedHandCount : 0
+  }
+}
+
+function copyRankingResponse(value) {
+  const source = value || {}
+  if (!Array.isArray(source.top10) || (source.myRank !== null && (!source.myRank || typeof source.myRank !== 'object'))) throw feedContractError()
+  return { top10: source.top10.map(copyPublicRankingRow), myRank: source.myRank === null ? null : copyPublicRankingRow(source.myRank) }
+}
+
 Component({
   properties: {
     activeSection: {
@@ -120,6 +168,19 @@ Component({
         this.invalidateFeed({ clear: true })
         if (this._friendHubAttached === true && this.data.activeSection === 'feed' && next) this.loadFeed()
       }
+    },
+    accountKey: {
+      type: String,
+      value: '',
+      observer(value, oldValue) {
+        const next = String(value || '')
+        const previous = String(oldValue || '')
+        if (next === previous) return
+        this.invalidateAccountSurfaces()
+        if (this._friendHubAttached !== true || !next) return
+        if (this.data.activeSection === 'friends') this.loadFriends(true)
+        if (this.data.activeSection === 'ranking') this.loadRanking(this.data.rankingRange)
+      }
     }
   },
 
@@ -130,6 +191,8 @@ Component({
     nextOffset: null,
     loadingMore: false,
     loadMoreError: '',
+    friendsOffline: false,
+    friendsReadOnly: false,
     rankingRange: 'week',
     rankingStatus: 'idle',
     rankingError: '',
@@ -137,6 +200,8 @@ Component({
     rankingPodium: [],
     rankingListRows: [],
     rankingMyRank: null,
+    rankingOffline: false,
+    rankingReadOnly: false,
     feedStatus: 'idle',
     feedError: '',
     feedItems: [],
@@ -168,6 +233,19 @@ Component({
   },
 
   methods: {
+    invalidateAccountSurfaces() {
+      this._friendLoadSequence = (Number(this._friendLoadSequence) || 0) + 1
+      this._friendLoadPromise = null
+      this._friendLoadMorePromise = null
+      this._rankingLoadSequence = (Number(this._rankingLoadSequence) || 0) + 1
+      this.setData({
+        status: 'idle', friends: [], nextOffset: null, loadingMore: false, loadMoreError: '', errorMessage: '',
+        friendsOffline: false, friendsReadOnly: false,
+        rankingStatus: 'idle', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null,
+        rankingError: '', rankingOffline: false, rankingReadOnly: false
+      })
+    },
+
     invalidateFeed(options) {
       const config = options || {}
       this._feedGeneration = (Number(this._feedGeneration) || 0) + 1
@@ -341,14 +419,16 @@ Component({
       if (friendUserId) this.triggerEvent('openfriend', { friendUserId })
     },
 
-    isCurrentLoad(sequence) {
-      return this._friendHubAttached !== false && sequence === this._friendLoadSequence
+    isCurrentLoad(sequence, accountKey) {
+      return this._friendHubAttached !== false && sequence === this._friendLoadSequence &&
+        String(this.data.accountKey || '') === accountKey
     },
 
-    async buildFriendCards(remoteFriends) {
+    async buildFriendCards(remoteFriends, options) {
+      const readOnly = options && options.readOnly === true
       const cards = []
       for (const remote of remoteFriends) {
-        const localNote = await dataService.ensureFriendPlayerNote({
+        const localNote = readOnly ? null : await dataService.ensureFriendPlayerNote({
           socialUserId: remote.socialUserId,
           nickname: remote.nickname,
           avatarUrl: remote.avatarUrl,
@@ -370,36 +450,55 @@ Component({
 
     async requestFriendPage(offset, options) {
       const config = options || {}
+      const accountKey = String(this.data.accountKey || '')
       const sequence = (Number(this._friendLoadSequence) || 0) + 1
       this._friendLoadSequence = sequence
       if (config.append) this.setData({ loadingMore: true, loadMoreError: '' })
-      else this.setData({ status: 'loading', errorMessage: '', loadMoreError: '' })
+      else this.setData({ status: 'loading', errorMessage: '', loadMoreError: '', friendsOffline: false, friendsReadOnly: false })
 
       try {
-        const response = await socialService.listFriends({ offset, limit: 20 })
-        const remoteFriends = Array.isArray(response && response.items) ? response.items : []
-        const cards = await this.buildFriendCards(remoteFriends)
-        if (!this.isCurrentLoad(sequence)) return this.data.friends
+        const response = copyFriendsResponse(await socialService.listFriends({ offset, limit: 20 }))
+        if (!this.isCurrentLoad(sequence, accountKey)) return this.data.friends
+        if (!config.append && accountKey) socialCache.writeScopedFirstPage({ namespace: 'friends', accountKey, schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION, data: response })
+        const cards = await this.buildFriendCards(response.items)
+        if (!this.isCurrentLoad(sequence, accountKey)) return this.data.friends
         this.setData({
           status: 'ready',
           friends: config.append ? this.mergeFriends(this.data.friends, cards) : cards,
-          nextOffset: response && response.nextOffset != null ? response.nextOffset : null,
+          nextOffset: response.nextOffset,
           loadingMore: false,
-          loadMoreError: ''
+          loadMoreError: '',
+          friendsOffline: false,
+          friendsReadOnly: false
         })
         return this.data.friends
       } catch (error) {
-        if (!this.isCurrentLoad(sequence)) return this.data.friends
+        if (!this.isCurrentLoad(sequence, accountKey)) return this.data.friends
         if (config.append) {
           this.setData({ loadingMore: false, loadMoreError: '加载更多失败，请重试' })
           return this.data.friends
+        }
+        const cached = isNetworkError(error) && accountKey ? socialCache.readScopedFirstPage({ namespace: 'friends', accountKey, schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION }) : null
+        if (cached) {
+          try {
+            const response = copyFriendsResponse(cached)
+            const cards = await this.buildFriendCards(response.items, { readOnly: true })
+            if (!this.isCurrentLoad(sequence, accountKey)) return this.data.friends
+            this.setData({
+              status: 'ready', friends: cards, nextOffset: null, loadingMore: false, loadMoreError: '', errorMessage: '',
+              friendsOffline: true, friendsReadOnly: true
+            })
+            return cards
+          } catch (cacheError) {}
         }
         this.setData({
           status: 'error',
           friends: [],
           nextOffset: null,
           loadingMore: false,
-          errorMessage: '好友功能暂时不可用，请稍后重试'
+          errorMessage: '好友功能暂时不可用，请稍后重试',
+          friendsOffline: false,
+          friendsReadOnly: false
         })
         return []
       }
@@ -417,7 +516,7 @@ Component({
 
     loadMoreFriends() {
       const offset = Number(this.data.nextOffset)
-      if (!Number.isFinite(offset) || offset < 0 || this._friendLoadMorePromise) return this.data.friends
+      if (!Number.isFinite(offset) || offset < 0 || this._friendLoadMorePromise || this.data.friendsReadOnly) return this.data.friends
       const promise = this.requestFriendPage(offset, { append: true })
       this._friendLoadMorePromise = promise
       return promise.finally(() => {
@@ -427,14 +526,16 @@ Component({
 
     async loadRanking(rangeKey) {
       const range = ['week', 'month', 'all'].includes(rangeKey) ? rangeKey : 'week'
+      const accountKey = String(this.data.accountKey || '')
       const sequence = (Number(this._rankingLoadSequence) || 0) + 1
       this._rankingLoadSequence = sequence
-      this.setData({ rankingRange: range, rankingStatus: 'loading', rankingError: '', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null })
+      this.setData({ rankingRange: range, rankingStatus: 'loading', rankingError: '', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null, rankingOffline: false, rankingReadOnly: false })
       try {
-        const response = await socialService.listRanking({ rangeKey: range })
-        if (sequence !== this._rankingLoadSequence || this._friendHubAttached === false) return []
-        const rows = (Array.isArray(response && response.top10) ? response.top10 : []).map(buildRankingRow)
-        const myRank = response && response.myRank ? buildRankingRow(response.myRank) : null
+        const response = copyRankingResponse(await socialService.listRanking({ rangeKey: range }))
+        if (sequence !== this._rankingLoadSequence || this._friendHubAttached === false || String(this.data.accountKey || '') !== accountKey) return []
+        if (accountKey) socialCache.writeScopedFirstPage({ namespace: 'ranking:' + range, accountKey, schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION, data: response })
+        const rows = response.top10.map(buildRankingRow)
+        const myRank = response.myRank ? buildRankingRow(response.myRank) : null
         const uniqueMyRank = myRank && !rows.some(row => row.socialUserId === myRank.socialUserId) ? myRank : null
         this.setData({
           rankingStatus: 'ready',
@@ -442,12 +543,25 @@ Component({
           rankingPodium: rows.slice(0, 3),
           rankingListRows: rows.slice(3),
           rankingMyRank: uniqueMyRank,
-          rankingError: ''
+          rankingError: '',
+          rankingOffline: false,
+          rankingReadOnly: false
         })
         return rows
       } catch (error) {
-        if (sequence !== this._rankingLoadSequence || this._friendHubAttached === false) return []
-        this.setData({ rankingStatus: 'error', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null, rankingError: '排行榜暂时不可用，请稍后重试' })
+        if (sequence !== this._rankingLoadSequence || this._friendHubAttached === false || String(this.data.accountKey || '') !== accountKey) return []
+        const cached = isNetworkError(error) && accountKey ? socialCache.readScopedFirstPage({ namespace: 'ranking:' + range, accountKey, schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION }) : null
+        if (cached) {
+          try {
+            const response = copyRankingResponse(cached)
+            const rows = response.top10.map(buildRankingRow)
+            const myRank = response.myRank ? buildRankingRow(response.myRank) : null
+            const uniqueMyRank = myRank && !rows.some(row => row.socialUserId === myRank.socialUserId) ? myRank : null
+            this.setData({ rankingStatus: 'ready', rankingRows: rows, rankingPodium: rows.slice(0, 3), rankingListRows: rows.slice(3), rankingMyRank: uniqueMyRank, rankingError: '', rankingOffline: true, rankingReadOnly: true })
+            return rows
+          } catch (cacheError) {}
+        }
+        this.setData({ rankingStatus: 'error', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null, rankingError: '排行榜暂时不可用，请稍后重试', rankingOffline: false, rankingReadOnly: false })
         return []
       }
     },
@@ -467,11 +581,13 @@ Component({
     },
 
     openFriend(event) {
+      if (this.data.friendsReadOnly) return
       const friendUserId = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.id || '')
       if (friendUserId) this.triggerEvent('openfriend', { friendUserId })
     },
 
     openMessages() {
+      if (this.data.feedReadOnly || this.data.friendsReadOnly || this.data.rankingReadOnly) return
       this.triggerEvent('openmessages', {})
     }
   }

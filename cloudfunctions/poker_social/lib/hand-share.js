@@ -4,6 +4,7 @@ const { socialError } = require('./social-error')
 const { getPairId } = require('./friendship')
 const { runIdempotent, restoreIdempotent } = require('./idempotency')
 const { canReadShare, hasAcceptedPair } = require('./visibility')
+const { SOCIAL_LIFECYCLE, lifecycleOf, requireActiveSocialUser } = require('./social-lifecycle')
 
 const COLLECTIONS = Object.freeze({
   USERS: 'social_users',
@@ -157,6 +158,7 @@ async function resolveSocialUser(store, actor) {
   const ownerOpenId = normalizeId(actor && actor.ownerOpenId)
   if (!ownerOpenId || !store || typeof store.findSocialUserByOpenId !== 'function') throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
   const user = await store.findSocialUserByOpenId(ownerOpenId)
+  requireActiveSocialUser(user)
   if (!user || !normalizeId(user._id) || !normalizeId(user.privatePlayerId)) {
     throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
   }
@@ -323,6 +325,9 @@ async function deliverOutboxTarget(repository, outboxId, targetUserId, options) 
   return repository.runTransaction(async store => {
     const outbox = await store.get(COLLECTIONS.OUTBOX, outboxId)
     if (!outbox || outbox.status !== 'pending' || !Array.isArray(outbox.targetUserIds) || !outbox.targetUserIds.includes(targetUserId)) return false
+    const publisher = await store.get(COLLECTIONS.USERS, outbox.publisherId)
+    const recipient = await store.get(COLLECTIONS.USERS, targetUserId)
+    if (lifecycleOf(publisher) !== SOCIAL_LIFECYCLE.ACTIVE || lifecycleOf(recipient) !== SOCIAL_LIFECYCLE.ACTIVE) return false
     const addressed = addressedTargets(outbox)
     if (addressed.has(targetUserId)) return false
     const share = await store.get(COLLECTIONS.SHARES, outbox.shareId)

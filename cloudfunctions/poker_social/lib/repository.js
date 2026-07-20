@@ -1,7 +1,9 @@
 const { socialError } = require('./social-error')
+const { requireActiveSocialUser } = require('./social-lifecycle')
 
 const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_USERS: 'social_users',
+  SOCIAL_USER_OWNERS: 'social_user_owners',
   SOCIAL_FRIENDSHIPS: 'social_friendships',
   SOCIAL_INVITES: 'social_invites',
   SOCIAL_MUTATIONS: 'social_mutations',
@@ -19,10 +21,11 @@ const SOCIAL_COLLECTIONS = Object.freeze({
   SOCIAL_COMMENTS: 'social_comments'
 })
 
-const ACCOUNT_CLEAR_SOCIAL_COLLECTIONS = Object.freeze(Object.values(SOCIAL_COLLECTIONS))
+const SERVER_ONLY_SOCIAL_COLLECTIONS = Object.freeze(Object.values(SOCIAL_COLLECTIONS))
 
 const PRIVATE_PAGE_SIZE = 100
 const FRIEND_ID_QUERY_CHUNK_SIZE = 10
+const ACCOUNT_CLEAR_BATCH_SIZE = 50
 
 function isDocumentNotFound(error) {
   const code = String(error && (error.errCode || error.code) || '')
@@ -104,6 +107,77 @@ function createCloudSocialRepository(database) {
       const response = await client.collection(SOCIAL_COLLECTIONS.SOCIAL_USERS)
         .where({ ownerOpenId: String(ownerOpenId || '') }).limit(1).get()
       return response && Array.isArray(response.data) && response.data[0] || null
+    },
+
+    async findAccountClearUserByOpenId(ownerOpenId) {
+      const value = String(ownerOpenId || '').trim()
+      if (!value) return null
+      const response = await client.collection(SOCIAL_COLLECTIONS.SOCIAL_USERS)
+        .where({ ownerOpenId: value }).orderBy('_id', 'asc').limit(1).get()
+      return response && Array.isArray(response.data) && response.data[0] || null
+    },
+
+    async listAccountClearBatch(stage, socialUserId, limit) {
+      const id = String(socialUserId || '').trim()
+      const pageSize = Number(limit)
+      if (!id || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > ACCOUNT_CLEAR_BATCH_SIZE) {
+        throw new Error('account clear limit unavailable')
+      }
+      const relationship = /^friendships_([ab])_(pending|accepted|rejected)$/.exec(String(stage || ''))
+      let definition = null
+      if (relationship) {
+        definition = {
+          collection: SOCIAL_COLLECTIONS.SOCIAL_FRIENDSHIPS,
+          filters: { [relationship[1] === 'a' ? 'userA' : 'userB']: id, status: relationship[2] },
+          orders: [['acceptedAt', 'desc'], ['_id', 'asc']]
+        }
+      } else {
+        const definitions = {
+          invites: [SOCIAL_COLLECTIONS.SOCIAL_INVITES, { inviterId: id, revokedAt: 0 }, [['createdAt', 'asc'], ['_id', 'asc']]],
+          hand_shares: [SOCIAL_COLLECTIONS.SOCIAL_HAND_SHARES, { publisherId: id, status: 'active' }, [['createdAt', 'desc'], ['_id', 'desc']]],
+          card_shares_sent: [SOCIAL_COLLECTIONS.SOCIAL_PLAYER_CARD_SHARES, { senderUserId: id, status: 'active' }, [['createdAt', 'desc'], ['_id', 'desc']]],
+          card_shares_received: [SOCIAL_COLLECTIONS.SOCIAL_PLAYER_CARD_SHARES, { targetUserId: id, status: 'active', importedAt: 0 }, [['createdAt', 'desc'], ['_id', 'desc']]],
+          comments: [SOCIAL_COLLECTIONS.SOCIAL_COMMENTS, { authorId: id, deleted: false }, [['createdAt', 'desc'], ['_id', 'desc']]],
+          likes: [SOCIAL_COLLECTIONS.SOCIAL_LIKES, { actorId: id, active: true }, [['updatedAt', 'desc'], ['_id', 'desc']]],
+          recipient_notifications: [SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATIONS, { recipientId: id }, [['createdAt', 'desc'], ['_id', 'desc']]],
+          recipient_heads: [SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_HEADS, { recipientId: id }, [['latestAt', 'asc'], ['_id', 'asc']]],
+          actor_notifications: [SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATIONS, { 'actorSnapshot.socialUserId': id }, [['createdAt', 'asc'], ['_id', 'asc']]],
+          actor_memberships: [SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_ACTORS, { actorId: id }, [['createdAt', 'asc'], ['_id', 'asc']]],
+          outbox_publisher: [SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_OUTBOX, { publisherId: id, status: 'pending' }, [['createdAt', 'asc'], ['_id', 'asc']]],
+          rate_actor: [SOCIAL_COLLECTIONS.SOCIAL_RATE_LIMITS, { actorId: id }, [['_id', 'asc']]],
+          rate_publisher: [SOCIAL_COLLECTIONS.SOCIAL_RATE_LIMITS, { publisherId: id }, [['_id', 'asc']]],
+          mutations: [SOCIAL_COLLECTIONS.SOCIAL_MUTATIONS, { actorId: id }, [['createdAt', 'asc'], ['_id', 'asc']]],
+          daily_stats: [SOCIAL_COLLECTIONS.SOCIAL_DAILY_STATS, { socialUserId: id }, [['dateKey', 'asc'], ['_id', 'asc']]]
+        }
+        const value = definitions[stage]
+        if (value) definition = { collection: value[0], filters: value[1], orders: value[2] }
+        if (stage === 'outbox_target') {
+          definition = {
+            collection: SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_OUTBOX,
+            filters: { status: 'pending', targetUserIds: id },
+            orders: [['createdAt', 'asc'], ['_id', 'asc']]
+          }
+        }
+      }
+      if (!definition) throw new Error('account clear stage unavailable')
+      let request = client.collection(definition.collection).where(definition.filters)
+      if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('account clear query unavailable')
+      for (const order of definition.orders) request = request.orderBy(order[0], order[1])
+      const response = await request.limit(pageSize).get()
+      return Array.isArray(response && response.data) ? response.data : []
+    },
+
+    async listAccountClearNotificationActors(notificationId, limit) {
+      const id = String(notificationId || '').trim()
+      const pageSize = Number(limit)
+      if (!id || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > ACCOUNT_CLEAR_BATCH_SIZE) {
+        throw new Error('account clear actor limit unavailable')
+      }
+      let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_ACTORS).where({ notificationId: id })
+      if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('account clear actor query unavailable')
+      request = request.orderBy('createdAt', 'asc').orderBy('_id', 'asc').limit(pageSize)
+      const response = await request.get()
+      return Array.isArray(response && response.data) ? response.data : []
     },
 
     async listOwnedHandActions(ownerOpenId, privatePlayerId, handId) {
@@ -387,17 +461,49 @@ function createCloudSocialRepository(database) {
   }
 
   const store = createStore(database)
+  async function runTransaction(callback) {
+    if (typeof database.runTransaction !== 'function') throw new Error('cloud database transactions unavailable')
+    return database.runTransaction(transaction => callback(createStore(transaction, true)))
+  }
   return Object.assign(store, {
-    async runTransaction(callback) {
-      if (typeof database.runTransaction !== 'function') throw new Error('cloud database transactions unavailable')
-      return database.runTransaction(transaction => callback(createStore(transaction, true)))
+    runTransaction,
+    async replaceSocialStatsIfActive(socialUserId, buckets, patch) {
+      const existingRows = await store.listDailyStats([socialUserId])
+      return runTransaction(async transaction => {
+        const user = requireActiveSocialUser(await transaction.get(SOCIAL_COLLECTIONS.SOCIAL_USERS, socialUserId))
+        for (const row of existingRows) {
+          if (row && row._id && row.socialUserId === socialUserId) await transaction.remove(SOCIAL_COLLECTIONS.SOCIAL_DAILY_STATS, row._id)
+        }
+        for (const bucket of Array.isArray(buckets) ? buckets : []) {
+          const dateKey = String(bucket && bucket.dateKey || '')
+          if (!/^\d{8}$/.test(dateKey)) continue
+          const id = 'sd_' + socialUserId + '_' + dateKey
+          await transaction.set(SOCIAL_COLLECTIONS.SOCIAL_DAILY_STATS, id, {
+            socialUserId,
+            dateKey,
+            durationMinutes: Math.max(0, Math.floor(Number(bucket.durationMinutes) || 0)),
+            recordedHandCount: Math.max(0, Math.floor(Number(bucket.recordedHandCount) || 0)),
+            updatedAt: Number(patch && patch.updatedAt) || Date.now()
+          })
+        }
+        const next = Object.assign({}, user, {
+          title: String(patch && patch.title || ''),
+          publicStats: {
+            durationMinutes: Math.max(0, Math.floor(Number(patch && patch.publicStats && patch.publicStats.durationMinutes) || 0)),
+            recordedHandCount: Math.max(0, Math.floor(Number(patch && patch.publicStats && patch.publicStats.recordedHandCount) || 0))
+          },
+          updatedAt: Number(patch && patch.updatedAt) || Date.now()
+        })
+        await transaction.set(SOCIAL_COLLECTIONS.SOCIAL_USERS, socialUserId, next)
+        return next
+      })
     }
   })
 }
 
 module.exports = {
   SOCIAL_COLLECTIONS,
-  ACCOUNT_CLEAR_SOCIAL_COLLECTIONS,
+  SERVER_ONLY_SOCIAL_COLLECTIONS,
   FRIEND_ID_QUERY_CHUNK_SIZE,
   createCloudSocialRepository
 }

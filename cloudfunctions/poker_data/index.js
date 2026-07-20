@@ -411,6 +411,41 @@ async function fetchOwnedByPlayer(collectionName, playerId, ownerOpenId) {
   return mergeDocs(ownerScoped, legacyScoped)
 }
 
+async function fetchPlayerCardImportReceiptsForClear(playerId, ownerOpenId) {
+  const normalizedPlayerId = normalizePlayerId(playerId)
+  const command = db && db.command
+  if (!command || typeof command.gt !== 'function') {
+    throw new Error('player card import receipt keyset query unavailable')
+  }
+
+  const list = []
+  let lastId = ''
+  while (true) {
+    const result = await db.collection(COLLECTIONS.playerCardImportReceipts)
+      .where({
+        ownerOpenId,
+        playerId: normalizedPlayerId,
+        _id: command.gt(lastId)
+      })
+      .orderBy('_id', 'asc')
+      .limit(PAGE_SIZE)
+      .get()
+    const batch = result.data || []
+    let previousId = lastId
+    batch.forEach(doc => {
+      const id = String(doc && doc._id || '')
+      if (!id || id <= previousId || doc.ownerOpenId !== ownerOpenId || doc.playerId !== normalizedPlayerId) {
+        throw new Error('invalid player card import receipt clear page')
+      }
+      previousId = id
+    })
+    list.push.apply(list, batch)
+    if (batch.length < PAGE_SIZE) break
+    lastId = previousId
+  }
+  return list
+}
+
 function cleanCloudDoc(doc) {
   if (Array.isArray(doc)) return doc.map(cleanCloudDoc)
   if (!doc || typeof doc !== 'object') return doc
@@ -2426,6 +2461,52 @@ async function completePlayerCardImportReceiptAction(event, ownerOpenId) {
   return { code: 0, data: { receipt: buildPlayerCardImportReceiptDto(result && result.receipt) } }
 }
 
+const PRIVATE_CLEAR_COLLECTIONS = [
+  COLLECTIONS.handActions,
+  COLLECTIONS.hands,
+  COLLECTIONS.sessions,
+  COLLECTIONS.playerNotes,
+  COLLECTIONS.playerCardImportReceipts,
+  COLLECTIONS.bankrollLogs,
+  COLLECTIONS.userSettings,
+  COLLECTIONS.profiles
+]
+
+function redactOperationBusinessPayload(doc) {
+  const next = Object.assign({}, doc || {})
+  ;['result', 'recoveryEvidence', 'before', 'after', 'payload', 'businessPayload'].forEach(key => { delete next[key] })
+  return next
+}
+
+async function clearOwnedCollection(collectionName, playerId, ownerOpenId) {
+  // Import receipts have always used the canonical ownerOpenId schema. Keep this
+  // delete path aligned with its exact compound index and avoid offset pagination.
+  const docs = collectionName === COLLECTIONS.playerCardImportReceipts
+    ? await fetchPlayerCardImportReceiptsForClear(playerId, ownerOpenId)
+    : await fetchOwnedByPlayer(collectionName, playerId, ownerOpenId)
+  for (const doc of docs) {
+    if (doc && doc._id) await removeDocById(collectionName, doc._id)
+  }
+}
+
+async function redactOwnedOperationHistory(collectionName, playerId, ownerOpenId) {
+  const docs = await fetchOwnedByPlayer(collectionName, playerId, ownerOpenId)
+  for (const doc of docs) {
+    if (doc && doc._id) await setDocById(collectionName, doc._id, redactOperationBusinessPayload(doc))
+  }
+}
+
+async function clearAllDataAction(event, ownerOpenId) {
+  return runMutation(event, ownerOpenId, 'clear_all_data', async (playerId) => {
+    for (const collectionName of PRIVATE_CLEAR_COLLECTIONS) {
+      await clearOwnedCollection(collectionName, playerId, ownerOpenId)
+    }
+    await redactOwnedOperationHistory(COLLECTIONS.syncOperations, playerId, ownerOpenId)
+    await redactOwnedOperationHistory(COLLECTIONS.auditLogs, playerId, ownerOpenId)
+    return { completed: true }
+  })
+}
+
 function hasOwnField(value, key) {
   return Object.prototype.hasOwnProperty.call(value || {}, key)
 }
@@ -2870,6 +2951,9 @@ exports.main = async function main(rawEvent) {
     }
     if (action === 'complete_player_card_import_receipt') {
       return await completePlayerCardImportReceiptAction(event || {}, ownerOpenId)
+    }
+    if (action === 'clear_all_data') {
+      return await clearAllDataAction(event || {}, ownerOpenId)
     }
     if (action === 'create_session') {
       return await createSessionAction(event || {}, ownerOpenId)

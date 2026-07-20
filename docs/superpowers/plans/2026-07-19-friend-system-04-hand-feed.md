@@ -905,6 +905,7 @@ git commit -m "feat: add social hand interactions"
 - Modify: `utils/social-cache.js`
 - Modify: `components/friend-hub/friend-hub.js`
 - Modify: `pages/player-notes/player-notes.js`
+- Modify: `pages/profile/profile.js`
 - Create: `tests/social-delete-cascade.test.js`
 - Create: `tests/social-offline-cache.test.js`
 - Modify: `tests/social-message-center.test.js`
@@ -921,6 +922,7 @@ git commit -m "feat: add social hand interactions"
 3. mutation ID 必须从当前账号命名空间 + handId + 本次核心删除 operation ID 稳定派生；同一删除重试复用，不能每次随机创建重复撤回事务。
 4. Task 2 的 handler 只撤回当前 owner/privatePlayerId 精确 source hand 的 active shares，清对应 slot，并保持旧评论/点赞附着于旧 share，不迁移到未来 generation。
 5. 即使撤回失败，Task 4 feed 批量 source filter 和 detail/Task 5 interaction 点读 source gate 也必须让 orphan 立即不可见/不可互动。
+6. `delete_session` 返回的每个 `handId` 都属于同一核心删除 operation；必须逐手调用同一个 post-delete best-effort helper，并以 `core clientMutationId + handId` 稳定派生各自撤回 mutation ID。前台成功与 outbox 响应丢失后重放成功都必须走该 helper，不能只接页面前台路径。
 
 ##### 账号清除严格顺序
 
@@ -945,6 +947,10 @@ git commit -m "feat: add social hand interactions"
   - 当前用户 rate-limit 和 mutation 文档删除或失效；
   - daily stats 删除。
 - `player_card_import_receipts` 属于私有 poker-data 清除阶段，不在 `poker_social` 中伪装删除；步骤 2 必须包含它。
+- `clear_my_social_data` 使用 social user 文档上的私有 checkpoint，而不是会在清除过程中被删除的通用 `social_mutations` receipt。每次调用最多处理固定批量并返回 exact `{ completed, remainingStage, socialUserId }`；`socialUserId` 仅为当前自己的公开 ID，供最终定向清缓存。客户端用同一 `clientMutationId` 有界续调直到 `completed=true`。各 stage 只查询仍待处理的记录，处理后不再命中；不得向客户端返回 collection cursor、OpenID 或其他内部 ID。
+- checkpoint 对同一账号可重入：同 mutation 和新的 retry 都从当前 stage 继续；完成后重复调用稳定返回 completed。checkpoint 只保留阶段、脱敏 mutation hash 和时间，不保留明文 mutation ID。
+- 私有 `poker_data` 清除必须由 server-authoritative action 执行，覆盖 sessions/hands/actions/bankroll/player_notes/player_card_import_receipts/profile/settings。`sync_operations/audit_logs` 作为 server-only 操作完整性证据保留，但必须在清除完成时去除可直接关联用户的业务 payload；不得由客户端逐集合直写删除。
+- `pages/profile` 只有在 social、private cloud、本地 store/account/cache 全部成功后才提示“已重置”；任一步失败必须显示“未全部清除，可重试”并保留可重试入口。
 
 ##### 缓存唯一所有者与账号隔离
 
@@ -955,6 +961,11 @@ git commit -m "feat: add social hand interactions"
 - 只缓存第一页面向公众的 DTO 和服务端 cursor/count；不缓存后续页、OpenID/privatePlayerId/sourceHandId/raw hand/session/action、权限布尔结果或临时云文件内部 ID。
 - 仅 `NETWORK_ERROR/CLOUD_UNAVAILABLE` 可回退缓存，并强制 `readOnly=true`、清 cursor、禁用 comment/like/publish/scope/withdraw/friend action/mark read。权限或内容失效错误不得回退缓存。
 - account switch/logout/`clear_my_social_data` 成功后按 registry 清当前账号全部 social key；旧异步回调不得 cache/setData/toast。
+- registry 清除必须按捕获的当前 `accountKey/socialUserId` 定向删除；不得通过扫前缀删除其他仍可能登录账号的缓存。现有消息与 feed envelope 不迁移，只登记各自 key builder/clear hook。
+
+##### 真实部署清单同步
+
+Task 6 任何新增批查都必须同时修改 `database-indexes.json`、`database-indexes.md` 与 `tests/social-database-deployment-contract.test.js`。只写 Markdown 不算完成；缺索引时 repository 必须失败关闭，不得退回全表扫描或 offset。
 
 ##### 测试门禁
 

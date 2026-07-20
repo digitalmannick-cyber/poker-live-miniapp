@@ -38,6 +38,12 @@ let cloudRetryAfter = 0
 const statsDataCache = {}
 const statsDataPrefetching = {}
 
+function invalidateCloudMutationAccountContext() {
+  cloudMutationAccountContextId = getCurrentPlayerId()
+  cloudMutationAccountContextEpoch += 1
+  cloudMutationDrainEpoch += 1
+}
+
 function withTimeout(promise, ms, fallbackValue) {
   let timeoutId = null
   const timeoutPromise = new Promise(resolve => {
@@ -970,6 +976,7 @@ async function loginWechatAccount(options) {
   if (backup && (localBackupHasBusinessData(backup) || accountPlayerId)) {
     store.importBackup(mergeBackupData(localBackup, backup))
     wx.removeStorageSync(ACCOUNT_LOGGED_OUT_KEY)
+    invalidateCloudMutationAccountContext()
     cloudBootstrapComplete = true
     scheduleBusinessDataSync('sync recovered cloud backup failed')
     return true
@@ -984,6 +991,7 @@ async function loginWechatAccount(options) {
       })
     }
     wx.removeStorageSync(ACCOUNT_LOGGED_OUT_KEY)
+    invalidateCloudMutationAccountContext()
     cloudBootstrapComplete = true
     return true
   }
@@ -1403,6 +1411,7 @@ async function switchToTestAccount() {
     createdAt: Date.now()
   })
   wx.removeStorageSync(ACCOUNT_LOGGED_OUT_KEY)
+  invalidateCloudMutationAccountContext()
   resetCloudBootstrapState()
   clearStatsDataCache()
   return testBackup.profile
@@ -1425,6 +1434,7 @@ async function exitTestAccount() {
   }
   resetCloudBootstrapState()
   clearStatsDataCache()
+  invalidateCloudMutationAccountContext()
   return store.getProfile()
 }
 
@@ -1446,8 +1456,10 @@ function updateProfile(patch) {
 
 async function logoutAccount() {
   const localBackup = store.exportBackup()
+  const accountId = getCurrentPlayerId()
   wx.setStorageSync(ACCOUNT_LOGGED_OUT_KEY, true)
-  socialCache.clearAllFeedCaches()
+  invalidateCloudMutationAccountContext()
+  socialCache.clearAccountCaches({ accountId })
   resetCloudBootstrapState()
   clearStatsDataCache()
   if (localBackupHasBusinessData(localBackup)) {
@@ -1499,6 +1511,7 @@ function exportBackup() {
 async function importBackup(payload) {
   clearStatsDataCache()
   const result = store.importBackup(payload)
+  invalidateCloudMutationAccountContext()
   const playerId = (result.profile && result.profile.playerId) || getCurrentPlayerId()
   if (playerId && cloudUtils.canUseCloud()) {
     try {
@@ -1517,19 +1530,44 @@ async function importBackup(payload) {
 }
 
 async function clearAllData() {
-  const previousPlayerId = getCurrentPlayerId()
+  requireCloudWriteAvailable()
+  const accountContext = captureCloudMutationAccountContext()
+  const accountId = accountContext.accountId
+  if (!accountId) throw new Error('missing playerId')
+  const socialMutationId = createClientMutationId('clear_social', accountId)
+  let socialResult = null
+  for (let round = 0; round < 200; round += 1) {
+    socialResult = await socialService.clearMySocialData({ clientMutationId: socialMutationId })
+    if (!isCloudMutationAccountContextCurrent(accountContext)) throw staleAccountContextError()
+    if (!socialResult || typeof socialResult.completed !== 'boolean' ||
+      typeof socialResult.remainingStage !== 'string' || typeof socialResult.socialUserId !== 'string') {
+      throw new Error('invalid social clear response')
+    }
+    if (socialResult.completed) break
+  }
+  if (!socialResult || !socialResult.completed) {
+    const error = new Error('SOCIAL_CLEAR_INCOMPLETE')
+    error.code = 'SOCIAL_CLEAR_INCOMPLETE'
+    throw error
+  }
+
+  const privateResult = await cloudDataApi.clearAllData({
+    playerId: accountId,
+    clientMutationId: createClientMutationId('clear_private', accountId)
+  })
+  if (!isCloudMutationAccountContextCurrent(accountContext)) throw staleAccountContextError()
+  if (!privateResult || privateResult.completed !== true) throw new Error('private clear did not complete')
+
   clearStatsDataCache()
   const result = store.clearAllData()
-  socialCache.clearAllFeedCaches()
-  const playerId = previousPlayerId || (result.profile && result.profile.playerId) || getCurrentPlayerId()
-  if (playerId && cloudUtils.canUseCloud()) {
-    try {
-      await cloudRepo.clearAllData(playerId)
-      await bootstrapCloudSync(true)
-    } catch (error) {
-      logCloudBackgroundFailure('clear cloud data failed', error)
-    }
-  }
+  wx.setStorageSync(ACCOUNT_LOGGED_OUT_KEY, true)
+  const remainingOutbox = loadCloudMutationOutbox().filter(record => record && record.accountId !== accountId)
+  saveCloudMutationOutbox(remainingOutbox)
+  cloudMutationDrainEpoch += 1
+  delete cloudMutationDrainPromises[accountId]
+  resetCloudBootstrapState()
+  captureCloudMutationAccountContext()
+  socialCache.clearAccountCaches({ accountId, socialUserId: socialResult.socialUserId })
   return result
 }
 
@@ -1590,6 +1628,48 @@ async function getPlayerNotes(filters) {
 async function getPlayerNoteById(noteId) {
   scheduleCloudBootstrap()
   return getLocalAdapter().getPlayerNoteById(noteId)
+}
+
+function stableMutationHash(value, seed) {
+  let hash = Number(seed) >>> 0
+  const input = String(value || '')
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index)
+    hash = Math.imul(hash, 16777619) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0')
+}
+
+function deriveWithdrawMutationId(accountId, handId, coreMutationId) {
+  const source = JSON.stringify([
+    String(accountId || '').trim().toUpperCase(),
+    String(handId || '').trim(),
+    String(coreMutationId || '').trim()
+  ])
+  return 'withdraw_source_' + stableMutationHash(source, 2166136261) + stableMutationHash(source, 2246822519)
+}
+
+async function runPostDeleteSocialCleanup(record, result) {
+  if (!record || !result || result.deleted !== true) return
+  const action = String(record.action || '')
+  let handIds = []
+  if (action === 'delete_hand') {
+    handIds = [result.handId || record.payload && record.payload.handId || record.targetId]
+  } else if (action === 'delete_session') {
+    handIds = Array.isArray(result.handIds) ? result.handIds : []
+  }
+  const accountId = String(record.accountId || record.payload && record.payload.playerId || '').trim()
+  for (const handId of Array.from(new Set(handIds.map(value => String(value || '').trim()).filter(Boolean)))) {
+    try {
+      await socialService.withdrawSharesBySourceHand({
+        handId,
+        clientMutationId: deriveWithdrawMutationId(accountId, handId, record.clientMutationId)
+      })
+    } catch (error) {
+      // Social cleanup is deliberately best effort: the private-data delete remains authoritative.
+      console.warn('social share cleanup after core delete failed')
+    }
+  }
 }
 
 function canonicalizeMutationPayload(value) {
@@ -1847,6 +1927,7 @@ function drainCloudMutationOutbox() {
         if (epoch === cloudMutationDrainEpoch && isCloudMutationAccountContextCurrent(accountContext)) {
           reconcileCloudMutationResult(record, result)
         }
+        await runPostDeleteSocialCleanup(record, result)
         clearCloudMutationRecord(record)
         completed += 1
       } catch (error) {
@@ -2474,8 +2555,17 @@ async function updateHandWithCloudSync(handId, patch, syncLabel) {
 async function deleteHand(handId) {
   requireCloudWriteAvailable()
   const mutationPayload = { playerId: getCurrentPlayerId(), handId }
-  const response = await runAuthoritativeMutation('delete_hand', handId, mutationPayload, clientMutationId =>
-    cloudDataApi.deleteHand(Object.assign({}, mutationPayload, { clientMutationId })))
+  const response = await runAuthoritativeMutation('delete_hand', handId, mutationPayload, async clientMutationId => {
+    const result = await cloudDataApi.deleteHand(Object.assign({}, mutationPayload, { clientMutationId }))
+    await runPostDeleteSocialCleanup({
+      accountId: mutationPayload.playerId,
+      action: 'delete_hand',
+      targetId: handId,
+      payload: mutationPayload,
+      clientMutationId
+    }, result)
+    return result
+  })
   if (response && response.rejected) {
     throw new Error(response.reason || 'delete hand rejected')
   }
@@ -2491,8 +2581,17 @@ async function deleteHand(handId) {
 async function deleteSession(sessionId) {
   requireCloudWriteAvailable()
   const mutationPayload = { playerId: getCurrentPlayerId(), sessionId }
-  const response = await runAuthoritativeMutation('delete_session', sessionId, mutationPayload, clientMutationId =>
-    cloudDataApi.deleteSession(Object.assign({}, mutationPayload, { clientMutationId })))
+  const response = await runAuthoritativeMutation('delete_session', sessionId, mutationPayload, async clientMutationId => {
+    const result = await cloudDataApi.deleteSession(Object.assign({}, mutationPayload, { clientMutationId }))
+    await runPostDeleteSocialCleanup({
+      accountId: mutationPayload.playerId,
+      action: 'delete_session',
+      targetId: sessionId,
+      payload: mutationPayload,
+      clientMutationId
+    }, result)
+    return result
+  })
   if (response && response.rejected) {
     throw new Error(response.reason || 'delete session rejected')
   }
@@ -2605,6 +2704,8 @@ module.exports = {
     runAuthoritativeMutation,
     drainCloudMutationOutbox,
     reconcileCloudMutationResult,
+    deriveWithdrawMutationId,
+    runPostDeleteSocialCleanup,
     hasRealBusinessData,
     getSessionSummaryReadiness
   }

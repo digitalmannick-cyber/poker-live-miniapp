@@ -1,10 +1,24 @@
 const crypto = require('crypto')
 const { socialError } = require('./social-error')
 const { runIdempotent } = require('./idempotency')
+const { requireActiveSocialUser } = require('./social-lifecycle')
 
 const PROFILE_COLLECTION = 'social_users'
+const OWNER_RESERVATION_COLLECTION = 'social_user_owners'
 const SHARE_SCOPES = new Set(['square', 'friends', 'selected'])
 const AVATAR_MODES = new Set(['wechat', 'custom'])
+
+function ownerHash(ownerOpenId) {
+  return crypto.createHash('sha256').update(String(ownerOpenId || '')).digest('hex')
+}
+
+function ownerReservationId(ownerOpenId) {
+  return 'suo_' + ownerHash(ownerOpenId)
+}
+
+function randomSocialUserId() {
+  return 'su_' + crypto.randomBytes(16).toString('hex')
+}
 
 function normalizeProfileInput(input) {
   const source = input || {}
@@ -60,25 +74,61 @@ function createProfileHandlers(repository, options) {
       const normalized = normalizeProfileInput(event)
       const existing = await repository.find(PROFILE_COLLECTION, { ownerOpenId: actor.ownerOpenId })
       const now = Date.now()
-      const record = Object.assign({}, normalized, {
-        _id: existing ? existing._id : 'su_' + crypto.randomBytes(16).toString('hex'),
-        ownerOpenId: actor.ownerOpenId,
-        createdAt: existing && existing.createdAt || now,
-        updatedAt: now
-      })
-      const saved = await repository.set(PROFILE_COLLECTION, record._id, record)
+      if (existing) requireActiveSocialUser(existing)
+      const reservationId = ownerReservationId(actor.ownerOpenId)
+      const expectedOwnerHash = ownerHash(actor.ownerOpenId)
+      const candidateUserId = existing && existing._id || randomSocialUserId()
+      const persist = async store => {
+        const canPointRead = typeof store.get === 'function'
+        const reservation = canPointRead ? await store.get(OWNER_RESERVATION_COLLECTION, reservationId) : null
+        if (reservation && (reservation.ownerHash !== expectedOwnerHash || typeof reservation.socialUserId !== 'string' || !reservation.socialUserId)) {
+          throw socialError('FORBIDDEN', 'not allowed')
+        }
+        const id = reservation && reservation.socialUserId || candidateUserId
+        const current = canPointRead ? await store.get(PROFILE_COLLECTION, id) : existing
+        if (current) requireActiveSocialUser(current)
+        if (current && current.ownerOpenId !== actor.ownerOpenId) throw socialError('FORBIDDEN', 'not allowed')
+        if (reservation && !current) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
+        const record = Object.assign({}, normalized, {
+          _id: id,
+          ownerOpenId: actor.ownerOpenId,
+          createdAt: current && current.createdAt || now,
+          updatedAt: now
+        })
+        if (canPointRead) {
+          await store.set(OWNER_RESERVATION_COLLECTION, reservationId, {
+            ownerHash: expectedOwnerHash,
+            socialUserId: id,
+            createdAt: Number(reservation && reservation.createdAt) || now,
+            updatedAt: now
+          })
+        }
+        await store.set(PROFILE_COLLECTION, id, record)
+        return record
+      }
+      let saved
+      if (typeof repository.runTransaction === 'function') {
+        try {
+          saved = await repository.runTransaction(persist)
+        } catch (error) {
+          if (existing || String(error && error.message || '') !== 'cloud database transactions unavailable') throw error
+          saved = await persist(repository)
+        }
+      } else {
+        saved = await persist(repository)
+      }
       return getDto(saved)
     },
 
     async get_my_social_profile(event, actor) {
       const record = await repository.find(PROFILE_COLLECTION, { ownerOpenId: actor.ownerOpenId })
-      if (!record) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
+      requireActiveSocialUser(record)
       return getDto(record)
     },
 
     async update_social_settings(event, actor) {
       const record = await repository.find(PROFILE_COLLECTION, { ownerOpenId: actor.ownerOpenId })
-      if (!record) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
+      requireActiveSocialUser(record)
       if (typeof event.statsVisible !== 'boolean' || !SHARE_SCOPES.has(event.defaultShareScope)) {
         throw socialError('INVALID_SOCIAL_SETTINGS', 'invalid social settings')
       }
@@ -98,4 +148,11 @@ function createProfileHandlers(repository, options) {
   }
 }
 
-module.exports = { PROFILE_COLLECTION, normalizeProfileInput, toProfileDto, createProfileHandlers }
+module.exports = {
+  PROFILE_COLLECTION,
+  OWNER_RESERVATION_COLLECTION,
+  ownerReservationId,
+  normalizeProfileInput,
+  toProfileDto,
+  createProfileHandlers
+}

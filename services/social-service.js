@@ -234,6 +234,13 @@ function withdrawSharesBySourceHand(input) {
   })
 }
 
+function clearMySocialData(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('clear_my_social_data', {
+    clientMutationId: source.clientMutationId
+  })
+}
+
 module.exports = {
   initializeSocialProfile,
   getMySocialProfile,
@@ -267,6 +274,7 @@ module.exports = {
   updateHandShareScope,
   withdrawHandShare,
   withdrawSharesBySourceHand,
+  clearMySocialData,
   scheduleMyStatsSync,
   __test: { normalizePlayerId, socialStatsStorageKey }
 }

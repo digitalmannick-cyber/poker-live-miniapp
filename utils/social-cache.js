@@ -1,5 +1,17 @@
 const FEED_CACHE_PREFIX = 'socialFeedFirstPage:'
 const FEED_CACHE_TTL_MS = 300000
+const SOCIAL_CACHE_SCHEMA_VERSION = 1
+const FRIENDS_CACHE_PREFIX = 'socialFriendsFirstPage:'
+const RANKING_CACHE_PREFIX = 'socialRankingFirstPage:'
+const NOTIFICATIONS_CACHE_PREFIX = 'socialNotificationsFirstPage:'
+const ACCOUNT_IDENTITY_PREFIX = 'socialCacheAccountIdentity:'
+const RANKING_RANGES = Object.freeze(['week', 'month', 'all'])
+const PRIVATE_CACHE_KEY_TOKENS = new Set([
+  'openid', 'owneropenid', 'playerid', 'privateplayerid',
+  'note', 'notes', 'notepreview', 'playernote', 'playernotes', 'leak', 'leaks', 'leaktag', 'leaktags',
+  'battlehandids', 'linkedhandids', 'sourcehandid', 'handid', 'sessionid',
+  'actions', 'rawhand', 'permission', 'canread', 'avatarfileid'
+])
 const SCOPE_LABELS = Object.freeze({
   square: '广场',
   friends: '全部好友',
@@ -15,6 +27,165 @@ function exactKeys(value, keys) {
 
 function safeString(value) {
   return typeof value === 'string' ? value : null
+}
+
+function normalizeCacheFieldName(value) {
+  return String(value || '').replace(/[^0-9A-Za-z]/g, '').toLowerCase()
+}
+
+function isPrivateCacheFieldName(value) {
+  return PRIVATE_CACHE_KEY_TOKENS.has(normalizeCacheFieldName(value))
+}
+
+function containsPrivateCacheData(value, seen) {
+  if (!value || typeof value !== 'object') return false
+  const visited = seen || new Set()
+  if (visited.has(value)) return true
+  visited.add(value)
+  if (!Array.isArray(value) && Object.keys(value).some(isPrivateCacheFieldName)) return true
+  return Object.keys(value).some(key => containsPrivateCacheData(value[key], visited))
+}
+
+function cloneCacheData(value) {
+  if (value === undefined || typeof value === 'function' || typeof value === 'symbol' || containsPrivateCacheData(value)) return null
+  try {
+    const encoded = JSON.stringify(value)
+    if (encoded === undefined) return null
+    return JSON.parse(encoded)
+  } catch (error) {
+    return null
+  }
+}
+
+function getScopedCacheKey(namespace, accountKey) {
+  const accountId = safeString(accountKey)
+  if (!accountId || !accountId.trim()) return ''
+  const encoded = encodeURIComponent(accountId)
+  if (namespace === 'friends') return FRIENDS_CACHE_PREFIX + encoded
+  if (typeof namespace === 'string' && namespace.startsWith('ranking:')) {
+    const range = namespace.slice('ranking:'.length)
+    return RANKING_RANGES.includes(range) ? RANKING_CACHE_PREFIX + encoded + ':' + range : ''
+  }
+  return ''
+}
+
+function writeScopedFirstPage(input, now) {
+  const source = input || {}
+  const accountId = safeString(source.accountKey)
+  const schemaVersion = source.schemaVersion
+  const key = getScopedCacheKey(source.namespace, accountId)
+  const savedAt = now === undefined ? Date.now() : now
+  const data = cloneCacheData(source.data)
+  if (!key || !Number.isSafeInteger(schemaVersion) || schemaVersion <= 0 ||
+    !Number.isSafeInteger(savedAt) || savedAt <= 0 || data === null) return false
+  try {
+    if (typeof wx === 'undefined' || typeof wx.setStorageSync !== 'function') return false
+    wx.setStorageSync(key, { accountId, schemaVersion, savedAt, data })
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+function readScopedFirstPage(input, now) {
+  const source = input || {}
+  const accountId = safeString(source.accountKey)
+  const schemaVersion = source.schemaVersion
+  const key = getScopedCacheKey(source.namespace, accountId)
+  const currentTime = now === undefined ? Date.now() : now
+  if (!key || !Number.isSafeInteger(schemaVersion) || schemaVersion <= 0 ||
+    !Number.isSafeInteger(currentTime) || currentTime <= 0) return null
+  let cached
+  try {
+    if (typeof wx === 'undefined' || typeof wx.getStorageSync !== 'function') return null
+    cached = wx.getStorageSync(key)
+  } catch (error) {
+    return null
+  }
+  if (!exactKeys(cached, ['accountId', 'schemaVersion', 'savedAt', 'data'])) return null
+  if (cached.accountId !== accountId || cached.schemaVersion !== schemaVersion ||
+    !Number.isSafeInteger(cached.savedAt) || cached.savedAt <= 0 || cached.savedAt > currentTime ||
+    currentTime - cached.savedAt > FEED_CACHE_TTL_MS) return null
+  return cloneCacheData(cached.data)
+}
+
+function removeStorageKey(key) {
+  if (!key) return false
+  try {
+    if (typeof wx === 'undefined' || typeof wx.removeStorageSync !== 'function') return false
+    wx.removeStorageSync(key)
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+function getAccountIdentityKey(accountId) {
+  const value = safeString(accountId)
+  return value && value.trim() ? ACCOUNT_IDENTITY_PREFIX + encodeURIComponent(value) : ''
+}
+
+const SOCIAL_CACHE_KEY_BUILDERS = Object.freeze({
+  notifications: accountId => typeof accountId === 'string' && accountId.trim() ? NOTIFICATIONS_CACHE_PREFIX + accountId : '',
+  friends: accountId => getScopedCacheKey('friends', accountId),
+  rankingWeek: accountId => getScopedCacheKey('ranking:week', accountId),
+  rankingMonth: accountId => getScopedCacheKey('ranking:month', accountId),
+  rankingAll: accountId => getScopedCacheKey('ranking:all', accountId),
+  identity: accountId => getAccountIdentityKey(accountId),
+  feed: socialUserId => getFeedCacheKey(socialUserId)
+})
+
+function registerAccountIdentity(input) {
+  const source = input || {}
+  const accountId = safeString(source.accountId)
+  const socialUserId = safeString(source.socialUserId)
+  const key = getAccountIdentityKey(accountId)
+  if (!key || !socialUserId || !socialUserId.trim()) return false
+  try {
+    if (typeof wx === 'undefined' || typeof wx.setStorageSync !== 'function') return false
+    wx.setStorageSync(key, { accountId, socialUserId })
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+function readAccountIdentity(accountId) {
+  const key = getAccountIdentityKey(accountId)
+  if (!key) return null
+  let value
+  try {
+    if (typeof wx === 'undefined' || typeof wx.getStorageSync !== 'function') return null
+    value = wx.getStorageSync(key)
+  } catch (error) {
+    return null
+  }
+  if (!exactKeys(value, ['accountId', 'socialUserId']) || value.accountId !== accountId ||
+    typeof value.socialUserId !== 'string' || !value.socialUserId.trim()) return null
+  return { accountId, socialUserId: value.socialUserId }
+}
+
+function clearAccountCaches(input) {
+  const source = input || {}
+  const accountId = safeString(source.accountId)
+  const explicitSocialUserId = safeString(source.socialUserId)
+  const mappedIdentity = accountId && accountId.trim() && (!explicitSocialUserId || !explicitSocialUserId.trim())
+    ? readAccountIdentity(accountId)
+    : null
+  const socialUserId = explicitSocialUserId && explicitSocialUserId.trim()
+    ? explicitSocialUserId
+    : mappedIdentity && mappedIdentity.socialUserId || ''
+  const keys = []
+  if (accountId && accountId.trim()) {
+    keys.push(SOCIAL_CACHE_KEY_BUILDERS.notifications(accountId))
+    keys.push(SOCIAL_CACHE_KEY_BUILDERS.friends(accountId))
+    keys.push(SOCIAL_CACHE_KEY_BUILDERS.rankingWeek(accountId))
+    keys.push(SOCIAL_CACHE_KEY_BUILDERS.rankingMonth(accountId))
+    keys.push(SOCIAL_CACHE_KEY_BUILDERS.rankingAll(accountId))
+    keys.push(SOCIAL_CACHE_KEY_BUILDERS.identity(accountId))
+  }
+  if (socialUserId && socialUserId.trim()) keys.push(SOCIAL_CACHE_KEY_BUILDERS.feed(socialUserId))
+  return Array.from(new Set(keys.filter(Boolean))).reduce((count, key) => count + (removeStorageKey(key) ? 1 : 0), 0)
 }
 
 function safeAvatarUrl(value) {
@@ -120,6 +291,7 @@ function getFeedCacheKey(socialUserId) {
 function writeFeedFirstPage(socialUserId, response, now) {
   const key = getFeedCacheKey(socialUserId)
   const savedAt = now === undefined ? Date.now() : now
+  if (containsPrivateCacheData(response)) return false
   const items = copyItems(response && response.items, false)
   const nextCursor = response && response.nextCursor === null ? '' : safeString(response && response.nextCursor)
   if (!key || !Number.isSafeInteger(savedAt) || savedAt <= 0 || !items || nextCursor === null) return false
@@ -144,6 +316,7 @@ function readFeedFirstPage(socialUserId, now) {
   } catch (error) {
     return null
   }
+  if (containsPrivateCacheData(cached)) return null
   if (!exactKeys(cached, ['socialUserId', 'items', 'nextCursor', 'savedAt'])) return null
   if (cached.socialUserId !== socialUserId || typeof cached.nextCursor !== 'string') return null
   if (!Number.isSafeInteger(cached.savedAt) || cached.savedAt <= 0 || cached.savedAt > currentTime || currentTime - cached.savedAt > FEED_CACHE_TTL_MS) return null
@@ -187,6 +360,14 @@ function clearAllFeedCaches() {
 
 module.exports = {
   FEED_CACHE_TTL_MS,
+  SOCIAL_CACHE_SCHEMA_VERSION,
+  SOCIAL_CACHE_KEY_BUILDERS,
+  getScopedCacheKey,
+  getAccountIdentityKey,
+  registerAccountIdentity,
+  readScopedFirstPage,
+  writeScopedFirstPage,
+  clearAccountCaches,
   copyFeedResponse,
   getFeedCacheKey,
   readFeedFirstPage,

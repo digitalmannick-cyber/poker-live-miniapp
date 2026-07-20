@@ -6,7 +6,7 @@ const { deriveInviteToken, buildInviteRecord } = require('../cloudfunctions/poke
 const { createMemorySocialRepository } = require('./helpers/social-fixture')
 
 const FORBIDDEN_RESPONSE_FIELDS = [
-  'ownerOpenId', '_openid', 'profit', 'currentProfit', 'buyIn', 'cashOut',
+  'ownerOpenId', '_openid', 'ownerHash', 'profit', 'currentProfit', 'buyIn', 'cashOut',
   'hourlyRate', 'winRate', 'venue', 'sessionId', 'sourceHandId', 'playerNoteId',
   'leakTags', 'note', 'battleHandIds', 'privatePlayerId', 'avatarFileId'
 ]
@@ -36,6 +36,7 @@ test('social response boundary excludes private identity fields and CloudBase fi
           privatePlayerId: 'PLAYER-1',
           avatarFileId: 'cloud://avatar-private',
           nested: {
+            ownerHash: 'private-owner-hash',
             qrCodeFile: 'cloud://social-invites/secret.png',
             visible: true
           },
@@ -55,6 +56,7 @@ test('social response boundary excludes private identity fields and CloudBase fi
   assert.equal(result.code, 0)
   assert.equal(JSON.stringify(result).includes('ownerOpenId'), false)
   assert.equal(JSON.stringify(result).includes('_openid'), false)
+  assert.equal(JSON.stringify(result).includes('ownerHash'), false)
   assert.equal(JSON.stringify(result).includes('privatePlayerId'), false)
   assert.equal(JSON.stringify(result).includes('avatarFileId'), false)
   assert.equal(JSON.stringify(result).includes('cloud://'), false)

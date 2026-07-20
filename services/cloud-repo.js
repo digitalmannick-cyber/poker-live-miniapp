@@ -1,6 +1,7 @@
 const cloudUtils = require('../utils/cloud')
 const sessionRules = require('../utils/session-rules')
 const store = require('../utils/store')
+const cloudDataApi = require('./cloud-data-api')
 
 const COLLECTIONS = {
   sessions: 'sessions',
@@ -555,24 +556,12 @@ async function replaceBusinessData(backup) {
   throw new Error('server-authoritative poker_data write required')
 }
 
-async function clearAllData(playerId) {
+async function clearAllData(playerId, clientMutationId) {
   const targetPlayerId = normalizePlayerId(playerId) || requireCurrentPlayerId()
-  await clearCollection(COLLECTIONS.handActions, targetPlayerId)
-  await clearCollection(COLLECTIONS.hands, targetPlayerId)
-  await clearCollection(COLLECTIONS.bankrollLogs, targetPlayerId)
-  await clearCollection(COLLECTIONS.sessions, targetPlayerId)
-
-  if (targetPlayerId) {
-    const db = getDbOrThrow()
-    try {
-      await db.collection(COLLECTIONS.profiles).doc(getProfileDocId(targetPlayerId)).remove()
-    } catch (error) {}
-    try {
-      await db.collection(COLLECTIONS.userSettings).doc(getSettingsDocId(targetPlayerId)).remove()
-    } catch (error) {}
-  }
-
-  return true
+  return cloudDataApi.clearAllData({
+    playerId: targetPlayerId,
+    clientMutationId: String(clientMutationId || '').trim()
+  })
 }
 
 async function getSessions() {

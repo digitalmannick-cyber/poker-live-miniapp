@@ -183,6 +183,14 @@ function listPlayerNotes(options) {
   })
 }
 
+function clearAllData(options) {
+  const config = options || {}
+  return callDataFunction('clear_all_data', {
+    playerId: normalizePlayerId(config.playerId),
+    clientMutationId: String(config.clientMutationId || '').trim()
+  })
+}
+
 function buildPlayerNotePayload(input) {
   const source = input || {}
   const payload = {}
@@ -287,6 +295,7 @@ module.exports = {
   upsertHand,
   deleteHand,
   deleteSession,
+  clearAllData,
   listPlayerNotes,
   createPlayerNote,
   updatePlayerNote,

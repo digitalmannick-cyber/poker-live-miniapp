@@ -4,6 +4,7 @@ const { runIdempotent, restoreIdempotent, requireClientMutationId } = require('.
 const { requireReadableLiveShare, getLikeId } = require('./hand-feed')
 const { createNotificationWriter } = require('./notification')
 const { POKER_STICKER_IDS } = require('./poker-stickers')
+const { requireActiveSocialUser } = require('./social-lifecycle')
 const {
   normalizeId,
   normalizeCommentInput,
@@ -121,6 +122,7 @@ async function resolveUser(repository, actor) {
   if (!repository || typeof repository.findSocialUserByOpenId !== 'function') throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
   const ownerOpenId = actor && typeof actor.ownerOpenId === 'string' ? actor.ownerOpenId.trim() : ''
   const user = ownerOpenId && await repository.findSocialUserByOpenId(ownerOpenId)
+  requireActiveSocialUser(user)
   if (!user || !normalizeId(user._id, 128)) throw socialError('SOCIAL_PROFILE_REQUIRED', 'social profile required')
   return user
 }

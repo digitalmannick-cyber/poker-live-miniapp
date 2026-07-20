@@ -6,6 +6,8 @@ const { createNotificationWriter, createNotificationHandlers } = require('./lib/
 const { createHandShareHandlers, compensateRecipientOutboxes } = require('./lib/hand-share')
 const { createHandFeedHandlers } = require('./lib/hand-feed')
 const { createInteractionHandlers } = require('./lib/interaction')
+const { createAccountClearHandlers } = require('./lib/account-clear')
+const { requireActiveSocialUser } = require('./lib/social-lifecycle')
 
 function withoutPrivateIdentifiers(value) {
   if (typeof value === 'string' && value.includes('cloud://')) return null
@@ -13,7 +15,7 @@ function withoutPrivateIdentifiers(value) {
   if (!value || typeof value !== 'object') return value
 
   return Object.keys(value).reduce((result, key) => {
-    if (key !== 'ownerOpenId' && key !== '_openid' && key !== 'privatePlayerId' && key !== 'avatarFileId') {
+    if (key !== 'ownerOpenId' && key !== '_openid' && key !== 'ownerHash' && key !== 'privatePlayerId' && key !== 'avatarFileId') {
       result[key] = withoutPrivateIdentifiers(value[key])
     }
     return result
@@ -102,11 +104,27 @@ function createSocialApp(deps) {
       compensateRecipientOutboxes: compensateSelectedHands
     }))
     : {}
+  const accountClearHandlers = config.repository
+    ? createAccountClearHandlers(config.repository, config.accountClear)
+    : {}
   const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers,
-    handShareHandlers, handFeedHandlers, interactionHandlers, notificationHandlers, config.handlers || {})
+    handShareHandlers, handFeedHandlers, interactionHandlers, notificationHandlers, accountClearHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()
+
+  async function enforceLifecycle(action, actor) {
+    if (action === 'clear_my_social_data' || !config.repository) return
+    const ownerOpenId = actor && typeof actor.ownerOpenId === 'string' ? actor.ownerOpenId.trim() : ''
+    if (!ownerOpenId) return
+    let user = null
+    if (typeof config.repository.find === 'function') {
+      user = await config.repository.find('social_users', { ownerOpenId })
+    } else if (typeof config.repository.findAccountClearUserByOpenId === 'function') {
+      user = await config.repository.findAccountClearUserByOpenId(ownerOpenId)
+    }
+    if (user) requireActiveSocialUser(user)
+  }
 
   return {
     async handle(event, context) {
@@ -114,6 +132,7 @@ function createSocialApp(deps) {
       const action = String(event && event.action || '').trim()
       try {
         const actor = await identity.resolve(context && context.openId)
+        await enforceLifecycle(action, actor)
         const hasHandler = Object.prototype.hasOwnProperty.call(handlers, action)
         const handler = hasHandler ? handlers[action] : null
         if (typeof handler !== 'function') {
