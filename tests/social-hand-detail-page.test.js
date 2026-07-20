@@ -464,7 +464,9 @@ function loadDetailPage(options = {}) {
           const value = responses.shift()
           if (value instanceof Error) throw value
           return await value
-        }
+        },
+        async getMySocialProfile() { return { socialUserId: 'su-viewer' } },
+        async listComments() { return { items: [], nextCursor: null } }
       }
       if (request === '../../services/data-service' || request === '../../services/cloud-repo' || request.includes('social-cache')) {
         calls.localData += 1

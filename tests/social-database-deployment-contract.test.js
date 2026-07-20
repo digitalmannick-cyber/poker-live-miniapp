@@ -102,6 +102,14 @@ test('deployment index manifest preserves exact compound field order and array s
       ]
     },
     {
+      collection: 'social_comments',
+      fields: [
+        { field: 'shareId', order: 'ASC' },
+        { field: 'createdAt', order: 'DESC' },
+        { field: '_id', order: 'DESC' }
+      ]
+    },
+    {
       collection: 'hand_actions',
       fields: [
         { field: 'ownerOpenId', order: 'ASC' },
@@ -138,4 +146,8 @@ test('deployment index manifest preserves exact compound field order and array s
     'social_notification_actors',
     'social_likes'
   ])
+
+  const markdown = fs.readFileSync(path.join(socialRoot, 'database-indexes.md'), 'utf8')
+  const declaration = '`social_comments`: `shareId ASC, createdAt DESC, _id DESC`'
+  assert.equal(markdown.split(declaration).length - 1, 1, 'Markdown must declare the same real comment-list index exactly once')
 })

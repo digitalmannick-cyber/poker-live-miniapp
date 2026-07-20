@@ -41,13 +41,14 @@ function getMySocialProfile() {
 }
 
 function requireMutation(input) {
-  const value = String(input && input.clientMutationId || '').trim()
-  if (!value) {
+  const raw = input && input.clientMutationId
+  const value = typeof raw === 'string' ? raw.trim() : ''
+  if (!value || value.length > 128) {
     const error = new Error('client mutation id required')
     error.code = 'INVALID_MUTATION'
     throw error
   }
-  return input
+  return Object.assign({}, input, { clientMutationId: value })
 }
 
 function write(action, input) {
@@ -147,6 +148,49 @@ function getHandShare(shareId) {
   return callSocialFunction('get_hand_share', { shareId: value })
 }
 
+function listComments(input) {
+  const source = input || {}
+  const cursor = source.cursor === undefined ? '' : source.cursor
+  const limit = source.limit === undefined ? 20 : source.limit
+  if (typeof cursor !== 'string' || cursor.length > 2048 || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return Promise.reject(invalidPagination())
+  }
+  return callSocialFunction('list_comments', {
+    shareId: String(source.shareId || '').trim(),
+    cursor,
+    limit
+  })
+}
+
+function createComment(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('create_comment', {
+    shareId: String(source.shareId || '').trim(),
+    parentCommentId: String(source.parentCommentId || '').trim(),
+    kind: String(source.kind || '').trim(),
+    text: source.text === undefined ? '' : source.text,
+    stickerId: source.stickerId === undefined ? '' : source.stickerId,
+    clientMutationId: source.clientMutationId
+  })
+}
+
+function deleteComment(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('delete_comment', {
+    commentId: String(source.commentId || '').trim(),
+    clientMutationId: source.clientMutationId
+  })
+}
+
+function setLike(input) {
+  const source = requireMutation(input)
+  return callSocialFunction('set_like', {
+    shareId: String(source.shareId || '').trim(),
+    liked: source.liked,
+    clientMutationId: source.clientMutationId
+  })
+}
+
 function previewHandShare(input) {
   return callSocialFunction('preview_hand_share', { handId: String(input && input.handId || '').trim() })
 }
@@ -214,6 +258,10 @@ module.exports = {
   markAllNotificationsRead,
   listFeed,
   getHandShare,
+  listComments,
+  createComment,
+  deleteComment,
+  setLike,
   previewHandShare,
   publishHand,
   updateHandShareScope,

@@ -25,7 +25,7 @@ async function runIdempotent(repository, actorId, action, event, callback, optio
     if (existing) {
       if (existing.actorId !== actorId || existing.action !== action) throw socialError('MUTATION_CONFLICT', 'mutation conflict')
       if (hasFingerprint && String(existing.inputFingerprint || '') !== fingerprint) throw socialError('MUTATION_CONFLICT', 'mutation conflict')
-      return typeof config.restoreResult === 'function' ? config.restoreResult(existing.result, clientMutationId) : existing.result
+      return typeof config.restoreResult === 'function' ? config.restoreResult(existing.result, clientMutationId, store) : existing.result
     }
     const result = await callback(store)
     const persistedResult = typeof config.persistResult === 'function'

@@ -56,6 +56,14 @@
       ]
     },
     {
+      "collection": "social_comments",
+      "fields": [
+        { "field": "shareId", "order": "ASC" },
+        { "field": "createdAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    },
+    {
       "collection": "hand_actions",
       "fields": [
         { "field": "ownerOpenId", "order": "ASC" },

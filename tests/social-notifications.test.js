@@ -542,6 +542,21 @@ test('CloudBase notification repository uses recipient-scoped keyset queries and
   assert.match(indexes, /social_notification_actors/)
 })
 
+test('notification writer exposes canonical comment and reply transaction helpers', async () => {
+  const repository = createMemorySocialRepository({ social_users: users() })
+  const writer = createNotificationWriter({ now: () => 1_000 })
+  assert.equal(typeof writer.writeComment, 'function')
+  assert.equal(typeof writer.writeReply, 'function')
+  const comment = await repository.runTransaction(store => writer.writeComment(store, {
+    recipientId: 'su_b', shareId: 'sh_comment', commentId: 'sc_top', actor: actorSnapshot('su_a', 'Alice'), at: 1_000
+  }))
+  const reply = await repository.runTransaction(store => writer.writeReply(store, {
+    recipientId: 'su_c', shareId: 'sh_comment', commentId: 'sc_reply', actor: actorSnapshot('su_a', 'Alice'), at: 2_000
+  }))
+  assert.deepEqual([comment.kind, comment.targetType, comment.targetId, comment.sourceEventId], ['comment', 'hand_share', 'sh_comment', 'comment:sc_top'])
+  assert.deepEqual([reply.kind, reply.targetType, reply.targetId, reply.sourceEventId], ['reply', 'hand_share', 'sh_comment', 'reply:sc_reply'])
+})
+
 test('notification reads run bounded selected-hand outbox compensation before observing state', async () => {
   const repository = createMemorySocialRepository({ social_users: users() })
   const calls = []

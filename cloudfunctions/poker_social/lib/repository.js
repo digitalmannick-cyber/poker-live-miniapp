@@ -58,6 +58,22 @@ function createCloudSocialRepository(database) {
       ])
     }
 
+    function commentKeysetFilter(shareId, cursor) {
+      const base = { shareId: String(shareId || '') }
+      if (!cursor) return base
+      const command = requireCommand(['and', 'or', 'lt', 'eq'])
+      return command.and([
+        base,
+        command.or([
+          { createdAt: command.lt(Number(cursor.createdAt)) },
+          command.and([
+            { createdAt: command.eq(Number(cursor.createdAt)) },
+            { _id: command.lt(String(cursor.id || '')) }
+          ])
+        ])
+      ])
+    }
+
     async function listShareCandidates(base, page) {
       const limit = Math.min(100, Math.max(1, Number(page && page.limit) || 20))
       let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_HAND_SHARES)
@@ -201,6 +217,16 @@ function createCloudSocialRepository(database) {
 
     async getLikeById(likeId) {
       return store.get(SOCIAL_COLLECTIONS.SOCIAL_LIKES, String(likeId || ''))
+    },
+
+    async listComments(shareId, page) {
+      const limit = Math.min(51, Math.max(1, Number(page && page.limit) || 20))
+      let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_COMMENTS)
+        .where(commentKeysetFilter(shareId, page && page.cursor))
+      if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('comment query unavailable')
+      request = request.orderBy('createdAt', 'desc').orderBy('_id', 'desc').limit(limit)
+      const response = await request.get()
+      return Array.isArray(response && response.data) ? response.data : []
     },
 
     async set(collection, id, value) {

@@ -82,9 +82,73 @@
     </view>
 
     <view class="engagement-card">
-      <view class="engagement-item"><text class="engagement-icon">♥</text><text>{{detail.likeCount}}</text></view>
+      <view class="engagement-item like-button {{detail.likedByMe ? 'liked' : ''}} {{likeSubmitting ? 'submitting' : ''}} {{commentsStatus !== 'ready' ? 'interaction-disabled' : ''}}" bindtap="toggleLike">
+        <text class="engagement-icon">♥</text><text>{{detail.likeCount}}</text>
+      </view>
       <view class="engagement-item"><text class="engagement-icon">◌</text><text>{{detail.commentCount}}</text></view>
-      <view class="read-only-label">互动将在后续版本开放</view>
+      <view class="engagement-hint">评论 · 牌局观点</view>
+    </view>
+
+    <view class="comments-card">
+      <view class="comments-head">
+        <view>
+          <view class="section-kicker">TABLE TALK</view>
+          <view class="comments-title">牌桌讨论</view>
+        </view>
+        <view class="comments-count">{{detail.commentCount}}</view>
+      </view>
+
+      <view wx:if="{{commentsStatus === 'loading'}}" class="comments-state">正在加载评论…</view>
+      <view wx:elif="{{commentsStatus === 'error'}}" class="comments-state comments-error">评论暂时无法读取，重新进入页面后可重试</view>
+      <view wx:elif="{{commentsStatus === 'ready'}}" class="comment-list">
+        <view wx:if="{{!comments.length}}" class="comments-state">还没有评论，来说说你的判断</view>
+        <view wx:for="{{comments}}" wx:key="commentId" class="{{item.parentCommentId ? 'comment-row reply-row' : 'comment-row'}}">
+          <view class="comment-avatar">
+            <image wx:if="{{item.author.avatarUrl}}" src="{{item.author.avatarUrl}}" mode="aspectFill"></image>
+            <text wx:else>{{item.author.avatarText}}</text>
+          </view>
+          <view class="comment-main">
+            <view class="comment-meta">
+              <text class="comment-author">{{item.author.nickname}}</text>
+              <text wx:if="{{item.parentCommentId}}" class="reply-mark">回复</text>
+            </view>
+            <view wx:if="{{item.kind === 'sticker' && item.sticker}}" class="poker-sticker-display">
+              <text class="sticker-emoji">{{item.sticker.emoji}}</text>
+              <text class="sticker-label">{{item.sticker.label}}</text>
+            </view>
+            <view wx:else class="comment-text {{item.deleted ? 'deleted-comment' : ''}}">{{item.text}}</view>
+            <view wx:if="{{!item.deleted}}" class="comment-actions">
+              <view wx:if="{{!item.parentCommentId}}" class="comment-action" data-comment-id="{{item.commentId}}" bindtap="replyToComment">↩</view>
+              <view wx:if="{{item.canDelete}}" class="comment-action delete-action" data-comment-id="{{item.commentId}}" bindtap="deleteComment">删除</view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{commentsNextCursor}}" class="load-more {{commentsLoadingMore ? 'loading-more' : ''}}" bindtap="loadMoreComments">
+          {{commentsLoadingMore ? '正在加载…' : '加载更多评论'}}
+        </view>
+      </view>
+
+      <view class="composer-shell {{commentsStatus !== 'ready' ? 'interaction-disabled' : ''}}">
+        <view wx:if="{{replyTo}}" class="reply-target">
+          <text>回复 {{replyTo.nickname}}</text>
+          <text class="reply-cancel" bindtap="cancelReply">×</text>
+        </view>
+        <textarea class="comment-input" value="{{commentDraft}}" maxlength="300" auto-height placeholder="写下你的牌局观点…" bindinput="onCommentInput"></textarea>
+        <view class="composer-actions">
+          <view class="composer-tool" bindtap="toggleEmojiPanel">☺</view>
+          <view class="composer-tool" bindtap="toggleStickerPanel">♠</view>
+          <view class="send-comment {{commentSubmitting ? 'submitting' : ''}}" bindtap="submitComment">发送</view>
+        </view>
+        <view wx:if="{{emojiPanelVisible}}" class="emoji-panel">
+          <view wx:for="{{emojis}}" wx:key="*this" class="emoji-choice" data-emoji="{{item}}" bindtap="appendEmoji">{{item}}</view>
+        </view>
+        <view wx:if="{{stickerPanelVisible}}" class="sticker-panel">
+          <view wx:for="{{stickers}}" wx:key="id" class="sticker-choice" data-sticker-id="{{item.id}}" bindtap="chooseSticker">
+            <text class="sticker-choice-emoji">{{item.emoji}}</text>
+            <text class="sticker-choice-label">{{item.label}}</text>
+          </view>
+        </view>
+      </view>
     </view>
   </view>
 </view>

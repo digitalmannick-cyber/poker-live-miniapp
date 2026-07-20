@@ -528,6 +528,9 @@ test('selected membership uses one scalar viewer and enforces 1/50 while malform
 test('feed and detail share the exact canReadShare reference and a query hit never replaces live policy', async () => {
   const api = requireHandFeed()
   assert.strictEqual(api.canReadShare, canReadShare)
+  const interaction = require('../cloudfunctions/poker_social/lib/interaction')
+  assert.strictEqual(interaction.requireReadableLiveShare, api.requireReadableLiveShare)
+  assert.strictEqual(interaction.getLikeId, api.getLikeId)
   const privateShare = share('sh_live_policy', 'su_friend', 'friends', 100)
   const ctx = setup(baseSeed({
     social_users: [user(VIEWER_ID), user('su_friend')],

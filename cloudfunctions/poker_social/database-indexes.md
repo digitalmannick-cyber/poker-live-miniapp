@@ -19,7 +19,7 @@ All social collections are server-only. Configure CloudBase client permissions t
 - `social_rate_limits`: deterministic `_id` point-read only
 - `social_notification_outbox`: `status ASC, targetUserIds ARRAY, createdAt ASC, _id ASC`
 - `social_likes`: deterministic `_id` point-read only
-- `social_comments`: registered server-only in Task 4; Task 5 adds its list index
+- `social_comments`: `shareId ASC, createdAt DESC, _id DESC`
 - `hands`: deterministic source `handId` point-read followed by exact owner/player tuple comparison
 
 `social_hand_shares`, `social_hand_share_slots`, `social_rate_limits`, and

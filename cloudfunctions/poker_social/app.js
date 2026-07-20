@@ -5,6 +5,7 @@ const { createPlayerCardHandlers } = require('./lib/player-card')
 const { createNotificationWriter, createNotificationHandlers } = require('./lib/notification')
 const { createHandShareHandlers, compensateRecipientOutboxes } = require('./lib/hand-share')
 const { createHandFeedHandlers } = require('./lib/hand-feed')
+const { createInteractionHandlers } = require('./lib/interaction')
 
 function withoutPrivateIdentifiers(value) {
   if (typeof value === 'string' && value.includes('cloud://')) return null
@@ -49,7 +50,9 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   HAND_ALREADY_SHARED: 'hand already shared',
   INVALID_SHARE_SCOPE: 'invalid share scope',
   RATE_LIMITED: 'rate limited',
-  CONTENT_UNAVAILABLE: 'content unavailable'
+  CONTENT_UNAVAILABLE: 'content unavailable',
+  INVALID_COMMENT: 'invalid comment',
+  INVALID_LIKE: 'invalid like'
 })
 
 function publicError(error) {
@@ -84,6 +87,12 @@ function createSocialApp(deps) {
       avatarUrl: config.avatarUrl || config.handFeed && config.handFeed.avatarUrl
     }))
     : {}
+  const interactionHandlers = config.repository
+    ? createInteractionHandlers(config.repository, Object.assign({}, config.interaction || {}, {
+      avatarUrl: config.avatarUrl || config.interaction && config.interaction.avatarUrl,
+      notificationWriter
+    }))
+    : {}
   const compensateSelectedHands = config.repository
     ? (recipientId, limits) => compensateRecipientOutboxes(config.repository, recipientId, Object.assign({}, config.handShare || {}, limits || {}, { notificationWriter }))
     : async () => {}
@@ -94,7 +103,7 @@ function createSocialApp(deps) {
     }))
     : {}
   const handlers = Object.assign({}, profileHandlers, friendshipHandlers, rankingHandlers, playerCardHandlers,
-    handShareHandlers, handFeedHandlers, notificationHandlers, config.handlers || {})
+    handShareHandlers, handFeedHandlers, interactionHandlers, notificationHandlers, config.handlers || {})
   const requestId = typeof config.requestId === 'function'
     ? config.requestId
     : () => 'social_' + Date.now()

@@ -325,7 +325,33 @@ function createNotificationWriter(options) {
     return row
   }
 
-  return { write, setActionState, writeLikeAggregate }
+  async function writeComment(store, input) {
+    const source = input || {}
+    return write(store, {
+      recipientId: source.recipientId,
+      kind: 'comment',
+      actor: source.actor,
+      targetType: 'hand_share',
+      targetId: source.shareId,
+      sourceEventId: 'comment:' + String(source.commentId || '').trim(),
+      at: source.at
+    })
+  }
+
+  async function writeReply(store, input) {
+    const source = input || {}
+    return write(store, {
+      recipientId: source.recipientId,
+      kind: 'reply',
+      actor: source.actor,
+      targetType: 'hand_share',
+      targetId: source.shareId,
+      sourceEventId: 'reply:' + String(source.commentId || '').trim(),
+      at: source.at
+    })
+  }
+
+  return { write, setActionState, writeLikeAggregate, writeComment, writeReply }
 }
 
 async function findActorUser(repository, actor) {
