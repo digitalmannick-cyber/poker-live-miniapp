@@ -323,6 +323,24 @@ function Test-EnvironmentMapEqual {
   return $true
 }
 
+function Get-StableCollectionPermissionMap {
+  param([string]$EnvId, [string[]]$Collections)
+  $previousSignature = $null
+  for ($attempt = 1; $attempt -le 5; $attempt += 1) {
+    $result = Invoke-TcbJsonReadWithRetry @('permission', 'get', 'collection', '-e', $EnvId, '--json')
+    $map = @{}
+    foreach ($item in @($result.data.PermissionList)) { $map[[string]$item.Resource] = [string]$item.Permission }
+    $signature = (@($Collections | Sort-Object | ForEach-Object {
+      $value = if ($map.ContainsKey($_)) { $map[$_] } else { '<missing>' }
+      "$_=$value"
+    }) -join '|')
+    if ($null -ne $previousSignature -and $signature -ceq $previousSignature) { return $map }
+    $previousSignature = $signature
+    if ($attempt -lt 5) { Start-Sleep -Seconds 2 }
+  }
+  throw 'CloudBase collection permissions did not return two consecutive identical snapshots'
+}
+
 function Wait-FunctionActive {
   param([string]$EnvId, [string]$Region, [int]$TimeoutSeconds = 120)
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -525,9 +543,8 @@ foreach ($external in $plan.externalCollections) {
   }
 }
 
-$permissionsResult = Invoke-TcbJsonReadWithRetry @('permission', 'get', 'collection', '-e', $plan.envId, '--json')
-$permissionByCollection = @{}
-foreach ($item in @($permissionsResult.data.PermissionList)) { $permissionByCollection[$item.Resource] = $item.Permission }
+$trackedPermissionCollections = @($plan.managedCollections) + @($plan.externalCollections)
+$permissionByCollection = Get-StableCollectionPermissionMap $plan.envId $trackedPermissionCollections
 
 $missingCollections = @($plan.managedCollections | Where-Object { $existingTables -notcontains $_ })
 $permissionDrift = @($plan.managedCollections | Where-Object {
@@ -701,9 +718,7 @@ try {
     $null = Invoke-TcbApi 'UpdateTable' $body $plan.envId $region
   }
 
-  $postPermissions = Invoke-TcbJsonReadWithRetry @('permission', 'get', 'collection', '-e', $plan.envId, '--json')
-  $postPermissionMap = @{}
-  foreach ($item in @($postPermissions.data.PermissionList)) { $postPermissionMap[$item.Resource] = $item.Permission }
+  $postPermissionMap = Get-StableCollectionPermissionMap $plan.envId $trackedPermissionCollections
   foreach ($collection in $plan.managedCollections) {
     if ($postPermissionMap[$collection] -ne 'ADMINONLY') { throw "Post-deploy ACL verification failed for $collection" }
   }
