@@ -7,6 +7,7 @@ function toUploadSource(source) {
     return Readable.from([Buffer.from(source.buffer, source.byteOffset, source.byteLength)])
   }
   if (source instanceof ArrayBuffer) return Readable.from([Buffer.from(source)])
+  if (source && Object.prototype.hasOwnProperty.call(source, 'buffer')) return toUploadSource(source.buffer)
   throw new TypeError('cloud upload content must be binary or a readable stream')
 }
 

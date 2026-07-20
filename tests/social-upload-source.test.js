@@ -18,6 +18,13 @@ test('QR buffers are converted to the readable stream required by cloud uploadFi
   assert.deepEqual(await collect(source), png)
 })
 
+test('wxacode response objects upload their documented buffer field', async () => {
+  const png = Buffer.from('wxacode-png')
+  const source = toUploadSource({ contentType: 'image/png', buffer: png })
+
+  assert.deepEqual(await collect(source), png)
+})
+
 test('existing readable streams are preserved and invalid upload content fails closed', () => {
   const source = Readable.from([Buffer.from('png')])
   assert.equal(toUploadSource(source), source)
