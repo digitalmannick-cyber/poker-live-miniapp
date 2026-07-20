@@ -3,6 +3,7 @@ const { createSocialApp } = require('./app')
 const identity = require('./lib/identity')
 const { createCloudSocialRepository } = require('./lib/repository')
 const { createAdminPolicy } = require('./lib/admin-policy')
+const { toUploadSource } = require('./lib/upload-source')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
@@ -35,7 +36,7 @@ async function avatarUrl(fileId) {
 
 async function uploadTempFile(payload) {
   if (!payload || typeof cloud.uploadFile !== 'function' || typeof cloud.getTempFileURL !== 'function') return { url: '' }
-  const uploaded = await cloud.uploadFile({ cloudPath: payload.cloudPath, fileContent: payload.fileContent })
+  const uploaded = await cloud.uploadFile({ cloudPath: payload.cloudPath, fileContent: toUploadSource(payload.fileContent) })
   const fileId = uploaded && (uploaded.fileID || uploaded.fileId)
   if (!fileId) return { url: '' }
   return { url: await avatarUrl(fileId) }
