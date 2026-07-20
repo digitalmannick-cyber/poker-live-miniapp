@@ -332,7 +332,13 @@ function Get-StableCollectionPermissionMap {
   param([string]$EnvId, [string[]]$Collections)
   $previousSignature = $null
   for ($attempt = 1; $attempt -le 5; $attempt += 1) {
-    $result = Invoke-TcbJsonReadWithRetry @('permission', 'get', 'collection', '-e', $EnvId, '--json')
+    try {
+      $result = Invoke-TcbJsonReadWithRetry @('permission', 'get', 'collection', '-e', $EnvId, '--json')
+    } catch {
+      if ($attempt -ge 5 -or -not (Test-TransientCloudReadFailure ([string]$_.Exception.Message))) { throw }
+      Start-Sleep -Seconds 2
+      continue
+    }
     $map = @{}
     foreach ($item in @($result.data.PermissionList)) { $map[[string]$item.Resource] = [string]$item.Permission }
     $signature = (@($Collections | Sort-Object | ForEach-Object {

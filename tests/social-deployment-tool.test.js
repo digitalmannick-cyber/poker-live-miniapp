@@ -101,6 +101,7 @@ test('administrator capability is enabled only after disabled staging and databa
   assert.match(source, /Administrator fail-close verified/)
   assert.match(source, /function Get-StableCollectionPermissionMap/)
   assert.match(source, /two consecutive identical snapshots/)
+  assert.match(source, /continue\s*\n\s*}/)
 })
 
 test('PowerShell 5.1 compatibility and tracked-input gate are explicit', () => {
