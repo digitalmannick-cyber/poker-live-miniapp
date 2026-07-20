@@ -3,6 +3,9 @@ param(
   [Parameter(ParameterSetName = 'Apply', Mandatory = $true)]
   [switch]$Apply,
 
+  [Parameter(ParameterSetName = 'Apply')]
+  [switch]$KeepAdminModerationDisabled,
+
   [Parameter(ParameterSetName = 'Disable', Mandatory = $true)]
   [switch]$DisableAdminModeration,
 
@@ -663,16 +666,19 @@ if ($ConfirmEnvironmentId -ne $plan.envId) { throw 'ConfirmEnvironmentId does no
 if ($ExpectedCommit -ne $commit) { throw 'ExpectedCommit does not exactly match HEAD' }
 if ($PlanId -ne $currentPlanId) { throw 'PlanId is stale or does not match this environment state' }
 
-$adminOpenIds = [string]$env:SOCIAL_ADMIN_OPENIDS
-if ([string]::IsNullOrWhiteSpace($adminOpenIds)) {
-  throw 'SOCIAL_ADMIN_OPENIDS must be supplied through the process environment for Apply'
+$adminOpenIds = ''
+if (-not $KeepAdminModerationDisabled) {
+  $adminOpenIds = [string]$env:SOCIAL_ADMIN_OPENIDS
+  if ([string]::IsNullOrWhiteSpace($adminOpenIds)) {
+    throw 'SOCIAL_ADMIN_OPENIDS must be supplied through the process environment for Apply unless KeepAdminModerationDisabled is explicit'
+  }
+  $adminIds = @($adminOpenIds.Split(','))
+  if ($adminIds.Count -eq 0 -or @($adminIds | Select-Object -Unique).Count -ne $adminIds.Count -or
+      @($adminIds | Where-Object { $_ -notmatch '^[A-Za-z0-9_-]{16,128}$' }).Count -gt 0) {
+    throw 'SOCIAL_ADMIN_OPENIDS must be a unique comma-separated list of validated OpenID tokens without whitespace'
+  }
+  $adminOpenIds = $adminIds -join ','
 }
-$adminIds = @($adminOpenIds.Split(','))
-if ($adminIds.Count -eq 0 -or @($adminIds | Select-Object -Unique).Count -ne $adminIds.Count -or
-    @($adminIds | Where-Object { $_ -notmatch '^[A-Za-z0-9_-]{16,128}$' }).Count -gt 0) {
-  throw 'SOCIAL_ADMIN_OPENIDS must be a unique comma-separated list of validated OpenID tokens without whitespace'
-}
-$adminOpenIds = $adminIds -join ','
 $providedInviteSecret = [string]$env:SOCIAL_INVITE_TOKEN_SECRET
 if ($remoteEnvironment.Contains('SOCIAL_INVITE_TOKEN_SECRET')) {
   $inviteSecret = [string]$remoteEnvironment['SOCIAL_INVITE_TOKEN_SECRET']
@@ -846,6 +852,18 @@ try {
     throw 'Staged function runtime configuration verification failed'
   }
   Invoke-StagedFunctionSmoke $plan.envId
+
+  if ($KeepAdminModerationDisabled) {
+    $disabledFunction = Get-RemoteFunction $plan.envId $region
+    $disabledMap = Get-FunctionEnvironmentMap $disabledFunction
+    $disabledCodeSha256 = Get-RemoteFunctionCodeSha256 $plan.envId $region
+    if (-not (Test-EnvironmentMapEqual $disabledMap $stagedEnvironment) -or
+        [string]$disabledCodeSha256 -ne [string]$attestedCodeSha256) {
+      throw 'Disabled-administrator function verification failed'
+    }
+    Write-Output 'Social infrastructure and poker_social converged. Admin moderation remains explicitly disabled.'
+    return
+  }
 
   $preEnableFunction = Get-RemoteFunction $plan.envId $region
   $preEnableMap = Get-FunctionEnvironmentMap $preEnableFunction

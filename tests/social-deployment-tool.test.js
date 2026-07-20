@@ -107,6 +107,18 @@ test('administrator capability is enabled only after disabled staging and databa
   assert.match(source, /else \{\s*\$permissionByCollection\s*}/)
 })
 
+test('deployment can explicitly keep administrator moderation disabled after verified code staging', () => {
+  const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
+  assert.match(source, /\[switch\]\$KeepAdminModerationDisabled/)
+  assert.match(source, /unless KeepAdminModerationDisabled is explicit/)
+  const smoke = source.indexOf('Invoke-StagedFunctionSmoke $plan.envId')
+  const disabledBranch = source.indexOf('if ($KeepAdminModerationDisabled)', smoke)
+  const enable = source.indexOf('$enabledCheck = Deploy-AndWaitFunctionEnvironment', disabledBranch)
+  assert(smoke > 0 && disabledBranch > smoke && enable > disabledBranch)
+  assert.match(source, /Admin moderation remains explicitly disabled/)
+  assert.match(source, /Disabled-administrator function verification failed/)
+})
+
 test('PowerShell 5.1 compatibility and tracked-input gate are explicit', () => {
   const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
   assert.doesNotMatch(source, /Convert\]::ToHexString/)
