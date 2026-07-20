@@ -1,5 +1,6 @@
 const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
+const { AsyncLocalStorage } = require('async_hooks')
 const agentExport = require('./agent-export')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
@@ -10,6 +11,7 @@ const AGENT_EXPORT_TOKEN = String(process.env.AGENT_EXPORT_TOKEN || '').trim()
 const AGENT_EXPORT_OWNER_OPENID = String(process.env.AGENT_EXPORT_OWNER_OPENID || '').trim()
 const PAGE_SIZE = 100
 const ensuredCollections = {}
+const businessFenceStorage = new AsyncLocalStorage()
 const COLLECTIONS = {
   sessions: 'sessions',
   hands: 'hands',
@@ -19,6 +21,7 @@ const COLLECTIONS = {
   bankrollLogs: 'bankroll_logs',
   profiles: 'profiles',
   userSettings: 'user_settings',
+  accountLifecycle: 'poker_data_account_lifecycle',
   syncOperations: 'sync_operations',
   auditLogs: 'audit_logs'
 }
@@ -40,6 +43,36 @@ function createOpenIdPlayerId(ownerOpenId) {
 function now() {
   return Date.now()
 }
+
+const BUSINESS_WRITE_ACTIONS = Object.freeze([
+  'login_account',
+  'sync_stats',
+  'save_settings',
+  'backfill_session_durations',
+  'begin_player_card_import_receipt',
+  'complete_player_card_import_receipt',
+  'create_player_note',
+  'update_player_note',
+  'delete_player_note',
+  'create_session',
+  'update_session',
+  'finish_session',
+  'create_hand',
+  'update_hand',
+  'upsert_hand',
+  'delete_hand',
+  'delete_session'
+])
+const BUSINESS_COLLECTIONS = new Set([
+  COLLECTIONS.sessions,
+  COLLECTIONS.hands,
+  COLLECTIONS.handActions,
+  COLLECTIONS.playerNotes,
+  COLLECTIONS.playerCardImportReceipts,
+  COLLECTIONS.bankrollLogs,
+  COLLECTIONS.profiles,
+  COLLECTIONS.userSettings
+])
 
 const HAND_REVISION_INTERNAL_FIELDS = new Set([
   'actionRevision', 'actionRevisionPending', 'actionCommittedAt', 'handVersion',
@@ -249,6 +282,25 @@ async function ensureCollection(collectionName) {
 }
 
 async function setDocById(collectionName, docId, data) {
+  const fence = currentBusinessFence()
+  if (BUSINESS_COLLECTIONS.has(collectionName) && !fence) {
+    throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'business write requires account lifecycle fence')
+  }
+  if (BUSINESS_COLLECTIONS.has(collectionName)) {
+    if (normalizePlayerId(data && data.playerId) !== fence.playerId ||
+      String(data && (data.ownerOpenId || data._openid) || '') !== fence.ownerOpenId) {
+      throw accountLifecycleError('ACCOUNT_DATA_SCOPE_MISMATCH', 'business write account scope mismatch')
+    }
+    return runFencedBusinessTransaction(fence, transaction => transaction.collection(collectionName).doc(docId).set({
+      data: omitId(data)
+    }))
+  }
+  if (fence && [COLLECTIONS.syncOperations, COLLECTIONS.auditLogs].includes(collectionName) &&
+    ['result', 'recoveryEvidence', 'before', 'after', 'payload', 'businessPayload'].some(key => Object.prototype.hasOwnProperty.call(data || {}, key))) {
+    return runFencedBusinessTransaction(fence, transaction => transaction.collection(collectionName).doc(docId).set({
+      data: omitId(data)
+    }))
+  }
   try {
     await db.collection(collectionName).doc(docId).set({
       data: omitId(data)
@@ -264,6 +316,13 @@ async function setDocById(collectionName, docId, data) {
 }
 
 async function addDoc(collectionName, data) {
+  const fence = currentBusinessFence()
+  if (fence && collectionName === COLLECTIONS.auditLogs) {
+    return runFencedBusinessTransaction(fence, async transaction => {
+      const result = await transaction.collection(collectionName).add({ data: stripUndefined(data) })
+      return Object.assign({ _id: result._id }, data)
+    })
+  }
   let result
   try {
     result = await db.collection(collectionName).add({
@@ -291,6 +350,22 @@ async function getDocById(collectionName, docId) {
 }
 
 async function removeDocById(collectionName, docId) {
+  const fence = currentBusinessFence()
+  if (BUSINESS_COLLECTIONS.has(collectionName) && !fence) {
+    throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'business remove requires account lifecycle fence')
+  }
+  if (BUSINESS_COLLECTIONS.has(collectionName)) {
+    return runFencedBusinessTransaction(fence, async transaction => {
+      const current = await getDocByPointRead(transaction, collectionName, docId)
+      if (!current) return true
+      if (normalizePlayerId(current.playerId) !== fence.playerId ||
+        String(current.ownerOpenId || current._openid || '') !== fence.ownerOpenId) {
+        throw accountLifecycleError('ACCOUNT_DATA_SCOPE_MISMATCH', 'business remove account scope mismatch')
+      }
+      await transaction.collection(collectionName).doc(docId).remove()
+      return true
+    })
+  }
   try {
     await db.collection(collectionName).doc(docId).remove()
     return true
@@ -332,7 +407,7 @@ async function removeMissingOwnedDocs(collectionName, list, playerId, ownerOpenI
   for (let index = 0; index < existing.length; index += 1) {
     const item = existing[index]
     if (!item || !item._id || keepIds.has(item._id)) continue
-    await db.collection(collectionName).doc(item._id).remove()
+    await removeDocById(collectionName, item._id)
   }
 }
 
@@ -466,7 +541,7 @@ function stripMutationServerFields(value) {
 
 async function removeHandActionIdempotently(docId) {
   try {
-    await db.collection(COLLECTIONS.handActions).doc(docId).remove()
+    await removeDocById(COLLECTIONS.handActions, docId)
     return true
   } catch (error) {
     const code = String(error && (error.errCode || error.code) || '')
@@ -484,6 +559,170 @@ async function getDocByPointRead(store, collectionName, docId) {
     if (isMissingDocumentError(error)) return null
     throw error
   }
+}
+
+function getAccountLifecycleDocumentId(ownerOpenId, playerId) {
+  return 'pdl_' + crypto.createHash('sha256')
+    .update(JSON.stringify([String(ownerOpenId || ''), normalizePlayerId(playerId)]))
+    .digest('hex')
+}
+
+function accountLifecycleError(code, message) {
+  const error = new Error(message)
+  error.code = code
+  return error
+}
+
+function normalizeAccountLifecycle(doc, ownerOpenId, playerId) {
+  if (!doc) return null
+  const generation = Number(doc.generation)
+  if (String(doc.ownerOpenId || '') !== ownerOpenId || normalizePlayerId(doc.playerId) !== playerId ||
+    !Number.isSafeInteger(generation) || generation < 0 || !['active', 'clearing'].includes(doc.state)) {
+    throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'account lifecycle invalid')
+  }
+  return Object.assign({}, doc, { generation })
+}
+
+async function captureAccountLifecycle(ownerOpenId, rawPlayerId) {
+  const playerId = normalizePlayerId(rawPlayerId)
+  const owner = String(ownerOpenId || '')
+  if (!owner || !playerId) throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'account lifecycle identity invalid')
+  const docId = getAccountLifecycleDocumentId(owner, playerId)
+  return db.runTransaction(async transaction => {
+    let current = normalizeAccountLifecycle(
+      await getDocByPointRead(transaction, COLLECTIONS.accountLifecycle, docId), owner, playerId
+    )
+    if (!current) {
+      current = { ownerOpenId: owner, playerId, state: 'active', generation: 0, updatedAt: now() }
+      await transaction.collection(COLLECTIONS.accountLifecycle).doc(docId).set({ data: current })
+    }
+    if (current.state !== 'active') throw accountLifecycleError('ACCOUNT_DATA_NOT_ACTIVE', 'account data is clearing')
+    return Object.freeze({ docId, ownerOpenId: owner, playerId, generation: current.generation })
+  })
+}
+
+async function runFencedBusinessTransaction(fence, callback) {
+  if (!fence || typeof callback !== 'function') throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'account lifecycle fence invalid')
+  return db.runTransaction(async transaction => {
+    const requestFences = currentBusinessFences()
+    await assertBusinessFenceInTransaction(transaction, requestFences.length ? requestFences : fence)
+    return callback(transaction)
+  })
+}
+
+async function assertBusinessFenceInTransaction(transaction, explicitFence) {
+  const fences = explicitFence
+    ? (Array.isArray(explicitFence) ? explicitFence : [explicitFence])
+    : currentBusinessFences()
+  if (!fences.length) throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'business transaction requires account lifecycle fence')
+  for (const fence of fences) {
+    const current = normalizeAccountLifecycle(
+      await getDocByPointRead(transaction, COLLECTIONS.accountLifecycle, fence.docId),
+      String(fence.ownerOpenId || ''), normalizePlayerId(fence.playerId)
+    )
+    if (!current || current.state !== 'active') throw accountLifecycleError('ACCOUNT_DATA_NOT_ACTIVE', 'account data is clearing')
+    if (current.generation !== fence.generation) {
+      throw accountLifecycleError('ACCOUNT_DATA_GENERATION_CHANGED', 'account data generation changed')
+    }
+  }
+  return fences[0]
+}
+
+function currentBusinessFence() {
+  const context = businessFenceStorage.getStore()
+  return context && context.primary || context || null
+}
+
+function currentBusinessFences() {
+  const context = businessFenceStorage.getStore()
+  if (!context) return []
+  if (Array.isArray(context.fences)) return context.fences.slice()
+  return [context]
+}
+
+function runWithBusinessFence(fence, callback) {
+  if (!fence || typeof callback !== 'function') throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'account lifecycle context invalid')
+  return businessFenceStorage.run({ primary: fence, fences: [fence] }, callback)
+}
+
+async function addBusinessFence(ownerOpenId, rawPlayerId) {
+  const context = businessFenceStorage.getStore()
+  if (!context || !context.primary || !Array.isArray(context.fences)) {
+    throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'additional account lifecycle fence requires request context')
+  }
+  const playerId = normalizePlayerId(rawPlayerId)
+  const existing = context.fences.find(item => item.ownerOpenId === ownerOpenId && item.playerId === playerId)
+  if (existing) return existing
+  const fence = await captureAccountLifecycle(ownerOpenId, playerId)
+  context.fences.push(fence)
+  return fence
+}
+
+async function assertCurrentBusinessFences() {
+  return db.runTransaction(transaction => assertBusinessFenceInTransaction(transaction))
+}
+
+function businessWritePlayerId(action, event, ownerOpenId) {
+  if (action === 'login_account') return createOpenIdPlayerId(ownerOpenId)
+  const playerId = normalizePlayerId(event && (event.playerId || event.profile && event.profile.playerId ||
+    event.backup && event.backup.profile && event.backup.profile.playerId))
+  if (action === 'sync_stats' && !playerId) return createOpenIdPlayerId(ownerOpenId)
+  return playerId
+}
+
+async function beginAccountClear(ownerOpenId, rawPlayerId, clientMutationId) {
+  const owner = String(ownerOpenId || '')
+  const playerId = normalizePlayerId(rawPlayerId)
+  const mutationId = String(clientMutationId || '')
+  if (!owner || !playerId || !mutationId) throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'account clear identity invalid')
+  const docId = getAccountLifecycleDocumentId(owner, playerId)
+  return db.runTransaction(async transaction => {
+    const current = normalizeAccountLifecycle(
+      await getDocByPointRead(transaction, COLLECTIONS.accountLifecycle, docId), owner, playerId
+    )
+    if (current && current.state === 'clearing') {
+      if (current.clearMutationId !== mutationId) throw accountLifecycleError('ACCOUNT_CLEAR_IN_PROGRESS', 'account clear in progress')
+      return Object.freeze({ docId, ownerOpenId: owner, playerId, generation: current.generation, clearMutationId: mutationId, completed: false })
+    }
+    if (current && current.lastClearMutationId === mutationId && current.lastClearCompleted === true) {
+      return Object.freeze({ docId, ownerOpenId: owner, playerId, generation: current.generation, clearMutationId: mutationId, completed: true })
+    }
+    const generation = (current ? current.generation : 0) + 1
+    const clearing = {
+      ownerOpenId: owner, playerId, state: 'clearing', generation,
+      clearMutationId: mutationId, clearStartedAt: now(), updatedAt: now()
+    }
+    await transaction.collection(COLLECTIONS.accountLifecycle).doc(docId).set({ data: clearing })
+    return Object.freeze({ docId, ownerOpenId: owner, playerId, generation, clearMutationId: mutationId, completed: false })
+  })
+}
+
+async function completeAccountClear(clearFence) {
+  if (!clearFence) throw accountLifecycleError('ACCOUNT_LIFECYCLE_INVALID', 'account clear fence invalid')
+  return db.runTransaction(async transaction => {
+    const current = normalizeAccountLifecycle(
+      await getDocByPointRead(transaction, COLLECTIONS.accountLifecycle, clearFence.docId),
+      String(clearFence.ownerOpenId || ''), normalizePlayerId(clearFence.playerId)
+    )
+    if (current && current.state === 'active' && current.generation === clearFence.generation &&
+      current.lastClearMutationId === clearFence.clearMutationId && current.lastClearCompleted === true) return current
+    if (!current || current.state !== 'clearing' || current.generation !== clearFence.generation ||
+      current.clearMutationId !== clearFence.clearMutationId) {
+      throw accountLifecycleError('ACCOUNT_CLEAR_CHANGED', 'account clear changed')
+    }
+    const active = {
+      ownerOpenId: clearFence.ownerOpenId,
+      playerId: clearFence.playerId,
+      state: 'active',
+      generation: clearFence.generation,
+      lastClearMutationId: clearFence.clearMutationId,
+      lastClearCompleted: true,
+      clearCompletedAt: now(),
+      updatedAt: now()
+    }
+    await transaction.collection(COLLECTIONS.accountLifecycle).doc(clearFence.docId).set({ data: active })
+    return active
+  })
 }
 
 function newerDoc(left, right) {
@@ -652,21 +891,22 @@ async function claimSyncOperation(ownerOpenId, playerId, clientMutationId, actio
   const at = now()
   let outcome = null
   await db.runTransaction(async transaction => {
+    if (action !== 'clear_all_data') await assertBusinessFenceInTransaction(transaction)
     const existing = await getDocByPointRead(transaction, COLLECTIONS.syncOperations, docId)
     if (existing && !syncOperationMatches(existing, ownerOpenId, playerId, clientMutationId, action, inputFingerprint)) {
-      outcome = { kind: 'conflict' }
+      outcome = { kind: 'conflict', clearMode: action === 'clear_all_data' }
       return
     }
     if (existing && existing.result && existing.status === 'applied') {
-      outcome = { kind: 'repair', docId, attemptId: existing.attemptId, result: existing.result }
+      outcome = { kind: 'repair', docId, attemptId: existing.attemptId, result: existing.result, clearMode: action === 'clear_all_data' }
       return
     }
     if (existing && existing.result && existing.status !== 'pending') {
-      outcome = { kind: 'restore', result: existing.result }
+      outcome = { kind: 'restore', result: existing.result, clearMode: action === 'clear_all_data' }
       return
     }
     if (existing && existing.status === 'pending' && Number(existing.leaseExpiresAt) > at) {
-      outcome = { kind: 'in_progress' }
+      outcome = { kind: 'in_progress', clearMode: action === 'clear_all_data' }
       return
     }
     if (existing && existing.status === 'pending' && existing.recoveryEvidence) {
@@ -680,7 +920,8 @@ async function claimSyncOperation(ownerOpenId, playerId, clientMutationId, actio
         docId,
         attemptId: existing.attemptId,
         recovering: true,
-        recoveryEvidence: existing.recoveryEvidence
+        recoveryEvidence: existing.recoveryEvidence,
+        clearMode: action === 'clear_all_data'
       }
       return
     }
@@ -703,7 +944,8 @@ async function claimSyncOperation(ownerOpenId, playerId, clientMutationId, actio
       docId,
       attemptId,
       recovering: !!(existing && existing.status === 'pending'),
-      recoveryEvidence: pending.recoveryEvidence || null
+      recoveryEvidence: pending.recoveryEvidence || null,
+      clearMode: action === 'clear_all_data'
     }
   })
   return outcome
@@ -711,6 +953,7 @@ async function claimSyncOperation(ownerOpenId, playerId, clientMutationId, actio
 
 async function releaseSyncOperationClaim(claim) {
   await db.runTransaction(async transaction => {
+    if (!claim.clearMode) await assertBusinessFenceInTransaction(transaction)
     const current = await getDocByPointRead(transaction, COLLECTIONS.syncOperations, claim.docId)
     if (current && current.status === 'pending' && current.attemptId === claim.attemptId) {
       await transaction.collection(COLLECTIONS.syncOperations).doc(claim.docId).remove()
@@ -721,6 +964,7 @@ async function releaseSyncOperationClaim(claim) {
 async function renewSyncOperationClaim(claim) {
   let renewed = false
   await db.runTransaction(async transaction => {
+    if (!claim.clearMode) await assertBusinessFenceInTransaction(transaction)
     const current = await getDocByPointRead(transaction, COLLECTIONS.syncOperations, claim.docId)
     if (current && current.status === 'pending' && current.attemptId === claim.attemptId) {
       await transaction.collection(COLLECTIONS.syncOperations).doc(claim.docId).set({
@@ -735,9 +979,14 @@ async function renewSyncOperationClaim(claim) {
 function startSyncOperationHeartbeat(claim) {
   let stopped = false
   let inFlight = Promise.resolve(true)
+  const fenceContext = businessFenceStorage.getStore() || null
   const tick = () => {
     if (stopped) return inFlight
-    inFlight = inFlight.catch(() => false).then(() => renewSyncOperationClaim(claim)).catch(() => false)
+    inFlight = inFlight.catch(() => false).then(() => {
+      return fenceContext
+        ? businessFenceStorage.run(fenceContext, () => renewSyncOperationClaim(claim))
+        : renewSyncOperationClaim(claim)
+    }).catch(() => false)
     return inFlight
   }
   const timer = setInterval(tick, Math.max(1000, Math.floor(MUTATION_LEASE_MS / 3)))
@@ -764,6 +1013,7 @@ function sameMutationDocument(left, right) {
 
 async function stageSyncOperationResultOnce(claim, result) {
   await db.runTransaction(async transaction => {
+    if (!claim.clearMode) await assertBusinessFenceInTransaction(transaction)
     const current = await getDocByPointRead(transaction, COLLECTIONS.syncOperations, claim.docId)
     if (current && current.status === 'applied' && current.attemptId === claim.attemptId && sameMutationResult(current.result, result)) {
       return
@@ -796,6 +1046,7 @@ async function stageSyncOperationResult(claim, result) {
 
 async function completeSyncOperationClaim(claim) {
   await db.runTransaction(async transaction => {
+    if (!claim.clearMode) await assertBusinessFenceInTransaction(transaction)
     const current = await getDocByPointRead(transaction, COLLECTIONS.syncOperations, claim.docId)
     if (!current || current.status !== 'applied' || current.attemptId !== claim.attemptId || !current.result) {
       throw new Error('mutation claim changed')
@@ -841,6 +1092,7 @@ async function persistMutationRecoveryEvidence(claim, evidence) {
   const docId = claim && claim.docId
   if (!docId || !claim.attemptId) throw new Error('missing active mutation claim')
   await db.runTransaction(async transaction => {
+    if (!claim.clearMode) await assertBusinessFenceInTransaction(transaction)
     const current = await getDocByPointRead(transaction, COLLECTIONS.syncOperations, docId)
     if (!current || current.status !== 'pending' ||
       current.attemptId !== claim.attemptId ||
@@ -1025,12 +1277,23 @@ async function runMutation(event, ownerOpenId, action, handler, recover) {
   if (!clientMutationId) {
     return { code: 'MISSING_CLIENT_MUTATION_ID', message: 'missing clientMutationId' }
   }
+  if (action !== 'clear_all_data' && !currentBusinessFence()) {
+    const fence = await captureAccountLifecycle(ownerOpenId, playerId)
+    return runWithBusinessFence(fence, () => runMutation(event, ownerOpenId, action, handler, recover))
+  }
   const inputFingerprint = createMutationInputFingerprint(ownerOpenId, playerId, action, event)
-  const legacy = await getDocById(COLLECTIONS.syncOperations, getLegacySyncOperationDocumentId(ownerOpenId, clientMutationId))
+  const legacyDocId = getLegacySyncOperationDocumentId(ownerOpenId, clientMutationId)
+  const legacy = action === 'clear_all_data'
+    ? await getDocById(COLLECTIONS.syncOperations, legacyDocId)
+    : await db.runTransaction(async transaction => {
+      await assertBusinessFenceInTransaction(transaction)
+      return getDocByPointRead(transaction, COLLECTIONS.syncOperations, legacyDocId)
+    })
   if (legacy) {
     if (!legacy.result || !syncOperationMatches(legacy, ownerOpenId, playerId, clientMutationId, action, inputFingerprint)) {
       return { code: 'MUTATION_CONFLICT', message: 'clientMutationId conflicts with a different mutation' }
     }
+    if (action !== 'clear_all_data') await assertCurrentBusinessFences()
     return { code: 0, data: legacy.result }
   }
   const claim = await claimSyncOperation(ownerOpenId, playerId, clientMutationId, action, inputFingerprint)
@@ -1040,9 +1303,13 @@ async function runMutation(event, ownerOpenId, action, handler, recover) {
   if (claim.kind === 'in_progress') {
     return { code: 'MUTATION_IN_PROGRESS', message: 'mutation in progress' }
   }
-  if (claim.kind === 'restore') return { code: 0, data: claim.result }
+  if (claim.kind === 'restore') {
+    if (!claim.clearMode) await assertCurrentBusinessFences()
+    return { code: 0, data: claim.result }
+  }
   if (claim.kind === 'repair') {
     await completeSyncOperationClaim(claim)
+    if (!claim.clearMode) await assertCurrentBusinessFences()
     return { code: 0, data: claim.result }
   }
   const stopHeartbeat = startSyncOperationHeartbeat(claim)
@@ -1098,6 +1365,7 @@ async function runMutation(event, ownerOpenId, action, handler, recover) {
     await stopHeartbeat()
   }
   await completeSyncOperationClaim(claim)
+  if (!claim.clearMode) await assertCurrentBusinessFences()
   return { code: 0, data: result }
 }
 
@@ -1560,6 +1828,27 @@ async function listRecoveryCandidates(ownerOpenId) {
   })
 }
 
+async function listFencedRecoveryCandidates(ownerOpenId) {
+  if (!currentBusinessFence()) return listRecoveryCandidates(ownerOpenId)
+  const initialProfiles = await getOwnedProfiles(ownerOpenId)
+  const playerIds = Array.from(new Set(initialProfiles.map(inferPlayerIdFromProfile).filter(Boolean)))
+  const candidates = []
+  for (const playerId of playerIds) {
+    await addBusinessFence(ownerOpenId, playerId)
+    const freshProfiles = await getOwnedProfiles(ownerOpenId)
+    const profile = freshProfiles
+      .filter(item => inferPlayerIdFromProfile(item) === playerId)
+      .sort((a, b) => normalizeNumeric(b.updatedAt) - normalizeNumeric(a.updatedAt))[0]
+    if (!profile) continue
+    candidates.push(await buildRecoveryCandidate(playerId, ownerOpenId, profile))
+  }
+  await assertCurrentBusinessFences()
+  return candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    return (b.updatedAt || 0) - (a.updatedAt || 0)
+  })
+}
+
 async function fetchStableOwnedHandData(playerId, ownerOpenId) {
   const before = await fetchOwnedByPlayer(COLLECTIONS.hands, playerId, ownerOpenId)
   if (before.some(hand => String(hand && hand.actionRevisionPending || ''))) throw handSourceUpdatingError()
@@ -1653,9 +1942,12 @@ async function loginAccount(event, ownerOpenId) {
   const localBackup = event && event.backup || {}
   const localProfile = event && event.profile || localBackup.profile || {}
   const localSettings = localBackup.settings || event && event.settings || {}
-  const candidates = await listRecoveryCandidates(ownerOpenId)
-  const bestWithData = candidates.find(item => item.sessionCount > 0 || item.handCount > 0 || item.bankrollLogCount > 0)
   const accountPlayerId = createOpenIdPlayerId(ownerOpenId)
+  const targetFence = currentBusinessFence()
+  const allowLegacyRecovery = !!targetFence && targetFence.playerId === accountPlayerId && targetFence.generation === 0
+  const candidates = allowLegacyRecovery ? await listFencedRecoveryCandidates(ownerOpenId) : []
+  const bestWithData = candidates.find(item => item.playerId !== accountPlayerId &&
+    (item.sessionCount > 0 || item.handCount > 0 || item.bankrollLogCount > 0))
   const recoveredPlayerId = bestWithData && bestWithData.playerId || ''
   let backup = null
 
@@ -1680,6 +1972,8 @@ async function loginAccount(event, ownerOpenId) {
   if (event && event.includeBackup === true && recoveredPlayerId) {
     backup = await exportBackupForPlayer(recoveredPlayerId, ownerOpenId)
   }
+
+  await assertCurrentBusinessFences()
 
   return {
     code: 0,
@@ -1771,6 +2065,8 @@ async function syncStats(event, ownerOpenId) {
   if (!playerId) {
     playerId = createOpenIdPlayerId(ownerOpenId)
   }
+  const targetFence = currentBusinessFence()
+  const allowLegacyRecovery = !!targetFence && targetFence.playerId === playerId && targetFence.generation === 0
 
   if (hasMeaningfulBackup(event.backup)) {
     await mergeBusinessData(event.backup || {}, playerId, ownerOpenId)
@@ -1786,9 +2082,10 @@ async function syncStats(event, ownerOpenId) {
 
   const shouldResolveCandidate = !hasMeaningfulBackup(event.backup) && sessions.length < 5 && hands.length < 20
 
-  if (shouldResolveCandidate) {
+  if (allowLegacyRecovery && shouldResolveCandidate) {
     const openIdPlayerId = createOpenIdPlayerId(ownerOpenId)
     if (playerId !== openIdPlayerId) {
+      await addBusinessFence(ownerOpenId, openIdPlayerId)
       const openIdSessions = (await fetchOwnedByPlayer(COLLECTIONS.sessions, openIdPlayerId, ownerOpenId)).map(cleanCloudDoc)
       const openIdHands = await loadStatsHands(openIdPlayerId)
       if (openIdSessions.length * 1000 + openIdHands.length * 10 > sessions.length * 1000 + hands.length * 10) {
@@ -1799,14 +2096,15 @@ async function syncStats(event, ownerOpenId) {
     }
   }
 
-  if (!hasMeaningfulBackup(event.backup) && sessions.length < 5 && hands.length < 20) {
-    recoveryCandidates = recoveryCandidates || await listRecoveryCandidates(ownerOpenId)
+  if (allowLegacyRecovery && !hasMeaningfulBackup(event.backup) && sessions.length < 5 && hands.length < 20) {
+    recoveryCandidates = recoveryCandidates || await listFencedRecoveryCandidates(ownerOpenId)
     const requestedCandidate = recoveryCandidates.find(item => item.playerId === playerId)
     const requestedScore = requestedCandidate
       ? requestedCandidate.score
       : sessions.length * 1000 + hands.length * 10
     const bestCandidate = recoveryCandidates[0]
     if (bestCandidate && bestCandidate.playerId !== playerId && bestCandidate.score > requestedScore) {
+      await addBusinessFence(ownerOpenId, bestCandidate.playerId)
       playerId = bestCandidate.playerId
       sessions = (await fetchOwnedByPlayer(COLLECTIONS.sessions, playerId, ownerOpenId)).map(cleanCloudDoc)
       hands = await loadStatsHands(playerId)
@@ -1814,6 +2112,7 @@ async function syncStats(event, ownerOpenId) {
   }
 
   const settings = await getSettings(playerId, ownerOpenId, event.backup && event.backup.settings)
+  await assertCurrentBusinessFences()
 
   return {
     code: 0,
@@ -2028,6 +2327,7 @@ async function replaceHandActionsCloud(playerId, ownerOpenId, handId, sessionId,
 
 async function claimHandActionRevision(handId, playerId, ownerOpenId, revision, initialDoc, allowMissing) {
   return db.runTransaction(async transaction => {
+    await assertBusinessFenceInTransaction(transaction)
     const current = await getDocByPointRead(transaction, COLLECTIONS.hands, handId)
     const claimed = prepareHandRevisionClaim(current, initialDoc, revision, playerId, ownerOpenId, allowMissing)
     await transaction.collection(COLLECTIONS.hands).doc(handId).set({ data: omitId(Object.assign({}, claimed, { _id: handId })) })
@@ -2037,6 +2337,7 @@ async function claimHandActionRevision(handId, playerId, ownerOpenId, revision, 
 
 async function finalizeHandActionRevision(handId, playerId, ownerOpenId, revision, finalDoc) {
   return db.runTransaction(async transaction => {
+    await assertBusinessFenceInTransaction(transaction)
     const current = await getDocByPointRead(transaction, COLLECTIONS.hands, handId)
     if (!current || normalizePlayerId(current.playerId) !== playerId || String(current.ownerOpenId || current._openid || '') !== ownerOpenId ||
       String(current.actionRevisionPending || '') !== revision) throw new Error('hand action revision changed')
@@ -2055,6 +2356,7 @@ async function finalizeHandActionRevision(handId, playerId, ownerOpenId, revisio
 
 async function writeHandMetadataCloud(handId, playerId, ownerOpenId, expected, finalDoc, allowMissing) {
   return db.runTransaction(async transaction => {
+    await assertBusinessFenceInTransaction(transaction)
     const current = await getDocByPointRead(transaction, COLLECTIONS.hands, handId)
     const next = prepareHandMetadataWrite(current, expected, finalDoc, playerId, ownerOpenId, allowMissing)
     await transaction.collection(COLLECTIONS.hands).doc(handId).set({ data: omitId(Object.assign({}, next, { _id: handId })) })
@@ -2411,6 +2713,7 @@ async function beginPlayerCardImportReceiptAction(event, ownerOpenId) {
   const docId = getPlayerCardImportReceiptDocumentId(ownerOpenId, input.playerId, input.shareId)
   await ensureCollection(COLLECTIONS.playerCardImportReceipts)
   const result = await db.runTransaction(async transaction => {
+    await assertBusinessFenceInTransaction(transaction)
     const current = await getReceiptDocByPointRead(transaction, docId)
     if (current) {
       if (current.ownerOpenId !== ownerOpenId || normalizePlayerId(current.playerId) !== input.playerId ||
@@ -2443,6 +2746,7 @@ async function completePlayerCardImportReceiptAction(event, ownerOpenId) {
   const docId = getPlayerCardImportReceiptDocumentId(ownerOpenId, input.playerId, input.shareId)
   await ensureCollection(COLLECTIONS.playerCardImportReceipts)
   const result = await db.runTransaction(async transaction => {
+    await assertBusinessFenceInTransaction(transaction)
     const current = await getReceiptDocByPointRead(transaction, docId)
     if (!current || current.ownerOpenId !== ownerOpenId || normalizePlayerId(current.playerId) !== input.playerId || current.shareId !== input.shareId) {
       return { missing: true }
@@ -2472,37 +2776,94 @@ const PRIVATE_CLEAR_COLLECTIONS = [
   COLLECTIONS.profiles
 ]
 
+async function assertClearFenceInTransaction(transaction, clearFence) {
+  if (!clearFence || !PRIVATE_CLEAR_COLLECTIONS.includes(clearFence.collectionName || '')) {
+    throw accountLifecycleError('ACCOUNT_CLEAR_SCOPE_INVALID', 'account clear collection unavailable')
+  }
+  return assertClearLifecycleInTransaction(transaction, clearFence)
+}
+
+async function assertClearLifecycleInTransaction(transaction, clearFence) {
+  if (!clearFence) throw accountLifecycleError('ACCOUNT_CLEAR_SCOPE_INVALID', 'account clear fence unavailable')
+  const current = normalizeAccountLifecycle(
+    await getDocByPointRead(transaction, COLLECTIONS.accountLifecycle, clearFence.docId),
+    String(clearFence.ownerOpenId || ''), normalizePlayerId(clearFence.playerId)
+  )
+  if (!current || current.state !== 'clearing' || current.generation !== clearFence.generation ||
+    current.clearMutationId !== clearFence.clearMutationId) {
+    throw accountLifecycleError('ACCOUNT_CLEAR_CHANGED', 'account clear changed')
+  }
+}
+
+async function removeClearBusinessDocById(clearFence, collectionName, docId) {
+  if (!PRIVATE_CLEAR_COLLECTIONS.includes(collectionName)) {
+    throw accountLifecycleError('ACCOUNT_CLEAR_SCOPE_INVALID', 'account clear collection unavailable')
+  }
+  const scopedFence = Object.assign({}, clearFence, { collectionName })
+  return db.runTransaction(async transaction => {
+    await assertClearFenceInTransaction(transaction, scopedFence)
+    const current = await getDocByPointRead(transaction, collectionName, docId)
+    if (!current) return true
+    if (normalizePlayerId(current.playerId) !== clearFence.playerId ||
+      String(current.ownerOpenId || current._openid || '') !== clearFence.ownerOpenId) {
+      throw accountLifecycleError('ACCOUNT_CLEAR_SCOPE_INVALID', 'account clear document ownership changed')
+    }
+    await transaction.collection(collectionName).doc(docId).remove()
+    return true
+  })
+}
+
+async function setClearMetadataDocById(clearFence, collectionName, docId, data) {
+  if (![COLLECTIONS.syncOperations, COLLECTIONS.auditLogs].includes(collectionName)) {
+    throw accountLifecycleError('ACCOUNT_CLEAR_SCOPE_INVALID', 'account clear metadata collection unavailable')
+  }
+  return db.runTransaction(async transaction => {
+    await assertClearLifecycleInTransaction(transaction, clearFence)
+    const current = await getDocByPointRead(transaction, collectionName, docId)
+    if (!current) return true
+    if (normalizePlayerId(current.playerId) !== clearFence.playerId ||
+      String(current.ownerOpenId || current._openid || '') !== clearFence.ownerOpenId) {
+      throw accountLifecycleError('ACCOUNT_CLEAR_SCOPE_INVALID', 'account clear metadata ownership changed')
+    }
+    await transaction.collection(collectionName).doc(docId).set({ data: omitId(data) })
+    return true
+  })
+}
+
 function redactOperationBusinessPayload(doc) {
   const next = Object.assign({}, doc || {})
   ;['result', 'recoveryEvidence', 'before', 'after', 'payload', 'businessPayload'].forEach(key => { delete next[key] })
   return next
 }
 
-async function clearOwnedCollection(collectionName, playerId, ownerOpenId) {
+async function clearOwnedCollection(collectionName, playerId, ownerOpenId, clearFence) {
   // Import receipts have always used the canonical ownerOpenId schema. Keep this
   // delete path aligned with its exact compound index and avoid offset pagination.
   const docs = collectionName === COLLECTIONS.playerCardImportReceipts
     ? await fetchPlayerCardImportReceiptsForClear(playerId, ownerOpenId)
     : await fetchOwnedByPlayer(collectionName, playerId, ownerOpenId)
   for (const doc of docs) {
-    if (doc && doc._id) await removeDocById(collectionName, doc._id)
+    if (doc && doc._id) await removeClearBusinessDocById(clearFence, collectionName, doc._id)
   }
 }
 
-async function redactOwnedOperationHistory(collectionName, playerId, ownerOpenId) {
+async function redactOwnedOperationHistory(collectionName, playerId, ownerOpenId, clearFence) {
   const docs = await fetchOwnedByPlayer(collectionName, playerId, ownerOpenId)
   for (const doc of docs) {
-    if (doc && doc._id) await setDocById(collectionName, doc._id, redactOperationBusinessPayload(doc))
+    if (doc && doc._id) await setClearMetadataDocById(clearFence, collectionName, doc._id, redactOperationBusinessPayload(doc))
   }
 }
 
 async function clearAllDataAction(event, ownerOpenId) {
-  return runMutation(event, ownerOpenId, 'clear_all_data', async (playerId) => {
+  return runMutation(event, ownerOpenId, 'clear_all_data', async (playerId, clientMutationId) => {
+    const clearFence = await beginAccountClear(ownerOpenId, playerId, clientMutationId)
+    if (clearFence.completed) return { completed: true }
     for (const collectionName of PRIVATE_CLEAR_COLLECTIONS) {
-      await clearOwnedCollection(collectionName, playerId, ownerOpenId)
+      await clearOwnedCollection(collectionName, playerId, ownerOpenId, clearFence)
     }
-    await redactOwnedOperationHistory(COLLECTIONS.syncOperations, playerId, ownerOpenId)
-    await redactOwnedOperationHistory(COLLECTIONS.auditLogs, playerId, ownerOpenId)
+    await redactOwnedOperationHistory(COLLECTIONS.syncOperations, playerId, ownerOpenId, clearFence)
+    await redactOwnedOperationHistory(COLLECTIONS.auditLogs, playerId, ownerOpenId, clearFence)
+    await completeAccountClear(clearFence)
     return { completed: true }
   })
 }
@@ -2904,6 +3265,13 @@ exports.main = async function main(rawEvent) {
   const action = normalizeAction(event)
 
   try {
+    if (BUSINESS_WRITE_ACTIONS.includes(action) && !currentBusinessFence()) {
+      const playerId = businessWritePlayerId(action, event, ownerOpenId)
+      if (playerId) {
+        const fence = await captureAccountLifecycle(ownerOpenId, playerId)
+        return await runWithBusinessFence(fence, () => exports.main(rawEvent))
+      }
+    }
     if (action === 'login_account') {
       return await loginAccount(event || {}, ownerOpenId)
     }
@@ -2984,6 +3352,12 @@ exports.main = async function main(rawEvent) {
     }
     return { code: 'UNKNOWN_ACTION', message: 'unknown data action' }
   } catch (error) {
+    if (error && [
+      'ACCOUNT_DATA_NOT_ACTIVE', 'ACCOUNT_DATA_GENERATION_CHANGED', 'ACCOUNT_LIFECYCLE_INVALID',
+      'ACCOUNT_CLEAR_IN_PROGRESS', 'ACCOUNT_CLEAR_CHANGED'
+    ].includes(error.code)) {
+      return { code: error.code, message: error.message }
+    }
     if (error && error.code === 'HAND_SOURCE_UPDATING') {
       return { code: 'HAND_SOURCE_UPDATING', message: 'hand source updating' }
     }
@@ -3017,7 +3391,22 @@ exports.__test = {
   getSyncOperationDocumentId,
   getLegacySyncOperationDocumentId,
   createMutationInputFingerprint,
+  BUSINESS_WRITE_ACTIONS,
+  getAccountLifecycleDocumentId,
+  captureAccountLifecycle,
+  runFencedBusinessTransaction,
+  beginAccountClear,
+  completeAccountClear,
+  currentBusinessFence,
+  currentBusinessFences,
+  runWithBusinessFence,
+  addBusinessFence,
+  setDocById,
+  removeDocById,
+  assertBusinessFenceInTransaction,
   runMutation,
+  claimSyncOperation,
+  renewSyncOperationClaim,
   createHandActionRevision,
   prepareHandRevisionClaim,
   prepareHandMetadataWrite,

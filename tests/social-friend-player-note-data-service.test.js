@@ -68,10 +68,12 @@ function loadDataService(cloudState, calls) {
           async getPlayerCardImportReceipt(options) {
             calls.getReceipt.push(options)
             if (cloudState.failReceiptRead) throw new Error('receipt offline')
+            if (cloudState.getReceiptImpl) return cloudState.getReceiptImpl(options)
             return { receipt: cloudState.receipt || null }
           },
           async beginPlayerCardImportReceipt(options) {
             calls.beginReceipt.push(options)
+            if (cloudState.beginReceiptImpl) return cloudState.beginReceiptImpl(options)
             return { receipt: Object.assign({}, options, { status: 'pending' }) }
           },
           async completePlayerCardImportReceipt(options) {
@@ -127,11 +129,12 @@ test('card import receipts use dedicated cloud actions and never player-note pay
   const cloudState = { available: true, failCreate: false, canonicalId: 'unused' }
   const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
   const dataService = loadDataService(cloudState, calls)
+  const accountContext = dataService.captureAccountContext()
 
-  assert.equal(await dataService.getPlayerCardImportReceipt('pcs_1'), null)
-  const pending = await dataService.beginPlayerCardImportReceipt({ shareId: 'pcs_1', mode: 'new', targetPlayerNoteId: 'note-1' })
+  assert.equal(await dataService.getPlayerCardImportReceipt('pcs_1', accountContext), null)
+  const pending = await dataService.beginPlayerCardImportReceipt({ shareId: 'pcs_1', mode: 'new', targetPlayerNoteId: 'note-1' }, accountContext)
   assert.equal(pending.status, 'pending')
-  const completed = await dataService.completePlayerCardImportReceipt('pcs_1')
+  const completed = await dataService.completePlayerCardImportReceipt('pcs_1', '', accountContext)
   assert.equal(completed.status, 'completed')
   assert.equal(calls.getReceipt[0].shareId, 'pcs_1')
   assert.match(calls.beginReceipt[0].clientMutationId, /begin_player_card_import_receipt/)
@@ -160,5 +163,74 @@ test('receipt read failure is propagated for fail-closed page behavior', async (
   const cloudState = { available: true, failReceiptRead: true, canonicalId: 'unused' }
   const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
   const dataService = loadDataService(cloudState, calls)
-  await assert.rejects(dataService.getPlayerCardImportReceipt('pcs_1'), /receipt offline/)
+  await assert.rejects(dataService.getPlayerCardImportReceipt('pcs_1', dataService.captureAccountContext()), /receipt offline/)
+})
+
+test('card receipt operations reject omitted account context before touching cloud', async () => {
+  resetStorage()
+  const cloudState = { available: true, failCreate: false, canonicalId: 'unused' }
+  const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
+  const dataService = loadDataService(cloudState, calls)
+
+  await assert.rejects(dataService.getPlayerCardImportReceipt('pcs_1'), error => error && error.code === 'ACCOUNT_CONTEXT_REQUIRED')
+  await assert.rejects(dataService.beginPlayerCardImportReceipt({ shareId: 'pcs_1', mode: 'new' }), error => error && error.code === 'ACCOUNT_CONTEXT_REQUIRED')
+  await assert.rejects(dataService.completePlayerCardImportReceipt('pcs_1'), error => error && error.code === 'ACCOUNT_CONTEXT_REQUIRED')
+  assert.deepEqual([calls.getReceipt.length, calls.beginReceipt.length, calls.completeReceipt.length], [0, 0, 0])
+})
+
+test('explicit receipt context keeps PLAYER-A ownership and rejects A-to-B and ABA completion', async () => {
+  for (const aba of [false, true]) {
+    resetStorage()
+    let release
+    let started
+    const startedPromise = new Promise(resolve => { started = resolve })
+    const cloudState = {
+      available: true, failCreate: false, canonicalId: 'unused',
+      getReceiptImpl() {
+        started()
+        return new Promise(resolve => { release = resolve })
+      }
+    }
+    const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
+    const dataService = loadDataService(cloudState, calls)
+    dataService.updateProfile({ playerId: 'PLAYER-A' })
+    const context = dataService.captureAccountContext()
+    const reading = dataService.getPlayerCardImportReceipt('pcs_context', context)
+    await startedPromise
+    await dataService.switchToTestAccount()
+    if (aba) await dataService.exitTestAccount()
+    release({ receipt: null })
+
+    await assert.rejects(reading, error => error && error.code === 'STALE_ACCOUNT_CONTEXT')
+    assert.equal(calls.getReceipt[0].playerId, 'PLAYER-A')
+  }
+})
+
+test('explicit player-note context never starts a cloud write for the account switched in before the local await resumes', async () => {
+  resetStorage()
+  const cloudState = { available: true, failCreate: false, canonicalId: 'unused' }
+  const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
+  const dataService = loadDataService(cloudState, calls)
+  dataService.updateProfile({ playerId: 'PLAYER-A' })
+  const context = dataService.captureAccountContext()
+  const creating = dataService.createPlayerNote({ _id: 'note-context-a', name: 'A' }, {
+    waitForCloud: true,
+    accountContext: context
+  })
+  dataService.updateProfile({ playerId: 'PLAYER-B' })
+
+  await assert.rejects(creating, error => error && error.code === 'STALE_ACCOUNT_CONTEXT')
+  assert.equal(calls.create.length, 0)
+})
+
+test('updateProfile playerId ABA bumps the account epoch and never revives an old token', () => {
+  resetStorage()
+  const cloudState = { available: true, failCreate: false, canonicalId: 'unused' }
+  const calls = { create: [], update: [], getReceipt: [], beginReceipt: [], completeReceipt: [] }
+  const dataService = loadDataService(cloudState, calls)
+  dataService.updateProfile({ playerId: 'PLAYER-A' })
+  const context = dataService.captureAccountContext()
+  dataService.updateProfile({ playerId: 'PLAYER-B' })
+  dataService.updateProfile({ playerId: 'PLAYER-A' })
+  assert.equal(dataService.isAccountContextCurrent(context), false)
 })

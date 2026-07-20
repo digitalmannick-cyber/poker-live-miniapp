@@ -266,9 +266,10 @@ test('same revision production replacement keeps deterministic row JSON unchange
   await t.test('poker_data', async () => {
     const database = createMemoryCloudDatabase({ hand_actions: [] })
     const poker = loadPokerData(database).__test
-    await poker.replaceHandActionsCloud('PLAYER-1', 'openid-a', 'hand-1', 'session-1', actions, revision)
+    const fence = await poker.captureAccountLifecycle('openid-a', 'PLAYER-1')
+    await poker.runWithBusinessFence(fence, () => poker.replaceHandActionsCloud('PLAYER-1', 'openid-a', 'hand-1', 'session-1', actions, revision))
     const first = database.dump().hand_actions
-    await poker.replaceHandActionsCloud('PLAYER-1', 'openid-a', 'hand-1', 'session-1', actions, revision)
+    await poker.runWithBusinessFence(fence, () => poker.replaceHandActionsCloud('PLAYER-1', 'openid-a', 'hand-1', 'session-1', actions, revision))
     assert.deepEqual(database.dump().hand_actions, first)
   })
 
@@ -328,8 +329,9 @@ test('transaction point-read infrastructure errors fail closed without allowMiss
 
   await t.test('poker_data', async () => {
     const poker = loadPokerData(database).__test
+    const fence = await poker.captureAccountLifecycle('openid-a', 'PLAYER-1')
     await assert.rejects(
-      poker.claimHandActionRevision('hand-1', 'PLAYER-1', 'openid-a', 'a'.repeat(64), expected, true),
+      poker.runWithBusinessFence(fence, () => poker.claimHandActionRevision('hand-1', 'PLAYER-1', 'openid-a', 'a'.repeat(64), expected, true)),
       /permission denied/
     )
     assert.deepEqual(database.dump().hands || [], [])

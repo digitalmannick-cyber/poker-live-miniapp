@@ -6,6 +6,20 @@ const Module = require('node:module')
 
 function clone(value) { return JSON.parse(JSON.stringify(value)) }
 
+function seedPendingImport(storage, accountId, shareId, mutationId) {
+  const accountToken = encodeURIComponent(accountId)
+  const key = 'playerCardImportPending:v2:' + accountToken + ':' + encodeURIComponent(shareId)
+  const indexKey = 'playerCardImportPendingIndex:v1:' + accountToken
+  const previous = storage[indexKey]
+  storage[key] = { version: 2, accountId, shareId, mutationId }
+  storage[indexKey] = {
+    version: 1,
+    accountId,
+    keys: Array.from(new Set([].concat(previous && previous.keys || [], key)))
+  }
+  return { key, indexKey }
+}
+
 function loadDataService(options = {}) {
   const state = Object.assign({
     backup: {
@@ -90,7 +104,14 @@ function loadDataService(options = {}) {
       storage[key] = clone(value)
       if (key === 'pokerLiveAccountLoggedOut') state.events.push('account-logout:' + key)
     },
-    removeStorageSync(key) { delete storage[key]; state.events.push('account-clear:' + key) },
+    removeStorageSync(key) {
+      if (state.pendingRemoveFailKey === key && state.pendingRemoveFailCount !== 0) {
+        if (Number.isFinite(state.pendingRemoveFailCount)) state.pendingRemoveFailCount -= 1
+        throw new Error('pending remove failed')
+      }
+      delete storage[key]
+      state.events.push('account-clear:' + key)
+    },
     cloud: { callFunction: async () => ({ result: {} }) }
   }
   const modulePath = require.resolve('../services/data-service')
@@ -217,6 +238,118 @@ test('clearAllData is social-first, loops to completed, then clears private, loc
   assert.equal(loaded.state.socialClearCalls[0].clientMutationId, loaded.state.socialClearCalls[1].clientMutationId)
   assert.deepEqual(loaded.state.cacheClearInput, { accountId: 'PLAYER-A', socialUserId: 'su-a' })
   assert.equal(loaded.state.privateClearCalls[0].playerId, 'PLAYER-A')
+})
+
+test('logout and clear remove only the current account pending-import exact keys', async t => {
+  for (const action of ['logoutAccount', 'clearAllData']) {
+    const loaded = loadDataService()
+    t.after(() => loaded.restore())
+    const a = seedPendingImport(loaded.storage, 'PLAYER-A', 'pcs-a-' + action, 'mutation-a')
+    const b = seedPendingImport(loaded.storage, 'PLAYER-B', 'pcs-b-' + action, 'mutation-b')
+
+    await loaded.service[action]()
+
+    assert.equal(loaded.storage[a.key], undefined, action + ' must clear current account pending')
+    assert.equal(loaded.storage[a.indexKey], undefined, action + ' must clear current account index')
+    assert.equal(loaded.storage[b.key].mutationId, 'mutation-b', action + ' must preserve other account pending')
+    assert.equal(loaded.storage[b.indexKey].accountId, 'PLAYER-B')
+  }
+})
+
+test('clear enters destructive blocking before the first server await and invalidates every old public token', async t => {
+  let releaseSocial
+  let signalSocialStarted
+  const socialStarted = new Promise(resolve => { signalSocialStarted = resolve })
+  const loaded = loadDataService({
+    socialClearImpl() {
+      signalSocialStarted()
+      return new Promise(resolve => { releaseSocial = resolve })
+    }
+  })
+  t.after(() => loaded.restore())
+  const oldContext = loaded.service.captureAccountContext()
+
+  const clearing = loaded.service.clearAllData()
+  await socialStarted
+  assert.equal(loaded.service.isAccountContextCurrent(oldContext), false)
+  assert.throws(() => loaded.service.captureAccountContext(), error => error && error.code === 'ACCOUNT_DESTRUCTIVE_OPERATION_IN_PROGRESS')
+  await assert.rejects(loaded.service.createPlayerNote({ _id: 'stale-note', name: 'stale' }, {
+    waitForCloud: true,
+    accountContext: oldContext
+  }), error => error && error.code === 'STALE_ACCOUNT_CONTEXT')
+  releaseSocial({ completed: true, remainingStage: '', socialUserId: 'su-a' })
+  await clearing
+  assert.throws(() => loaded.service.captureAccountContext(), error => error && error.code === 'ACCOUNT_DESTRUCTIVE_OPERATION_IN_PROGRESS')
+})
+
+test('failed clear releases destructive blocking for retry but never revives an old token', async t => {
+  let attempt = 0
+  const loaded = loadDataService({
+    socialClearImpl() {
+      attempt += 1
+      if (attempt === 1) throw new Error('social failed')
+      return { completed: true, remainingStage: '', socialUserId: 'su-a' }
+    }
+  })
+  t.after(() => loaded.restore())
+  const oldContext = loaded.service.captureAccountContext()
+  await assert.rejects(loaded.service.clearAllData(), /social failed/)
+  const retryContext = loaded.service.captureAccountContext()
+  assert.equal(retryContext.accountId, 'PLAYER-A')
+  assert.equal(loaded.service.isAccountContextCurrent(oldContext), false)
+  await loaded.service.clearAllData()
+})
+
+test('an old player-note saga is rejected at private-clear completion before any local write', async t => {
+  let loaded
+  let oldContext
+  let staleWriteRejected = false
+  loaded = loadDataService({
+    async privateClearImpl() {
+      await assert.rejects(loaded.service.createPlayerNote({ _id: 'old-saga-note', name: 'old' }, {
+        waitForCloud: true,
+        accountContext: oldContext
+      }), error => error && error.code === 'STALE_ACCOUNT_CONTEXT')
+      staleWriteRejected = true
+      return { completed: true }
+    }
+  })
+  t.after(() => loaded.restore())
+  oldContext = loaded.service.captureAccountContext()
+  await loaded.service.clearAllData()
+  assert.equal(staleWriteRejected, true)
+  assert.equal(loaded.state.events.includes('local-clear'), true)
+})
+
+test('pending cleanup failure is visible and retry converges while preserving another account', async t => {
+  const loaded = loadDataService()
+  t.after(() => loaded.restore())
+  const a1 = seedPendingImport(loaded.storage, 'PLAYER-A', 'pcs-a-1', 'mutation-a1')
+  const a2 = seedPendingImport(loaded.storage, 'PLAYER-A', 'pcs-a-2', 'mutation-a2')
+  const b = seedPendingImport(loaded.storage, 'PLAYER-B', 'pcs-b', 'mutation-b')
+  loaded.state.pendingRemoveFailKey = a2.key
+  loaded.state.pendingRemoveFailCount = 1
+
+  await assert.rejects(loaded.service.clearAllData(), error => error && error.code === 'PENDING_IMPORT_CLEANUP_FAILED')
+  assert.equal(loaded.state.events.includes('local-clear'), false)
+  assert.notEqual(loaded.storage[a1.indexKey], undefined, 'index remains for retry after partial deletion')
+  assert.equal(loaded.storage[b.key].mutationId, 'mutation-b')
+
+  await loaded.service.clearAllData()
+  assert.equal(loaded.storage[a1.key], undefined)
+  assert.equal(loaded.storage[a2.key], undefined)
+  assert.equal(loaded.storage[a1.indexKey], undefined)
+  assert.equal(loaded.storage[b.key].mutationId, 'mutation-b')
+})
+
+test('logout surfaces pending cleanup failure instead of claiming success', async t => {
+  const loaded = loadDataService()
+  t.after(() => loaded.restore())
+  const a = seedPendingImport(loaded.storage, 'PLAYER-A', 'pcs-a', 'mutation-a')
+  loaded.state.pendingRemoveFailKey = a.key
+  loaded.state.pendingRemoveFailCount = 1
+  await assert.rejects(loaded.service.logoutAccount(), error => error && error.code === 'PENDING_IMPORT_CLEANUP_FAILED')
+  assert.notEqual(loaded.storage[a.indexKey], undefined)
 })
 
 test('clearAllData propagates social/private failures and never clears later stages', async t => {

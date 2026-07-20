@@ -11,6 +11,7 @@ const pbtBankrollImport = require('../utils/pbt-bankroll-import')
 const cloudDataApi = require('./cloud-data-api')
 const socialService = require('./social-service')
 const socialCache = require('../utils/social-cache')
+const playerCardImportPending = require('../utils/player-card-import-pending')
 const { AUTO_CLOUD_BOOTSTRAP, AI_REMINDER_SUBSCRIBE_TEMPLATE_ID } = require('../config/cloud')
 
 let bootstrapPromise = null
@@ -20,6 +21,8 @@ const cloudMutationDrainPromises = {}
 let cloudMutationDrainEpoch = 0
 let cloudMutationAccountContextId = ''
 let cloudMutationAccountContextEpoch = 0
+const publicAccountContexts = new WeakMap()
+let destructiveAccountOperation = null
 let cloudBootstrapComplete = false
 const CLOUD_TIMEOUT_MS = 1500
 const CLOUD_BOOTSTRAP_TIMEOUT_MS = 5000
@@ -42,6 +45,43 @@ function invalidateCloudMutationAccountContext() {
   cloudMutationAccountContextId = getCurrentPlayerId()
   cloudMutationAccountContextEpoch += 1
   cloudMutationDrainEpoch += 1
+}
+
+function accountDestructiveOperationError() {
+  const error = new Error('account destructive operation is in progress')
+  error.code = 'ACCOUNT_DESTRUCTIVE_OPERATION_IN_PROGRESS'
+  return error
+}
+
+function pendingImportCleanupError() {
+  const error = new Error('pending player-card import cleanup failed')
+  error.code = 'PENDING_IMPORT_CLEANUP_FAILED'
+  return error
+}
+
+function beginAccountDestructiveOperation() {
+  if (destructiveAccountOperation) throw accountDestructiveOperationError()
+  const before = captureCloudMutationAccountContext()
+  invalidateCloudMutationAccountContext()
+  const operation = {
+    accountId: before.accountId,
+    context: captureCloudMutationAccountContext(),
+    phase: 'clearing'
+  }
+  destructiveAccountOperation = operation
+  return operation
+}
+
+function finishAccountDestructiveOperation(operation, succeeded) {
+  if (destructiveAccountOperation !== operation) return
+  if (succeeded) operation.phase = 'logged_out'
+  else destructiveAccountOperation = null
+}
+
+function activateAccountSession() {
+  if (destructiveAccountOperation && destructiveAccountOperation.phase === 'logged_out') {
+    destructiveAccountOperation = null
+  }
 }
 
 function withTimeout(promise, ms, fallbackValue) {
@@ -976,6 +1016,7 @@ async function loginWechatAccount(options) {
   if (backup && (localBackupHasBusinessData(backup) || accountPlayerId)) {
     store.importBackup(mergeBackupData(localBackup, backup))
     wx.removeStorageSync(ACCOUNT_LOGGED_OUT_KEY)
+    activateAccountSession()
     invalidateCloudMutationAccountContext()
     cloudBootstrapComplete = true
     scheduleBusinessDataSync('sync recovered cloud backup failed')
@@ -991,6 +1032,7 @@ async function loginWechatAccount(options) {
       })
     }
     wx.removeStorageSync(ACCOUNT_LOGGED_OUT_KEY)
+    activateAccountSession()
     invalidateCloudMutationAccountContext()
     cloudBootstrapComplete = true
     return true
@@ -1411,6 +1453,7 @@ async function switchToTestAccount() {
     createdAt: Date.now()
   })
   wx.removeStorageSync(ACCOUNT_LOGGED_OUT_KEY)
+  activateAccountSession()
   invalidateCloudMutationAccountContext()
   resetCloudBootstrapState()
   clearStatsDataCache()
@@ -1435,11 +1478,14 @@ async function exitTestAccount() {
   resetCloudBootstrapState()
   clearStatsDataCache()
   invalidateCloudMutationAccountContext()
+  activateAccountSession()
   return store.getProfile()
 }
 
 function updateProfile(patch) {
+  const previousPlayerId = getCurrentPlayerId()
   const profile = store.updateProfile(patch)
+  if (profile.playerId !== previousPlayerId) invalidateCloudMutationAccountContext()
   if (cloudUtils.canUseCloud()) {
     cloudRepo.saveProfile(profile)
       .then(saved => {
@@ -1459,6 +1505,8 @@ async function logoutAccount() {
   const accountId = getCurrentPlayerId()
   wx.setStorageSync(ACCOUNT_LOGGED_OUT_KEY, true)
   invalidateCloudMutationAccountContext()
+  destructiveAccountOperation = { accountId, context: captureCloudMutationAccountContext(), phase: 'logged_out' }
+  if (!playerCardImportPending.clearAccount(accountId)) throw pendingImportCleanupError()
   socialCache.clearAccountCaches({ accountId })
   resetCloudBootstrapState()
   clearStatsDataCache()
@@ -1531,44 +1579,52 @@ async function importBackup(payload) {
 
 async function clearAllData() {
   requireCloudWriteAvailable()
-  const accountContext = captureCloudMutationAccountContext()
+  const destructiveOperation = beginAccountDestructiveOperation()
+  const accountContext = destructiveOperation.context
   const accountId = accountContext.accountId
-  if (!accountId) throw new Error('missing playerId')
-  const socialMutationId = createClientMutationId('clear_social', accountId)
-  let socialResult = null
-  for (let round = 0; round < 200; round += 1) {
-    socialResult = await socialService.clearMySocialData({ clientMutationId: socialMutationId })
-    if (!isCloudMutationAccountContextCurrent(accountContext)) throw staleAccountContextError()
-    if (!socialResult || typeof socialResult.completed !== 'boolean' ||
-      typeof socialResult.remainingStage !== 'string' || typeof socialResult.socialUserId !== 'string') {
-      throw new Error('invalid social clear response')
+  let succeeded = false
+  try {
+    if (!accountId) throw new Error('missing playerId')
+    const socialMutationId = createClientMutationId('clear_social', accountId)
+    let socialResult = null
+    for (let round = 0; round < 200; round += 1) {
+      socialResult = await socialService.clearMySocialData({ clientMutationId: socialMutationId })
+      if (!isCloudMutationAccountContextCurrent(accountContext)) throw staleAccountContextError()
+      if (!socialResult || typeof socialResult.completed !== 'boolean' ||
+        typeof socialResult.remainingStage !== 'string' || typeof socialResult.socialUserId !== 'string') {
+        throw new Error('invalid social clear response')
+      }
+      if (socialResult.completed) break
     }
-    if (socialResult.completed) break
-  }
-  if (!socialResult || !socialResult.completed) {
-    const error = new Error('SOCIAL_CLEAR_INCOMPLETE')
-    error.code = 'SOCIAL_CLEAR_INCOMPLETE'
-    throw error
-  }
+    if (!socialResult || !socialResult.completed) {
+      const error = new Error('SOCIAL_CLEAR_INCOMPLETE')
+      error.code = 'SOCIAL_CLEAR_INCOMPLETE'
+      throw error
+    }
 
-  const privateResult = await cloudDataApi.clearAllData({
-    playerId: accountId,
-    clientMutationId: createClientMutationId('clear_private', accountId)
-  })
-  if (!isCloudMutationAccountContextCurrent(accountContext)) throw staleAccountContextError()
-  if (!privateResult || privateResult.completed !== true) throw new Error('private clear did not complete')
+    const privateResult = await cloudDataApi.clearAllData({
+      playerId: accountId,
+      clientMutationId: createClientMutationId('clear_private', accountId)
+    })
+    if (!isCloudMutationAccountContextCurrent(accountContext)) throw staleAccountContextError()
+    if (!privateResult || privateResult.completed !== true) throw new Error('private clear did not complete')
 
-  clearStatsDataCache()
-  const result = store.clearAllData()
-  wx.setStorageSync(ACCOUNT_LOGGED_OUT_KEY, true)
-  const remainingOutbox = loadCloudMutationOutbox().filter(record => record && record.accountId !== accountId)
-  saveCloudMutationOutbox(remainingOutbox)
-  cloudMutationDrainEpoch += 1
-  delete cloudMutationDrainPromises[accountId]
-  resetCloudBootstrapState()
-  captureCloudMutationAccountContext()
-  socialCache.clearAccountCaches({ accountId, socialUserId: socialResult.socialUserId })
-  return result
+    if (!playerCardImportPending.clearAccount(accountId)) throw pendingImportCleanupError()
+    clearStatsDataCache()
+    const result = store.clearAllData()
+    wx.setStorageSync(ACCOUNT_LOGGED_OUT_KEY, true)
+    const remainingOutbox = loadCloudMutationOutbox().filter(record => record && record.accountId !== accountId)
+    saveCloudMutationOutbox(remainingOutbox)
+    cloudMutationDrainEpoch += 1
+    delete cloudMutationDrainPromises[accountId]
+    resetCloudBootstrapState()
+    captureCloudMutationAccountContext()
+    socialCache.clearAccountCaches({ accountId, socialUserId: socialResult.socialUserId })
+    succeeded = true
+    return result
+  } finally {
+    finishAccountDestructiveOperation(destructiveOperation, succeeded)
+  }
 }
 
 async function getSessionById(sessionId) {
@@ -1758,6 +1814,39 @@ function captureCloudMutationAccountContext() {
     cloudMutationAccountContextEpoch += 1
   }
   return { accountId, epoch: cloudMutationAccountContextEpoch }
+}
+
+function captureAccountContext() {
+  if (destructiveAccountOperation) throw accountDestructiveOperationError()
+  const context = captureCloudMutationAccountContext()
+  const token = Object.freeze({ accountId: context.accountId })
+  publicAccountContexts.set(token, context)
+  return token
+}
+
+function resolveAccountContext(token) {
+  if (!token) return captureCloudMutationAccountContext()
+  const context = publicAccountContexts.get(token)
+  if (!context) throw staleAccountContextError()
+  return context
+}
+
+function resolveRequiredAccountContext(token) {
+  if (!token) {
+    const error = new Error('account context is required')
+    error.code = 'ACCOUNT_CONTEXT_REQUIRED'
+    throw error
+  }
+  return resolveAccountContext(token)
+}
+
+function isAccountContextCurrent(token) {
+  const context = token && publicAccountContexts.get(token)
+  return !!context && isCloudMutationAccountContextCurrent(context)
+}
+
+function assertAccountContextCurrent(context) {
+  if (!isCloudMutationAccountContextCurrent(context)) throw staleAccountContextError()
 }
 
 function isCloudMutationAccountContextCurrent(context) {
@@ -1953,37 +2042,46 @@ function requirePlayerCardReceiptCloud() {
   }
 }
 
-async function getPlayerCardImportReceipt(shareId) {
+async function getPlayerCardImportReceipt(shareId, accountToken) {
   requirePlayerCardReceiptCloud()
+  const context = resolveRequiredAccountContext(accountToken)
+  assertAccountContextCurrent(context)
   const response = await cloudDataApi.getPlayerCardImportReceipt({
-    playerId: getCurrentPlayerId(),
+    playerId: context.accountId,
     shareId: String(shareId || '').trim()
   })
+  assertAccountContextCurrent(context)
   return response && response.receipt || null
 }
 
-async function beginPlayerCardImportReceipt(input) {
+async function beginPlayerCardImportReceipt(input, accountToken) {
   requirePlayerCardReceiptCloud()
+  const context = resolveRequiredAccountContext(accountToken)
+  assertAccountContextCurrent(context)
   const source = input || {}
   const shareId = String(source.shareId || '').trim()
   const response = await cloudDataApi.beginPlayerCardImportReceipt({
-    playerId: getCurrentPlayerId(),
+    playerId: context.accountId,
     clientMutationId: source.clientMutationId || createClientMutationId('begin_player_card_import_receipt', shareId),
     shareId,
     mode: source.mode,
     targetPlayerNoteId: source.targetPlayerNoteId
   })
+  assertAccountContextCurrent(context)
   return response && response.receipt || null
 }
 
-async function completePlayerCardImportReceipt(shareId, clientMutationId) {
+async function completePlayerCardImportReceipt(shareId, clientMutationId, accountToken) {
   requirePlayerCardReceiptCloud()
+  const context = resolveRequiredAccountContext(accountToken)
+  assertAccountContextCurrent(context)
   const targetShareId = String(shareId || '').trim()
   const response = await cloudDataApi.completePlayerCardImportReceipt({
-    playerId: getCurrentPlayerId(),
+    playerId: context.accountId,
     clientMutationId: clientMutationId || createClientMutationId('complete_player_card_import_receipt', targetShareId),
     shareId: targetShareId
   })
+  assertAccountContextCurrent(context)
   return response && response.receipt || null
 }
 
@@ -2007,19 +2105,22 @@ async function getPlayerNoteBattleHands(noteId) {
 
 async function createPlayerNote(payload, options) {
   const waitForCloud = !!(options && options.waitForCloud)
+  const accountContext = resolveAccountContext(options && options.accountContext)
+  assertAccountContextCurrent(accountContext)
   if (waitForCloud && (!cloudUtils.canUseCloud() || !canStartCloudTask())) {
     const error = new Error('cloud player note write required')
     error.code = 'CLOUD_PLAYER_NOTE_WRITE_REQUIRED'
     throw error
   }
   const result = await getLocalAdapter().createPlayerNote(payload || {})
+  assertAccountContextCurrent(accountContext)
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
-    const mutationPayload = { playerId: getCurrentPlayerId(), payload: result }
+    const mutationPayload = { playerId: accountContext.accountId, payload: result }
     const cloudTask = runAuthoritativeMutation('create_player_note', result._id, mutationPayload, clientMutationId =>
       cloudDataApi.createPlayerNote(Object.assign({}, mutationPayload, { clientMutationId }))).then(response => {
       if (response && response.playerNote) {
         reconcileCloudMutationResult({
-          accountId: getCurrentPlayerId(),
+          accountId: accountContext.accountId,
           action: 'create_player_note',
           targetId: result._id,
           payload: mutationPayload
@@ -2084,14 +2185,17 @@ async function detachFriendPlayerNote(friendUserId) {
 
 async function updatePlayerNote(noteId, patch, options) {
   const waitForCloud = !!(options && options.waitForCloud)
+  const accountContext = resolveAccountContext(options && options.accountContext)
+  assertAccountContextCurrent(accountContext)
   if (waitForCloud && (!cloudUtils.canUseCloud() || !canStartCloudTask())) {
     const error = new Error('cloud player note write required')
     error.code = 'CLOUD_PLAYER_NOTE_WRITE_REQUIRED'
     throw error
   }
   const result = await getLocalAdapter().updatePlayerNote(noteId, patch || {})
+  assertAccountContextCurrent(accountContext)
   if (cloudUtils.canUseCloud() && canStartCloudTask()) {
-    const mutationPayload = { playerId: getCurrentPlayerId(), noteId, patch: result }
+    const mutationPayload = { playerId: accountContext.accountId, noteId, patch: result }
     const cloudTask = runAuthoritativeMutation('update_player_note', noteId, mutationPayload, clientMutationId =>
       cloudDataApi.updatePlayerNote(Object.assign({}, mutationPayload, { clientMutationId }))).then(response => {
       if (response && response.playerNote) {
@@ -2675,6 +2779,8 @@ module.exports = {
   getActionsByHandId,
   getAppSettings,
   getCurrentPlayerId,
+  captureAccountContext,
+  isAccountContextCurrent,
   getCurrentProfile,
   isAccountLoggedOut,
   isTestAccountActive,

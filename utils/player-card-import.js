@@ -127,10 +127,26 @@ async function copyCardAvatar(avatarUrl, mutationId, adapters) {
   return { avatarUrl: fileId, avatarFileId: fileId }
 }
 
+async function deleteCopiedCardAvatar(avatar, adapters) {
+  const fileId = String(avatar && (avatar.avatarFileId || avatar.avatarUrl) || '').trim()
+  if (!fileId.startsWith('cloud://')) return false
+  const config = adapters || {}
+  const wxApi = typeof wx !== 'undefined' ? wx : {}
+  const deleteFile = config.deleteFile || wxApi.cloud && wxApi.cloud.deleteFile
+  if (typeof deleteFile !== 'function') return false
+  try {
+    await deleteFile({ fileList: [fileId] })
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
 module.exports = {
   normalizePlayerName,
   findDuplicateByName,
   buildCardOverwritePatch,
   copyCardAvatar,
+  deleteCopiedCardAvatar,
   __test: { requireHttpsUrl, safeCloudSegment }
 }

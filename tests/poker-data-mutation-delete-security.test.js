@@ -957,7 +957,7 @@ test('a stale attempt cannot prewrite after takeover or overwrite the active att
   assert.equal(secondBusinessWrites, 1)
 })
 
-test('an expired claim with prewritten evidence never starts a second business handler', async t => {
+test('an in-flight fenced business transaction serializes a retry without a second business write', async t => {
   const originalNow = Date.now
   let clock = 1_000
   Date.now = () => clock
@@ -972,12 +972,17 @@ test('an expired claim with prewritten evidence never starts a second business h
   await pause.started.promise
   clock += 31_000
 
-  const second = await loaded.main(clone(event))
-  assert.equal(second.code, 'POKER_DATA_ERROR')
-  assert.match(second.message, /recovery evidence is unresolved/)
+  let secondSettled = false
+  const secondPromise = loaded.main(clone(event)).finally(() => { secondSettled = true })
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(secondSettled, false)
   pause.release.resolve()
   const completed = await first
+  const second = await secondPromise
   assert.equal(completed.code, 0, JSON.stringify(completed))
+  assert.ok(['POKER_DATA_ERROR', 'MUTATION_IN_PROGRESS'].includes(second.code))
+  if (second.code === 'POKER_DATA_ERROR') assert.match(second.message, /claim changed|recovery evidence is unresolved/)
   assert.equal(loaded.tables.sessions[0].title, 'Single writer')
   assert.equal(loaded.operations.filter(row => row.operation === 'set' && row.collection === 'sessions').length, 1)
 })

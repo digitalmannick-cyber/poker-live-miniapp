@@ -57,6 +57,7 @@ For an account-clear target, the outbox records the user in `skippedTargetIds` a
 - `social_user_owners`: deterministic owner-hash `_id` reservation point-read only; permanently retained as an account-lifecycle tombstone and contains no raw OpenID
 - `social_hand_share_slots`: deterministic `_id` point-read only
 - `social_notification_state`: deterministic `_id` point-read only
+- `poker_data_account_lifecycle`: deterministic owner/player hash `_id` point-read only; server-authoritative generation fence retained across account clears
 
 ## Deterministic point reads with additional account-clear indexes
 

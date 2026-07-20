@@ -78,7 +78,8 @@ test('new import blocks double click, keeps one mutation, copies avatar, and cre
     assert.equal(loaded.calls.confirm[0].clientMutationId, page.data.importMutationId)
     assert.equal(loaded.calls.create[0].avatarUrl, 'cloud://receiver/copied.png')
     assert.equal(loaded.calls.create[0].avatarFileId, 'cloud://receiver/copied.png')
-    assert.deepEqual(loaded.calls.createOptions[0], { waitForCloud: true })
+    assert.equal(loaded.calls.createOptions[0].waitForCloud, true)
+    assert.equal(loaded.calls.createOptions[0].accountContext.accountId, 'PLAYER-A')
     assert.equal(Object.hasOwn(loaded.calls.create[0], 'importedCardShareId'), false)
     assert.equal(Object.hasOwn(loaded.calls.create[0], 'importedCardMode'), false)
     assert.deepEqual(loaded.calls.beginReceipt[0], {
@@ -122,7 +123,7 @@ test('a begun receipt survives a crash and resumes on another device without con
     const page = createInstance(first.definition)
     await page.onLoad({ shareId: 'pcs_1' })
     await page.importAsNew()
-    const pending = storage.get('playerCardImportPending:pcs_1')
+    const pending = storage.get('playerCardImportPending:v2:PLAYER-A:pcs_1')
     assert.equal(pending.serverConfirmed, true)
     assert.equal(pending.mode, 'new')
   } finally { first.restore() }
@@ -163,7 +164,8 @@ test('overwrite uses one whitelist update and preserves target identity and hand
       shareId: 'pcs_1', mode: 'overwrite', targetPlayerNoteId: 'existing',
       clientMutationId: page.data.importMutationId + ':begin-receipt'
     })
-    assert.deepEqual(loaded.calls.updateOptions[0], { waitForCloud: true })
+    assert.equal(loaded.calls.updateOptions[0].waitForCloud, true)
+    assert.equal(loaded.calls.updateOptions[0].accountContext.accountId, 'PLAYER-A')
     for (const forbidden of ['_id', 'playerId', 'sourceKind', 'battleHandIds', 'createdAt', 'lastSeenAt', 'lastVenue', 'lastStake']) {
       assert.equal(Object.hasOwn(loaded.calls.update[0].patch, forbidden), false)
     }
@@ -229,23 +231,25 @@ test('unload after server confirmation prevents avatar and local player writes',
     assert.deepEqual(loaded.calls.order, ['confirm'])
     assert.equal(loaded.calls.create.length, 0)
     assert.equal(page._patches.length, patchCount)
-    assert.equal(storage.get('playerCardImportPending:pcs_1').serverConfirmed, true)
+    assert.equal(storage.get('playerCardImportPending:v2:PLAYER-A:pcs_1').serverConfirmed, false)
   } finally { loaded.restore() }
 })
 
 test('unload while avatar copy is pending prevents stale state and local writes', async () => {
   const copy = deferred()
-  const loaded = loadPage({ copyAvatar: () => copy.promise })
+  const copyStarted = deferred()
+  const loaded = loadPage({ copyAvatar: () => { copyStarted.resolve(); return copy.promise } })
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ shareId: 'pcs_1' })
     const importing = page.importAsNew()
-    await Promise.resolve()
+    await copyStarted.promise
     page.onUnload()
     const patchCount = page._patches.length
     copy.resolve({ avatarUrl: 'cloud://receiver/copied.png', avatarFileId: 'cloud://receiver/copied.png' })
     await importing
     assert.equal(loaded.calls.create.length, 0)
+    assert.equal(loaded.calls.cleanupAvatar[0].avatarFileId, 'cloud://receiver/copied.png')
     assert.equal(page._patches.length, patchCount)
   } finally { loaded.restore() }
 })
@@ -267,7 +271,7 @@ test('an overwrite modal callback is stale after unload and creates no pending s
     loaded.calls.modals[0].success({ confirm: true })
     await Promise.resolve()
     assert.equal(loaded.calls.confirm.length, 0)
-    assert.equal(storage.has('playerCardImportPending:pcs_1'), false)
+    assert.equal(storage.has('playerCardImportPending:v2:PLAYER-A:pcs_1'), false)
     assert.equal(page._patches.length, patchCount)
   } finally { loaded.restore() }
 })
@@ -397,6 +401,205 @@ test('failed private receipt point read fails closed and cannot create a second 
   } finally { loaded.restore() }
 })
 
+test('account switch after confirmation, receipt, or avatar invalidates the import before the next write', async () => {
+  for (const stage of ['confirm', 'receipt', 'avatar']) {
+    const account = { id: 'PLAYER-A', epoch: 1 }
+    const switchAccount = () => { account.id = 'PLAYER-B'; account.epoch += 1 }
+    const loaded = loadPage({
+      account,
+      confirm: stage === 'confirm' ? () => { switchAccount(); return { imported: true } } : undefined,
+      beginReceipt: stage === 'receipt' ? input => { switchAccount(); return Object.assign({}, input, { status: 'pending' }) } : undefined,
+      copyAvatar: stage === 'avatar' ? () => { switchAccount(); return { avatarUrl: 'cloud://receiver/copied.png', avatarFileId: 'cloud://receiver/copied.png' } } : undefined
+    })
+    try {
+      const page = createInstance(loaded.definition)
+      await page.onLoad({ shareId: 'pcs_1' })
+      await page.importAsNew()
+      if (stage === 'confirm') assert.deepEqual(loaded.calls.order, ['confirm'])
+      if (stage === 'receipt') assert.deepEqual(loaded.calls.order, ['confirm', 'begin-receipt'])
+      if (stage === 'avatar') assert.deepEqual(loaded.calls.order, ['confirm', 'begin-receipt', 'copy-avatar'])
+      if (stage === 'avatar') assert.equal(loaded.calls.cleanupAvatar[0].avatarFileId, 'cloud://receiver/copied.png')
+      assert.equal(loaded.calls.create.length, 0, stage + ' switch must not write a player note')
+      assert.notEqual(page.data.status, 'imported')
+    } finally { loaded.restore() }
+  }
+})
+
+test('account ABA during confirmation invalidates the operation even when the final account id matches', async () => {
+  const account = { id: 'PLAYER-A', epoch: 1 }
+  const loaded = loadPage({
+    account,
+    confirm() {
+      account.id = 'PLAYER-B'; account.epoch += 1
+      account.id = 'PLAYER-A'; account.epoch += 1
+      return { imported: true }
+    }
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    await page.importAsNew()
+    assert.deepEqual(loaded.calls.order, ['confirm'])
+    assert.equal(loaded.calls.beginReceipt.length, 0)
+    assert.equal(loaded.calls.create.length, 0)
+    assert.equal(page.data.serverConfirmed, false)
+  } finally { loaded.restore() }
+})
+
+test('account switch while the player-note write resolves prevents receipt completion and stale UI backfill', async () => {
+  const account = { id: 'PLAYER-A', epoch: 1 }
+  const loaded = loadPage({
+    account,
+    createPlayerNote(payload) {
+      account.id = 'PLAYER-B'; account.epoch += 1
+      return Object.assign({}, payload)
+    }
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    await page.importAsNew()
+    assert.deepEqual(loaded.calls.order, ['confirm', 'begin-receipt', 'copy-avatar', 'create'])
+    assert.equal(loaded.calls.completeReceipt.length, 0)
+    assert.notEqual(page.data.status, 'imported')
+  } finally { loaded.restore() }
+})
+
+test('load receipt, share, and notes awaits clear stale loading state after an account switch', async () => {
+  for (const stage of ['receipt', 'share', 'notes']) {
+    const account = { id: 'PLAYER-A', epoch: 1 }
+    const switchAccount = () => { account.id = 'PLAYER-B'; account.epoch += 1 }
+    const loaded = loadPage({
+      account,
+      getReceipt: stage === 'receipt' ? () => { switchAccount(); return null } : undefined,
+      getShare: stage === 'share' ? () => { switchAccount(); return cardShare() } : undefined,
+      getPlayerNotes: stage === 'notes' ? () => { switchAccount(); return [] } : undefined
+    })
+    try {
+      const page = createInstance(loaded.definition)
+      await page.onLoad({ shareId: 'pcs_1' })
+      assert.notEqual(page.data.status, 'loading', stage)
+      assert.equal(page.data.importing, false, stage)
+      assert.equal(page.data.share, null, stage)
+      assert.equal(page.data.duplicate, null, stage)
+    } finally { loaded.restore() }
+  }
+})
+
+test('overwrite notes reread and update await cannot write or retain stale account UI', async () => {
+  for (const stage of ['reread', 'update']) {
+    const account = { id: 'PLAYER-A', epoch: 1 }
+    let noteReads = 0
+    const target = { _id: 'existing', sourceKind: 'library', name: '老张' }
+    const loaded = loadPage({
+      account,
+      getPlayerNotes() {
+        noteReads += 1
+        if (stage === 'reread' && noteReads === 2) { account.id = 'PLAYER-B'; account.epoch += 1 }
+        return [target]
+      },
+      updatePlayerNote(id, patch) {
+        if (stage === 'update') { account.id = 'PLAYER-B'; account.epoch += 1 }
+        return Object.assign({ _id: id }, patch)
+      }
+    })
+    try {
+      const page = createInstance(loaded.definition)
+      await page.onLoad({ shareId: 'pcs_1' })
+      await page.overwriteExisting()
+      if (stage === 'reread') assert.equal(loaded.calls.update.length, 0)
+      assert.equal(loaded.calls.completeReceipt.length, 0)
+      assert.equal(page.data.importing, false)
+      assert.equal(page.data.share, null, stage)
+      assert.equal(page.data.duplicate, null, stage)
+    } finally { loaded.restore() }
+  }
+})
+
+test('retry notes stale never deletes an avatar already referenced by a successful local overwrite', async () => {
+  const account = { id: 'PLAYER-A', epoch: 1 }
+  const target = { _id: 'existing', sourceKind: 'library', name: '老张', avatarUrl: '', avatarFileId: '' }
+  let noteReads = 0
+  let updates = 0
+  const loaded = loadPage({
+    account,
+    getPlayerNotes() {
+      noteReads += 1
+      if (noteReads === 3) { account.id = 'PLAYER-B'; account.epoch += 1 }
+      return [target]
+    },
+    updatePlayerNote(id, patch) {
+      updates += 1
+      Object.assign(target, patch)
+      if (updates === 1) throw new Error('cloud update failed after local success')
+      return Object.assign({ _id: id }, patch)
+    }
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    await page.overwriteExisting()
+    assert.equal(page.data.status, 'error')
+    assert.equal(target.avatarFileId, 'cloud://receiver/copied.png')
+    assert.equal(loaded.calls.cleanupAvatar.length, 0)
+
+    await page.overwriteExisting()
+    assert.equal(updates, 1, 'retry must become stale during its notes reread')
+    assert.equal(loaded.calls.cleanupAvatar.length, 0, 'locally referenced avatar must not be compensated')
+    assert.equal(target.avatarFileId, 'cloud://receiver/copied.png')
+  } finally { loaded.restore() }
+})
+
+test('complete receipt await cannot backfill imported state after switching accounts', async () => {
+  const account = { id: 'PLAYER-A', epoch: 1 }
+  const loaded = loadPage({
+    account,
+    completeReceipt() {
+      account.id = 'PLAYER-B'; account.epoch += 1
+      return { status: 'completed', targetPlayerNoteId: 'note-a' }
+    }
+  })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'pcs_1' })
+    await page.importAsNew()
+    assert.equal(page.data.importing, false)
+    assert.equal(page.data.share, null)
+    assert.notEqual(page.data.status, 'imported')
+  } finally { loaded.restore() }
+})
+
+test('onShow clears A-sensitive UI and safely reloads for B after A-to-B and ABA changes', async () => {
+  for (const aba of [false, true]) {
+    const account = { id: 'PLAYER-A', epoch: 1 }
+    const reload = deferred()
+    let shareReads = 0
+    const loaded = loadPage({
+      account,
+      getShare() {
+        shareReads += 1
+        return shareReads === 1 ? cardShare() : reload.promise
+      }
+    })
+    try {
+      const page = createInstance(loaded.definition)
+      await page.onLoad({ shareId: 'pcs_1' })
+      page.setData({ importing: true, copiedAvatar: { avatarFileId: 'cloud://a/private.png' } })
+      account.id = 'PLAYER-B'; account.epoch += 1
+      if (aba) { account.id = 'PLAYER-A'; account.epoch += 1 }
+      const showing = page.onShow()
+      assert.equal(page.data.share, null)
+      assert.equal(page.data.duplicate, null)
+      assert.equal(page.data.importing, false)
+      assert.equal(page.data.copiedAvatar, null)
+      reload.resolve(Object.assign(cardShare(), { sender: { nickname: 'reloaded' } }))
+      await showing
+      assert.equal(page.data.status, 'ready')
+      assert.equal(page.data.share.sender.nickname, 'reloaded')
+    } finally { loaded.restore() }
+  }
+})
+
 function cardShare() {
   return {
     shareId: 'pcs_1', sender: { nickname: '好友甲', avatarUrl: 'https://temp.example/sender.png', avatarText: '甲' },
@@ -415,49 +618,60 @@ function deferred() {
 function loadPage(options = {}) {
   let definition
   let mutationIndex = 0
-  const calls = { order: [], confirm: [], beginReceipt: [], completeReceipt: [], getReceipt: [], create: [], createOptions: [], update: [], updateOptions: [], getPlayerNotes: [], navigateTo: [], modals: [] }
+  const account = options.account || { id: 'PLAYER-A', epoch: 1 }
+  const calls = { order: [], confirm: [], beginReceipt: [], completeReceipt: [], getReceipt: [], create: [], createOptions: [], update: [], updateOptions: [], getPlayerNotes: [], cleanupAvatar: [], navigateTo: [], modals: [] }
   const originalLoad = Module._load
   Module._load = function (request, parent, isMain) {
     if (parent && /pages[\\/]social-card-preview[\\/]social-card-preview\.js$/.test(parent.filename || '')) {
       if (request === '../../services/social-service') return {
         async getPlayerCardShare() {
           if (options.getShareError) throw options.getShareError
-          return options.getShare === undefined ? cardShare() : await options.getShare
+          return options.getShare === undefined ? cardShare() : await (typeof options.getShare === 'function' ? options.getShare() : options.getShare)
         },
         async confirmPlayerCardImport(input) {
           calls.order.push('confirm')
           calls.confirm.push(input)
           if (options.confirmError) throw options.confirmError
-          return options.confirm === undefined ? { imported: true } : await options.confirm
+          return options.confirm === undefined ? { imported: true } : await (typeof options.confirm === 'function' ? options.confirm(input) : options.confirm)
         }
       }
       if (request === '../../services/data-service') return {
-        async getPlayerNotes(input) { calls.getPlayerNotes.push(input); return options.notes || [] },
-        async getPlayerCardImportReceipt(shareId) {
+        captureAccountContext() { return Object.freeze({ accountId: account.id, epoch: account.epoch }) },
+        isAccountContextCurrent(context) { return !!context && context.accountId === account.id && context.epoch === account.epoch },
+        async getPlayerNotes(input) {
+          calls.getPlayerNotes.push(input)
+          return options.getPlayerNotes ? options.getPlayerNotes(input) : (options.notes || [])
+        },
+        async getPlayerCardImportReceipt(shareId, context) {
           calls.getReceipt.push(shareId)
           if (options.receiptError) throw options.receiptError
+          if (options.getReceipt) return options.getReceipt(shareId, context)
           return options.receipt === undefined ? null : options.receipt
         },
-        async beginPlayerCardImportReceipt(input) {
+        async beginPlayerCardImportReceipt(input, context) {
           calls.order.push('begin-receipt'); calls.beginReceipt.push(input)
           if (options.beginReceiptError) throw options.beginReceiptError
+          if (options.beginReceipt) return options.beginReceipt(input, context)
           return Object.assign({}, input, { status: 'pending' })
         },
-        async completePlayerCardImportReceipt(input) {
+        async completePlayerCardImportReceipt(input, mutationId, context) {
           calls.order.push('complete-receipt'); calls.completeReceipt.push(input)
           if (options.completeReceiptError) throw options.completeReceiptError
+          if (options.completeReceipt) return options.completeReceipt(input, mutationId, context)
           return Object.assign({}, options.receipt || calls.beginReceipt[0], { status: 'completed' })
         },
         async createPlayerNote(payload, createOptions) {
           calls.order.push('create'); calls.create.push(payload); calls.createOptions.push(createOptions)
           const createError = typeof options.createError === 'function' ? options.createError(payload) : options.createError
           if (createError) throw createError
+          if (options.createPlayerNote) return options.createPlayerNote(payload, createOptions)
           return Object.assign({}, payload, { _id: payload._id || 'new-player' })
         },
         async updatePlayerNote(id, patch, updateOptions) {
           calls.order.push('update'); calls.update.push({ id, patch }); calls.updateOptions.push(updateOptions)
           const updateError = typeof options.updateError === 'function' ? options.updateError(id, patch) : options.updateError
           if (updateError) throw updateError
+          if (options.updatePlayerNote) return options.updatePlayerNote(id, patch, updateOptions)
           return Object.assign({ _id: id }, patch)
         }
       }
@@ -468,6 +682,10 @@ function loadPage(options = {}) {
             calls.order.push('copy-avatar')
             if (options.copyAvatar) return options.copyAvatar(url, mutationId)
             return { avatarUrl: 'cloud://receiver/copied.png', avatarFileId: 'cloud://receiver/copied.png' }
+          },
+          async deleteCopiedCardAvatar(avatar) {
+            calls.cleanupAvatar.push(avatar)
+            return true
           }
         })
       }

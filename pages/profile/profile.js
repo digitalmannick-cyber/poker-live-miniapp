@@ -520,10 +520,14 @@ Page({
       confirmColor: '#e60012',
       success: async res => {
         if (!res.confirm) return
-        await dataService.logoutAccount()
-        wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
-        wx.showToast({ title: '已退出', icon: 'success' })
-        this.refresh()
+        try {
+          await dataService.logoutAccount()
+          wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
+          wx.showToast({ title: '已退出', icon: 'success' })
+          this.refresh()
+        } catch (error) {
+          wx.showToast({ title: '未完全退出，请重试', icon: 'none' })
+        }
       }
     })
   },

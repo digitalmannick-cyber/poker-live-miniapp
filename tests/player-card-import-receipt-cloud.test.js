@@ -106,7 +106,11 @@ test('begin receipt creates one deterministic owner-scoped pending document and 
   const read = await loaded.pokerData.main({ action: 'get_player_card_import_receipt', playerId: 'WX-ME', shareId: 'share-1' })
   assert.deepEqual(read, { code: 0, data: { receipt: begun.data.receipt } })
   assert.doesNotMatch(JSON.stringify(read), /owner-a|ownerOpenId|WX-ME|_id|clientMutationId/)
-  assert.ok(loaded.transactionCalls.every(call => call.name === 'player_card_import_receipts'))
+  assert.ok(loaded.transactionCalls.some(call => call.name === 'poker_data_account_lifecycle'))
+  assert.ok(loaded.transactionCalls.every(call => [
+    'poker_data_account_lifecycle',
+    'player_card_import_receipts'
+  ].includes(call.name)))
 })
 
 test('same share retries are idempotent but changing mode or target conflicts', async () => {

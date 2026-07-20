@@ -24,7 +24,8 @@ test('deployment security manifest denies direct client reads and writes for eve
   const { SOCIAL_COLLECTIONS } = require('../cloudfunctions/poker_social/lib/repository')
   const expectedCollections = Array.from(new Set([
     ...Object.values(SOCIAL_COLLECTIONS),
-    'player_card_import_receipts'
+    'player_card_import_receipts',
+    'poker_data_account_lifecycle'
   ])).sort()
 
   assert.equal(rules.version, 1)
@@ -306,7 +307,8 @@ test('deployment index manifest preserves exact compound field order and array s
   assert.deepEqual(manifest.pointReadOnly, [
     'social_user_owners',
     'social_hand_share_slots',
-    'social_notification_state'
+    'social_notification_state',
+    'poker_data_account_lifecycle'
   ])
 
   const markdown = fs.readFileSync(path.join(socialRoot, 'database-indexes.md'), 'utf8')
@@ -332,7 +334,8 @@ test('repository deployment scope covers every Task 7 collection and account-cle
   const pointReadCollections = new Set(manifest.pointReadOnly || [])
   const deployedCollections = Array.from(new Set([
     ...Object.values(SOCIAL_COLLECTIONS),
-    'player_card_import_receipts'
+    'player_card_import_receipts',
+    'poker_data_account_lifecycle'
   ])).sort()
 
   for (const collection of deployedCollections) {
@@ -352,8 +355,11 @@ test('repository deployment scope covers every Task 7 collection and account-cle
     'social_notification_actors'
   ]
   assert.deepEqual(DETERMINISTIC_POINT_READ_COLLECTIONS, expectedDeterministicPointReads)
-  assert.deepEqual(manifest.deterministicPointReads, expectedDeterministicPointReads)
-  assert.ok((manifest.pointReadOnly || []).every(collection => expectedDeterministicPointReads.includes(collection)))
+  assert.deepEqual(manifest.deterministicPointReads, [
+    ...expectedDeterministicPointReads,
+    'poker_data_account_lifecycle'
+  ])
+  assert.ok((manifest.pointReadOnly || []).every(collection => manifest.deterministicPointReads.includes(collection)))
   const accountClearMethod = repositorySource.slice(
     repositorySource.indexOf('async listAccountClearBatch'),
     repositorySource.indexOf('async listAccountClearNotificationActors')

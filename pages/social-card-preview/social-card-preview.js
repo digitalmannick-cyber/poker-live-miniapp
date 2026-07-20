@@ -2,6 +2,7 @@ const socialService = require('../../services/social-service')
 const dataService = require('../../services/data-service')
 const socialMutation = require('../../utils/social-mutation')
 const importer = require('../../utils/player-card-import')
+const pendingStore = require('../../utils/player-card-import-pending')
 
 function safeDecode(value) {
   const source = String(value || '')
@@ -22,40 +23,15 @@ function errorMessage(error) {
   return String(error && (error.message || error.errMsg) || '暂时无法完成导入，请稍后重试。')
 }
 
-function pendingStorageKey(shareId) {
-  return 'playerCardImportPending:' + String(shareId || '')
-}
-
-function readPendingImport(shareId) {
-  if (typeof wx === 'undefined' || typeof wx.getStorageSync !== 'function') return null
-  const value = wx.getStorageSync(pendingStorageKey(shareId))
-  if (!value || value.shareId !== shareId || !value.mutationId) return null
-  return value
-}
-
-function writePendingImport(value) {
-  if (typeof wx === 'undefined' || typeof wx.setStorageSync !== 'function') return
-  wx.setStorageSync(pendingStorageKey(value && value.shareId), value)
-}
-
-function clearPendingImport(shareId) {
-  if (typeof wx === 'undefined' || typeof wx.removeStorageSync !== 'function') return
-  wx.removeStorageSync(pendingStorageKey(shareId))
-}
-
 function markPendingServerConfirmed(pending) {
-  const current = readPendingImport(pending && pending.shareId)
+  const current = pendingStore.read(pending && pending.accountId, pending && pending.shareId)
   if (current && current.mutationId !== pending.mutationId) return false
   pending.serverConfirmed = true
-  writePendingImport(pending)
-  return true
+  return pendingStore.write(pending)
 }
 
-function clearMatchingPendingImport(shareId, mutationId) {
-  const current = readPendingImport(shareId)
-  if (current && current.mutationId !== mutationId) return false
-  clearPendingImport(shareId)
-  return true
+function clearMatchingPendingImport(accountId, shareId, mutationId) {
+  return pendingStore.clear(accountId, shareId, mutationId)
 }
 
 function stableImportedPlayerId(shareId) {
@@ -63,6 +39,16 @@ function stableImportedPlayerId(shareId) {
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
     .slice(0, 96)
   return 'player_note_card_' + (token || Date.now())
+}
+
+function noteReferencesCopiedAvatar(note, copiedAvatar) {
+  const copiedFileIds = [copiedAvatar && copiedAvatar.avatarFileId, copiedAvatar && copiedAvatar.avatarUrl]
+    .map(value => String(value || '').trim())
+    .filter(Boolean)
+  if (!copiedFileIds.length) return false
+  return [note && note.avatarFileId, note && note.avatarUrl]
+    .map(value => String(value || '').trim())
+    .some(value => !!value && copiedFileIds.indexOf(value) > -1)
 }
 
 Page({
@@ -91,7 +77,26 @@ Page({
     this._cardPreviewRequestId = Number(this._cardPreviewRequestId) || 0
     this._cardPreviewOperationSeq = Number(this._cardPreviewOperationSeq) || 0
     const shareId = safeDecode(options && options.shareId)
-    const pending = readPendingImport(shareId)
+    let accountContext
+    try {
+      accountContext = dataService.captureAccountContext()
+    } catch (error) {
+      this.setData({
+        shareId,
+        share: null,
+        duplicate: null,
+        status: 'unavailable',
+        errorMessage: '',
+        importing: false,
+        importMutationId: '',
+        copiedAvatar: null
+      })
+      return
+    }
+    this._cardPreviewAccountContext = accountContext
+    const accountId = String(accountContext && accountContext.accountId || '')
+    pendingStore.clearLegacy(shareId)
+    const pending = pendingStore.read(accountId, shareId)
     const importMutationId = pending && pending.mutationId || socialMutation.createMutationId('import_player_card')
     this.setData({
       shareId,
@@ -121,14 +126,101 @@ Page({
     this._cardPreviewOperationSeq = (this._cardPreviewOperationSeq || 0) + 1
   },
 
-  isCurrentOperation(sequence, shareId) {
+  async onShow() {
+    if (!this._cardPreviewAttached) return
+    const previousContext = this._cardPreviewAccountContext
+    if (previousContext && dataService.isAccountContextCurrent(previousContext)) return
+    this.retireStaleAccountContext(previousContext)
+    let accountContext
+    try {
+      accountContext = dataService.captureAccountContext()
+    } catch (error) {
+      return
+    }
+    const accountId = String(accountContext && accountContext.accountId || '')
+    const shareId = String(this.data.shareId || '')
+    if (!accountId || !shareId) return
+    this._cardPreviewAccountContext = accountContext
+    pendingStore.clearLegacy(shareId)
+    const pending = pendingStore.read(accountId, shareId)
+    this.setData({
+      share: null,
+      duplicate: null,
+      status: 'loading',
+      errorMessage: '',
+      importing: false,
+      importMode: String(pending && pending.mode || ''),
+      importMutationId: pending && pending.mutationId || socialMutation.createMutationId('import_player_card'),
+      serverConfirmed: !!(pending && pending.serverConfirmed),
+      copiedAvatar: null,
+      createdPlayerNoteId: String(pending && pending.createdPlayerNoteId || ''),
+      importedPlayerId: '',
+      receiptStatus: '',
+      receiptMode: '',
+      receiptTargetPlayerNoteId: '',
+      overwriteTargetMissing: false,
+      receiptCheckFailed: false
+    })
+    return this.loadShare()
+  },
+
+  cleanupCopiedAvatar(copiedAvatar) {
+    if (!copiedAvatar || typeof importer.deleteCopiedCardAvatar !== 'function') return
+    Promise.resolve(importer.deleteCopiedCardAvatar(copiedAvatar)).catch(() => false)
+  },
+
+  retireStaleAccountContext(accountContext) {
+    if (!accountContext || accountContext !== this._cardPreviewAccountContext || dataService.isAccountContextCurrent(accountContext)) return false
+    this._cardPreviewRequestId = (this._cardPreviewRequestId || 0) + 1
+    this._cardPreviewOperationSeq = (this._cardPreviewOperationSeq || 0) + 1
+    this.setData({
+      share: null,
+      duplicate: null,
+      status: 'unavailable',
+      errorMessage: '',
+      importing: false,
+      importMode: '',
+      importMutationId: '',
+      serverConfirmed: false,
+      copiedAvatar: null,
+      createdPlayerNoteId: '',
+      importedPlayerId: '',
+      receiptStatus: '',
+      receiptMode: '',
+      receiptTargetPlayerNoteId: '',
+      overwriteTargetMissing: false,
+      receiptCheckFailed: false
+    })
+    return true
+  },
+
+  isCurrentOperation(sequence, shareId, accountContext) {
     return !!this._cardPreviewAttached &&
       sequence === this._cardPreviewOperationSeq &&
-      String(this.data.shareId || '') === String(shareId || '')
+      String(this.data.shareId || '') === String(shareId || '') &&
+      (!accountContext || accountContext === this._cardPreviewAccountContext) &&
+      dataService.isAccountContextCurrent(accountContext || this._cardPreviewAccountContext)
+  },
+
+  continueCurrentOperation(sequence, shareId, accountContext, copiedAvatar) {
+    if (this.isCurrentOperation(sequence, shareId, accountContext)) return true
+    this.cleanupCopiedAvatar(copiedAvatar)
+    this.retireStaleAccountContext(accountContext)
+    return false
+  },
+
+  isCurrentRequest(requestId, accountContext) {
+    return !!this._cardPreviewAttached &&
+      requestId === this._cardPreviewRequestId &&
+      accountContext === this._cardPreviewAccountContext &&
+      dataService.isAccountContextCurrent(accountContext)
   },
 
   async loadShare() {
     const shareId = String(this.data.shareId || '')
+    const accountContext = this._cardPreviewAccountContext
+    const accountId = String(accountContext && accountContext.accountId || '')
+    if (!this._cardPreviewAttached || !dataService.isAccountContextCurrent(accountContext)) return
     this._cardPreviewOperationSeq = (this._cardPreviewOperationSeq || 0) + 1
     const requestId = (this._cardPreviewRequestId || 0) + 1
     this._cardPreviewRequestId = requestId
@@ -140,9 +232,12 @@ Page({
     try {
       let receipt
       try {
-        receipt = await dataService.getPlayerCardImportReceipt(shareId)
+        receipt = await dataService.getPlayerCardImportReceipt(shareId, accountContext)
       } catch (error) {
-        if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
+        if (!this.isCurrentRequest(requestId, accountContext)) {
+          this.retireStaleAccountContext(accountContext)
+          return
+        }
         this.setData({
           status: 'error',
           receiptCheckFailed: true,
@@ -150,10 +245,16 @@ Page({
         })
         return
       }
-      if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
+      if (!this.isCurrentRequest(requestId, accountContext)) {
+        this.retireStaleAccountContext(accountContext)
+        return
+      }
       const share = await socialService.getPlayerCardShare(shareId)
-      if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
-      const pending = readPendingImport(shareId)
+      if (!this.isCurrentRequest(requestId, accountContext)) {
+        this.retireStaleAccountContext(accountContext)
+        return
+      }
+      const pending = pendingStore.read(accountId, shareId)
       if (receipt && receipt.status === 'completed') {
         this.setData({
           share,
@@ -167,7 +268,10 @@ Page({
         return
       }
       const notes = await dataService.getPlayerNotes({ sourceKind: 'library' })
-      if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
+      if (!this.isCurrentRequest(requestId, accountContext)) {
+        this.retireStaleAccountContext(accountContext)
+        return
+      }
       const nameDuplicate = importer.findDuplicateByName(notes, share && share.card && share.card.name)
       let duplicate = nameDuplicate
       let overwriteTargetMissing = false
@@ -211,7 +315,10 @@ Page({
           : (needsResume ? '上次导入尚未写入玩家库，请继续完成。' : '')
       })
     } catch (error) {
-      if (!this._cardPreviewAttached || requestId !== this._cardPreviewRequestId) return
+      if (!this.isCurrentRequest(requestId, accountContext)) {
+        this.retireStaleAccountContext(accountContext)
+        return
+      }
       this.setData({
         status: unavailableError(error) ? 'unavailable' : 'error',
         errorMessage: errorMessage(error)
@@ -254,6 +361,9 @@ Page({
     if (this.data.receiptStatus === 'pending' && this.data.receiptMode !== mode) return
     if (mode === 'overwrite' && !this.data.duplicate) return
     const shareId = String(this.data.share.shareId || this.data.shareId)
+    const accountContext = this._cardPreviewAccountContext
+    const accountId = String(accountContext && accountContext.accountId || '')
+    if (!this._cardPreviewAttached || !dataService.isAccountContextCurrent(accountContext) || !accountId) return
     const operationSequence = (this._cardPreviewOperationSeq || 0) + 1
     this._cardPreviewOperationSeq = operationSequence
     const createdPlayerNoteId = mode === 'new'
@@ -263,6 +373,8 @@ Page({
       ? String(this.data.receiptTargetPlayerNoteId || this.data.duplicate._id || '')
       : ''
     const pending = {
+      version: 2,
+      accountId,
       shareId: this.data.share.shareId || this.data.shareId,
       mutationId: this.data.importMutationId,
       mode,
@@ -270,7 +382,10 @@ Page({
       createdPlayerNoteId,
       overwriteTargetId
     }
-    writePendingImport(pending)
+    if (!pendingStore.write(pending)) {
+      this.setData({ status: 'error', errorMessage: errorMessage() })
+      return
+    }
     this.setData({ importing: true, importMode: mode, status: this.data.serverConfirmed ? 'importing' : 'confirming', errorMessage: '' })
     try {
       if (!this.data.serverConfirmed) {
@@ -278,11 +393,11 @@ Page({
           shareId: this.data.share.shareId || this.data.shareId,
           clientMutationId: this.data.importMutationId
         })
-        markPendingServerConfirmed(pending)
-        if (!this.isCurrentOperation(operationSequence, shareId)) return
+        if (!this.continueCurrentOperation(operationSequence, shareId, accountContext)) return
+        if (!markPendingServerConfirmed(pending)) throw new Error()
         this.setData({ serverConfirmed: true, status: 'importing', createdPlayerNoteId })
       }
-      if (!this.isCurrentOperation(operationSequence, shareId)) return
+      if (!this.continueCurrentOperation(operationSequence, shareId, accountContext)) return
       if (this.data.receiptStatus !== 'pending') {
         const targetPlayerNoteId = mode === 'overwrite' ? overwriteTargetId : createdPlayerNoteId
         const begunReceipt = await dataService.beginPlayerCardImportReceipt({
@@ -290,8 +405,8 @@ Page({
           mode,
           targetPlayerNoteId,
           clientMutationId: this.data.importMutationId + ':begin-receipt'
-        })
-        if (!this.isCurrentOperation(operationSequence, shareId)) return
+        }, accountContext)
+        if (!this.continueCurrentOperation(operationSequence, shareId, accountContext)) return
         if (!begunReceipt || begunReceipt.status !== 'pending') throw new Error('导入回执创建失败，请重试。')
         this.setData({
           receiptStatus: 'pending',
@@ -299,43 +414,59 @@ Page({
           receiptTargetPlayerNoteId: String(begunReceipt.targetPlayerNoteId || '')
         })
       }
-      if (!this.isCurrentOperation(operationSequence, shareId)) return
+      if (!this.continueCurrentOperation(operationSequence, shareId, accountContext)) return
       let copiedAvatar = this.data.copiedAvatar
       if (!copiedAvatar) {
         copiedAvatar = await importer.copyCardAvatar(
           this.data.share.card.avatarUrl,
           this.data.importMutationId
         )
-        if (!this.isCurrentOperation(operationSequence, shareId)) return
+        if (!this.continueCurrentOperation(operationSequence, shareId, accountContext, copiedAvatar)) return
         this.setData({ copiedAvatar })
       }
-      if (!this.isCurrentOperation(operationSequence, shareId)) return
+      if (!this.continueCurrentOperation(operationSequence, shareId, accountContext, copiedAvatar)) return
       const patch = importer.buildCardOverwritePatch(this.data.share.card, copiedAvatar)
       let saved
       if (mode === 'overwrite') {
         const targetId = String(pending.overwriteTargetId || '')
-        const currentTarget = (await dataService.getPlayerNotes({ sourceKind: 'library', includeArchived: true })).find(item => {
+        const notes = await dataService.getPlayerNotes({ sourceKind: 'library', includeArchived: true })
+        const currentTarget = (Array.isArray(notes) ? notes : []).find(item => {
           return item && item._id === targetId && item.sourceKind === 'library' && item.archived !== true
         })
-        if (!this.isCurrentOperation(operationSequence, shareId)) return
+        const avatarReferencedLocally = noteReferencesCopiedAvatar(currentTarget, copiedAvatar)
+        if (!this.continueCurrentOperation(
+          operationSequence,
+          shareId,
+          accountContext,
+          avatarReferencedLocally ? null : copiedAvatar
+        )) return
         if (!currentTarget) {
           const error = new Error('原覆盖目标已不存在或已归档，无法继续覆盖。')
           error.code = 'OVERWRITE_TARGET_MISSING'
           throw error
         }
-        saved = await dataService.updatePlayerNote(targetId, patch, { waitForCloud: true })
+        if (!this.continueCurrentOperation(
+          operationSequence,
+          shareId,
+          accountContext,
+          avatarReferencedLocally ? null : copiedAvatar
+        )) return
+        saved = await dataService.updatePlayerNote(targetId, patch, { waitForCloud: true, accountContext })
       } else {
-        saved = await dataService.createPlayerNote(Object.assign({ _id: createdPlayerNoteId }, patch), { waitForCloud: true })
+        if (!this.continueCurrentOperation(operationSequence, shareId, accountContext, copiedAvatar)) return
+        saved = await dataService.createPlayerNote(Object.assign({ _id: createdPlayerNoteId }, patch), { waitForCloud: true, accountContext })
       }
+      if (!this.continueCurrentOperation(operationSequence, shareId, accountContext)) return
       if (!saved || !saved._id) throw new Error('玩家保存失败，请重试。')
-      if (!this.isCurrentOperation(operationSequence, shareId)) return
+      if (!this.continueCurrentOperation(operationSequence, shareId, accountContext)) return
       const completedReceipt = await dataService.completePlayerCardImportReceipt(
         shareId,
-        this.data.importMutationId + ':complete-receipt'
+        this.data.importMutationId + ':complete-receipt',
+        accountContext
       )
-      if (!this.isCurrentOperation(operationSequence, shareId)) return
+      if (!this.continueCurrentOperation(operationSequence, shareId, accountContext)) return
       if (!completedReceipt || completedReceipt.status !== 'completed') throw new Error('导入回执完成失败，请重试。')
-      clearMatchingPendingImport(pending.shareId, pending.mutationId)
+      clearMatchingPendingImport(accountId, pending.shareId, pending.mutationId)
       this.setData({
         importing: false,
         status: 'imported',
@@ -344,8 +475,8 @@ Page({
         errorMessage: ''
       })
     } catch (error) {
-      if (!this.isCurrentOperation(operationSequence, shareId)) return
-      if (unavailableError(error) && !this.data.serverConfirmed) clearPendingImport(pending.shareId)
+      if (!this.continueCurrentOperation(operationSequence, shareId, accountContext)) return
+      if (unavailableError(error) && !this.data.serverConfirmed) pendingStore.clear(accountId, pending.shareId, pending.mutationId)
       this.setData({
         importing: false,
         status: String(error && error.code || '') === 'OVERWRITE_TARGET_MISSING' ? 'ready' : (unavailableError(error) ? 'unavailable' : 'error'),

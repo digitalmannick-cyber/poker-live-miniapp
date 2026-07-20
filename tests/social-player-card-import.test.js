@@ -99,3 +99,17 @@ test('unsafe avatar sources and failed copies never become stored avatar values'
     uploadFile() {}
   }), error => error.code === 'CARD_AVATAR_COPY_FAILED')
 })
+
+test('stale copied avatar cleanup deletes only a receiver cloud file and suppresses diagnostics', async () => {
+  const calls = []
+  assert.equal(await importer.deleteCopiedCardAvatar({ avatarFileId: 'cloud://receiver/copied.png' }, {
+    async deleteFile(input) { calls.push(input); return { fileList: [] } }
+  }), true)
+  assert.deepEqual(calls, [{ fileList: ['cloud://receiver/copied.png'] }])
+  assert.equal(await importer.deleteCopiedCardAvatar({ avatarFileId: 'https://temp.example/a.png' }, {
+    async deleteFile() { throw new Error('must not run') }
+  }), false)
+  assert.equal(await importer.deleteCopiedCardAvatar({ avatarFileId: 'cloud://receiver/fail.png' }, {
+    async deleteFile() { throw new Error('private diagnostic') }
+  }), false)
+})

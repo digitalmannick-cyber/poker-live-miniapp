@@ -260,7 +260,8 @@
   "pointReadOnly": [
     "social_user_owners",
     "social_hand_share_slots",
-    "social_notification_state"
+    "social_notification_state",
+    "poker_data_account_lifecycle"
   ],
   "deterministicPointReads": [
     "social_user_owners",
@@ -269,6 +270,7 @@
     "social_likes",
     "social_notification_state",
     "social_notification_heads",
-    "social_notification_actors"
+    "social_notification_actors",
+    "poker_data_account_lifecycle"
   ]
 }
