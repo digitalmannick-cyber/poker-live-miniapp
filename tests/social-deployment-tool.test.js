@@ -253,6 +253,30 @@ test('staged smoke parses the real tcb data wrapper and rejects misleading failu
   assert.notEqual(wrongPayload.status, 0)
 })
 
+test('PowerShell JSON extraction skips bracketed function deployment progress', () => {
+  const command = String.raw`
+$source = Get-Content -LiteralPath $env:SOCIAL_DEPLOY_SCRIPT -Raw
+$tokens = $null
+$errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+$definition = $ast.Find({
+  param($node)
+  $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-JsonFromOutput'
+}, $true)
+if (-not $definition) { throw 'JSON extraction function not found' }
+Invoke-Expression $definition.Extent.Text
+$text = '[poker_social] deploy via COS' + [Environment]::NewLine + '{"data":{"FunctionName":"poker_social"}}' + [Environment]::NewLine + '- deploying...'
+$result = Get-JsonFromOutput $text
+if ($result.data.FunctionName -ne 'poker_social') { throw 'wrong JSON payload' }
+`
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', command], {
+    cwd: root,
+    env: Object.assign({}, process.env, { SOCIAL_DEPLOY_SCRIPT: path.join(root, 'tools', 'social-deploy.ps1') }),
+    encoding: 'utf8'
+  })
+  assert.equal(result.status, 0, result.stderr)
+})
+
 test('emergency disable locks before reading the replace-style environment snapshot', () => {
   const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
   const disableBranch = source.indexOf('if ($DisableAdminModeration)')

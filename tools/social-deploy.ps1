@@ -33,17 +33,18 @@ function Add-SensitiveValue {
 
 function Get-JsonFromOutput {
   param([string]$Text)
-  $objectStart = $Text.IndexOf('{')
-  $arrayStart = $Text.IndexOf('[')
-  if ($arrayStart -ge 0 -and ($objectStart -lt 0 -or $arrayStart -lt $objectStart)) {
-    $start = $arrayStart
-    $end = $Text.LastIndexOf(']')
-  } else {
-    $start = $objectStart
-    $end = $Text.LastIndexOf('}')
+  foreach ($match in [regex]::Matches($Text, '(?m)^[ \t]*([\{\[])')) {
+    $opener = [string]$match.Groups[1].Value
+    $start = $match.Groups[1].Index
+    $end = if ($opener -eq '[') { $Text.LastIndexOf(']') } else { $Text.LastIndexOf('}') }
+    if ($end -le $start) { continue }
+    try {
+      return ($Text.Substring($start, $end - $start + 1) | ConvertFrom-Json)
+    } catch {
+      # CloudBase emits progress lines such as [poker_social] before its JSON body.
+    }
   }
-  if ($start -lt 0 -or $end -le $start) { throw 'CloudBase CLI did not return JSON' }
-  return ($Text.Substring($start, $end - $start + 1) | ConvertFrom-Json)
+  throw 'CloudBase CLI did not return valid JSON'
 }
 
 function ConvertTo-WindowsProcessArgument {
