@@ -89,7 +89,7 @@ test('deployment never accepts secrets as parameters and never contains destruct
 test('administrator capability is enabled only after disabled staging and database verification', () => {
   const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
   const disabledStage = source.indexOf("$stagedEnvironment.Remove('SOCIAL_ADMIN_OPENIDS')")
-  const permissionVerify = source.indexOf('$postPermissions =', disabledStage)
+  const permissionVerify = source.indexOf('$postPermissionMap = Get-StableCollectionPermissionMap', disabledStage)
   const indexVerify = source.indexOf("Post-deploy index verification failed", permissionVerify)
   const stagedDeploy = source.indexOf('$stagedCheck = Deploy-AndWaitFunctionEnvironment', indexVerify)
   const enabledDeploy = source.indexOf('$enabledCheck = Deploy-AndWaitFunctionEnvironment', stagedDeploy)
