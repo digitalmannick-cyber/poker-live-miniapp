@@ -229,12 +229,17 @@ function Test-RemoteIndexCompatible {
 }
 
 function New-IndexSmokeCommand {
-  param([object]$PlannedIndex, [string]$RemoteIndexName)
+  param([object]$PlannedIndex, [object]$RemoteIndexHint)
+  $hint = $RemoteIndexHint
+  if ($null -eq $hint -or ([string]$hint).Length -eq 0) {
+    $hint = [ordered]@{}
+    foreach ($field in @($PlannedIndex.fields)) { $hint[[string]$field.name] = [int]$field.direction }
+  }
   $command = [ordered]@{
     find = $PlannedIndex.collection
     filter = @{}
     projection = @{ _id = 1 }
-    hint = $RemoteIndexName
+    hint = $hint
     limit = 1
   } | ConvertTo-Json -Depth 10 -Compress
   return @{
@@ -552,7 +557,7 @@ $permissionDrift = @($plan.managedCollections | Where-Object {
 })
 $missingIndexes = @()
 $indexesByCollection = $plan.indexes | Group-Object collection
-$plannedIndexSmokeCommands = @($plan.indexes | ForEach-Object { New-IndexSmokeCommand $_ ([string]$_.name) })
+$plannedIndexSmokeCommands = @($plan.indexes | ForEach-Object { New-IndexSmokeCommand $_ $null })
 $plannedIndexNamesVerified = $false
 if ($missingCollections.Count -eq 0) {
   try {
