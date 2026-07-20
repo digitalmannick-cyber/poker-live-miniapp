@@ -243,6 +243,47 @@ test('CloudBase repository persists a profile and finds it by owner identity', a
   })
 })
 
+test('CloudBase repository uses the real transaction API shape and returns the callback value', async () => {
+  const records = new Map()
+  const database = {
+    collection(name) {
+      return {
+        doc(id) {
+          return { name, id }
+        }
+      }
+    },
+    async runTransaction(callback) {
+      const transaction = {
+        async get(ref) {
+          const value = records.get(ref.name + '/' + ref.id)
+          return { data: () => value || null }
+        },
+        async set(ref, data) {
+          records.set(ref.name + '/' + ref.id, Object.assign({}, data))
+        },
+        async delete(ref) {
+          records.delete(ref.name + '/' + ref.id)
+        }
+      }
+      assert.equal(transaction.collection, undefined)
+      await callback(transaction)
+    }
+  }
+  const { createCloudSocialRepository } = require('../cloudfunctions/poker_social/lib/repository')
+  const repository = createCloudSocialRepository(database)
+
+  const result = await repository.runTransaction(async store => {
+    assert.equal(await store.get('social_users', 'su_1'), null)
+    await store.set('social_users', 'su_1', { nickname: 'Alice' })
+    assert.deepEqual(await store.get('social_users', 'su_1'), { _id: 'su_1', nickname: 'Alice' })
+    return { socialUserId: 'su_1' }
+  })
+
+  assert.deepEqual(result, { socialUserId: 'su_1' })
+  assert.deepEqual(records.get('social_users/su_1'), { nickname: 'Alice' })
+})
+
 test('uninitialized profile returns the stable public initialization error', async () => {
   const { createSocialApp } = require('../cloudfunctions/poker_social/app')
   const app = createSocialApp({

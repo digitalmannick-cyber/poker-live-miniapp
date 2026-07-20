@@ -126,6 +126,11 @@ function createCloudSocialRepository(database) {
     const store = {
     async get(collection, id) {
       try {
+        if (transactionMode) {
+          const snapshot = await client.get(database.collection(collection).doc(id))
+          const data = snapshot && typeof snapshot.data === 'function' ? snapshot.data() : snapshot && snapshot.data
+          return data ? Object.assign({}, data, { _id: id }) : null
+        }
         const response = await client.collection(collection).doc(id).get()
         return response && response.data || null
       } catch (error) {
@@ -346,12 +351,14 @@ function createCloudSocialRepository(database) {
       const record = Object.assign({}, value, { _id: id })
       const data = Object.assign({}, record)
       delete data._id
-      await client.collection(collection).doc(id).set({ data })
+      if (transactionMode) await client.set(database.collection(collection).doc(id), data)
+      else await client.collection(collection).doc(id).set({ data })
       return record
     },
 
     async remove(collection, id) {
-      await client.collection(collection).doc(id).remove()
+      if (transactionMode) await client.delete(database.collection(collection).doc(id))
+      else await client.collection(collection).doc(id).remove()
       return true
     },
 
@@ -502,7 +509,11 @@ function createCloudSocialRepository(database) {
   const store = createStore(database)
   async function runTransaction(callback) {
     if (typeof database.runTransaction !== 'function') throw new Error('cloud database transactions unavailable')
-    return database.runTransaction(transaction => callback(createStore(transaction, true)))
+    let result
+    await database.runTransaction(async transaction => {
+      result = await callback(createStore(transaction, true))
+    })
+    return result
   }
   return Object.assign(store, {
     runTransaction,
