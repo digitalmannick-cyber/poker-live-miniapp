@@ -18,6 +18,64 @@ test('player tab keeps the library list and exposes the friends / library hierar
   assert.match(friendHubWxml, /玩家类型/)
   assert.match(friendHubWxml, /Leak/)
   assert.match(friendHubWxml, /Note/)
+  assert.match(pageWxml, /profile-status="\{\{socialProfileStatus\}\}"/)
+  assert.match(pageWxml, /bindretrysocialprofile="retrySocialProfile"/)
+  assert.match(friendHubWxml, /社交资料同步失败，请检查网络后重试/)
+})
+
+test('player page exposes a retryable first-social-profile failure and recovers in place', async () => {
+  let pageDefinition = null
+  let syncCalls = 0
+  const originalLoad = Module._load
+  Module._load = function load(request, parent, isMain) {
+    if (parent && /pages[\\/]player-notes[\\/]player-notes\.js$/.test(parent.filename || '')) {
+      if (request === '../../services/data-service') return {
+        isAccountLoggedOut() { return false },
+        getCurrentPlayerId() { return 'WX-RETRY1' },
+        getCurrentProfile() { return { playerId: 'WX-RETRY1', name: '重试玩家' } },
+        refreshOnboardingGuideContext() {}
+      }
+      if (request === '../../utils/social-profile-sync') return {
+        async syncSocialProfile() {
+          syncCalls += 1
+          if (syncCalls === 1) throw Object.assign(new Error('temporary network failure'), { code: 'NETWORK_ERROR' })
+          return { socialUserId: 'su-recovered' }
+        }
+      }
+      if (request === '../../utils/social-unread-state') return {
+        setAccountKey() {}, subscribe() { return () => {} }, refresh() { return Promise.resolve() }
+      }
+      if (request === '../../utils/social-cache') return { clearAccountCaches() {}, registerAccountIdentity() {} }
+      if (request === '../../utils/tab-bar') return { syncCustomTabBar() {} }
+      if (request === '../../utils/player-avatar-cache') return { getAvatarDisplayUrl() { return '' }, warmPlayerAvatars() {} }
+      if (request === '../../utils/onboarding-guide') return { getStepForRoute() { return null }, advanceGuide() { return { done: true } }, navigateToStep() { return false }, dismissGuide() {} }
+    }
+    return originalLoad.call(this, request, parent, isMain)
+  }
+  global.Page = config => { pageDefinition = config }
+  const pagePath = require.resolve('../pages/player-notes/player-notes')
+  delete require.cache[pagePath]
+  try {
+    require(pagePath)
+  } finally {
+    Module._load = originalLoad
+    delete global.Page
+    delete require.cache[pagePath]
+  }
+
+  const instance = {
+    data: Object.assign({}, pageDefinition.data),
+    setData(patch) { Object.assign(this.data, patch) },
+    selectComponent() { return null }
+  }
+  Object.assign(instance, pageDefinition)
+  await instance.onLoad()
+  assert.equal(instance.data.socialProfileStatus, 'error')
+  assert.equal(instance.data.socialUserId, '')
+  await instance.retrySocialProfile()
+  assert.equal(instance.data.socialProfileStatus, 'ready')
+  assert.equal(instance.data.socialUserId, 'su-recovered')
+  assert.equal(syncCalls, 2)
 })
 
 test('friend hub merges an accepted friend snapshot with only the viewer local player note', async () => {

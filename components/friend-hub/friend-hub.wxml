@@ -5,7 +5,12 @@
     <view class="friend-subnav-item {{activeSection === 'ranking' ? 'active' : ''}}" data-section="ranking" bindtap="selectSection">排行榜</view>
   </view>
 
-  <view wx:if="{{activeSection === 'friends'}}">
+  <view wx:if="{{!socialUserId && profileStatus === 'loading'}}" class="friend-hub-state">正在同步社交资料…</view>
+  <view wx:elif="{{!socialUserId && profileStatus === 'error'}}" class="friend-hub-state friend-hub-error">
+    <text>社交资料同步失败，请检查网络后重试</text>
+    <view class="friend-retry" bindtap="retrySocialProfile">重试</view>
+  </view>
+  <view wx:elif="{{activeSection === 'friends'}}">
     <view wx:if="{{friendsOffline}}" class="feed-offline-banner">离线只读 · 好友资料可能不是最新状态</view>
     <view wx:if="{{status === 'loading'}}" class="friend-hub-state">正在同步好友资料…</view>
     <view wx:elif="{{status === 'error'}}" class="friend-hub-state friend-hub-error">

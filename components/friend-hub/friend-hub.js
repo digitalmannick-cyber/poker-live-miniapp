@@ -169,6 +169,10 @@ Component({
         if (this._friendHubAttached === true && this.data.activeSection === 'feed' && next) this.loadFeed()
       }
     },
+    profileStatus: {
+      type: String,
+      value: 'idle'
+    },
     accountKey: {
       type: String,
       value: '',
@@ -233,6 +237,10 @@ Component({
   },
 
   methods: {
+    retrySocialProfile() {
+      this.triggerEvent('retrysocialprofile')
+    },
+
     invalidateAccountSurfaces() {
       this._friendLoadSequence = (Number(this._friendLoadSequence) || 0) + 1
       this._friendLoadPromise = null

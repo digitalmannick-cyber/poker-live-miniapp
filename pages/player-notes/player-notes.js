@@ -56,6 +56,7 @@ Page({
     friendsLoaded: false,
     socialAccountKey: '',
     socialUserId: '',
+    socialProfileStatus: 'idle',
     query: '',
     selectedType: '',
     typeFilters: [],
@@ -114,6 +115,7 @@ Page({
   async onPullDownRefresh() {
     try {
       if (this.data.playerSection !== 'friends' || this.data.friendSection !== 'feed') return
+      if (!this.data.socialUserId) await this.retrySocialProfile()
       const friendHub = this.selectComponent && this.selectComponent('#friendHub')
       if (friendHub && typeof friendHub.refreshFeed === 'function') await friendHub.refreshFeed()
     } finally {
@@ -132,12 +134,19 @@ Page({
       this._socialProfileAccountKey = currentAccountKey
       this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
       this._socialProfileFlight = null
-      this.setData({ socialAccountKey: currentAccountKey, socialUserId: '' })
+      this.setData({ socialAccountKey: currentAccountKey, socialUserId: '', socialProfileStatus: 'idle' })
     }
-    if (!currentAccountKey || this._socialProfileAttached !== true) return Promise.resolve('')
-    if (this.data.socialUserId) return Promise.resolve(this.data.socialUserId)
+    if (!currentAccountKey || this._socialProfileAttached !== true) {
+      if (!currentAccountKey && this.data.socialProfileStatus !== 'idle') this.setData({ socialProfileStatus: 'idle' })
+      return Promise.resolve('')
+    }
+    if (this.data.socialUserId) {
+      if (this.data.socialProfileStatus !== 'ready') this.setData({ socialProfileStatus: 'ready' })
+      return Promise.resolve(this.data.socialUserId)
+    }
     if (this._socialProfileFlight) return this._socialProfileFlight
     const generation = Number(this._socialProfileGeneration) || 0
+    this.setData({ socialProfileStatus: 'loading' })
     const promise = Promise.resolve()
       .then(() => socialProfileSync.syncSocialProfile(
         typeof dataService.getCurrentProfile === 'function' ? dataService.getCurrentProfile() : { playerId: currentAccountKey, name: '玩家' },
@@ -147,12 +156,12 @@ Page({
         const socialUserId = profile && typeof profile.socialUserId === 'string' ? profile.socialUserId.trim() : ''
         if (this._socialProfileAttached !== true || generation !== this._socialProfileGeneration || currentAccountKey !== this._socialProfileAccountKey) return ''
         if (socialUserId) socialCache.registerAccountIdentity({ accountId: currentAccountKey, socialUserId })
-        this.setData({ socialUserId })
+        this.setData({ socialUserId, socialProfileStatus: socialUserId ? 'ready' : 'error' })
         return socialUserId
       })
       .catch(() => {
         if (this._socialProfileAttached === true && generation === this._socialProfileGeneration && currentAccountKey === this._socialProfileAccountKey) {
-          this.setData({ socialUserId: '' })
+          this.setData({ socialUserId: '', socialProfileStatus: 'error' })
         }
         return ''
       })
@@ -161,6 +170,10 @@ Page({
       if (this._socialProfileFlight === promise) this._socialProfileFlight = null
     })
     return promise
+  },
+
+  retrySocialProfile() {
+    return this.ensureSocialProfile(getSocialAccountKey())
   },
 
   bindSocialUnread() {
