@@ -99,6 +99,7 @@ test('administrator capability is enabled only after disabled staging and databa
   assert(stagedDeploy > indexVerify)
   assert(enabledDeploy > stagedDeploy)
   assert.match(source, /Administrator fail-close verified/)
+  assert.match(source, /No cloud mutation began; the existing administrator configuration was left unchanged\./)
   assert.match(source, /function Get-StableCollectionPermissionMap/)
   assert.match(source, /two consecutive identical snapshots/)
   assert.match(source, /continue\s*\n\s*}/)
@@ -162,6 +163,7 @@ test('apply validates inputs before locking or mutating and supports a zero-writ
   assert(mutex < createTable)
   assert.match(source, /Apply is already fully converged\. No cloud resources were changed\./)
   assert.match(source, /\$mutationStarted -and \$functionMayExist/)
+  assert.match(source, /if \(\$mutationStarted\) \{[\s\S]*Administrator fail-close verified:[\s\S]*else \{[\s\S]*No cloud mutation began/)
 })
 
 test('single administrator validation keeps the unique result array-shaped under strict mode', () => {

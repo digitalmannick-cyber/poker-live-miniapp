@@ -891,7 +891,11 @@ try {
     $failCloseVerified = $true
   }
   [Console]::Error.WriteLine("Deployment failed: $($originalFailure.Exception.Message)")
-  [Console]::Error.WriteLine("Administrator fail-close verified: $failCloseVerified")
+  if ($mutationStarted) {
+    [Console]::Error.WriteLine("Administrator fail-close verified: $failCloseVerified")
+  } else {
+    [Console]::Error.WriteLine('No cloud mutation began; the existing administrator configuration was left unchanged.')
+  }
   [Console]::Error.WriteLine('No collection, document, or index was deleted.')
   if (-not $failCloseVerified) {
     throw 'Deployment failed and administrator fail-close could not be verified; immediate operator action is required'
