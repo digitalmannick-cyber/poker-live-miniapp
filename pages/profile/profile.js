@@ -484,15 +484,6 @@ Page({
       : null)
   },
 
-  selectDefaultShareScope(event) {
-    const scope = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.scope || '')
-    if (!['square', 'friends', 'selected'].includes(scope)) return null
-    if (this.canEditSocialSettings()) return this.saveSocialSettings({ defaultShareScope: scope })
-    return this.ensureSocialSettingsReady().then(ready => ready
-      ? this.saveSocialSettings({ defaultShareScope: scope })
-      : null)
-  },
-
   consumeOpenAiReminderEditorRequest() {
     if (typeof wx === 'undefined' || !wx.getStorageSync) return
     let shouldOpen = false

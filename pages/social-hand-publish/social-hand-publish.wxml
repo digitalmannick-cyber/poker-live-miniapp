@@ -28,7 +28,7 @@
       <view class="preview-head">
         <view>
           <view class="preview-title">发布预览</view>
-          <view class="preview-subtitle">数值统一按 BB 展示 · 玩家已匿名</view>
+          <view class="preview-subtitle">发布内容已完成 BB 化与玩家匿名，请核对后发布</view>
         </view>
         <view class="bb-stamp">BB</view>
       </view>
@@ -66,6 +66,11 @@
         </view>
       </view>
 
+      <view class="privacy-confirmation">
+        <view class="privacy-confirmation-title">本次发布保护</view>
+        <view class="privacy-confirmation-copy">所有筹码固定显示为 BB；Hero 保留；其他玩家已替换为上方匿名代号。</view>
+      </view>
+
       <view class="preview-section">
         <view class="preview-section-label">行动线</view>
         <view wx:if="{{snapshot.actions.length}}" class="action-list">
@@ -79,8 +84,8 @@
     </view>
 
     <view class="scope-card">
-      <view class="scope-title">谁可以看到</view>
-      <view class="scope-subtitle">三种范围互斥；切换后以当前选择为准</view>
+      <view class="scope-title">选择本次发布范围</view>
+      <view class="scope-subtitle">每次发布都需重新选择，不会记住上一次范围</view>
       <view class="scope-grid">
         <view class="scope-option {{scope === 'square' ? 'is-active' : ''}}" data-scope="square" bindtap="changeScope">
           <view class="scope-name">广场</view><view class="scope-desc">所有用户可见</view>
@@ -110,7 +115,7 @@
       </view>
 
       <view wx:if="{{errorCode && status === 'ready'}}" class="inline-error">{{errorMessage}}</view>
-      <button class="publish-cta" loading="{{publishLoading}}" disabled="{{publishLoading}}" bindtap="submitPublish">{{publishLoading ? '正在发布' : '确认发布'}}</button>
+      <button class="publish-cta" loading="{{publishLoading}}" disabled="{{publishLoading || !scope || (scope === 'selected' && !selectedTargetUserIds.length)}}" bindtap="submitPublish">{{publishLoading ? '正在发布' : (!scope ? '请先选择发布范围' : '确认发布')}}</button>
     </view>
   </block>
 </view>

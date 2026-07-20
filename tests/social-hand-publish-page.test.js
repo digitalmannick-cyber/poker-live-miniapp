@@ -56,14 +56,15 @@ test('onLoad safely decodes an encoded handId before requesting the server previ
   } finally { loaded.restore() }
 })
 
-test('scope starts from the valid server default and otherwise falls back to friends', async t => {
-  for (const [serverScope, expected] of [['square', 'square'], ['friends', 'friends'], ['selected', 'selected'], ['', 'friends'], ['unknown', 'friends']]) {
+test('every preview ignores the legacy server default and requires a fresh scope choice', async t => {
+  for (const serverScope of ['square', 'friends', 'selected', '', 'unknown']) {
     await t.test(String(serverScope || 'absent'), async () => {
       const loaded = loadPublishPage({ previews: [{ previewHash: 'hash', snapshot: snapshot('scope'), defaultShareScope: serverScope }] })
       try {
         const page = createInstance(loaded.definition)
         await page.onLoad({ handId: 'hand-scope' })
-        assert.equal(page.data.scope, expected)
+        assert.equal(page.data.scope, '')
+        assert.equal(loaded.calls.listFriends.length, 0)
       } finally { loaded.restore() }
     })
   }
@@ -135,6 +136,7 @@ test('friends and square always submit empty targets and square needs a fresh no
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ handId: 'hand-public' })
+    await page.changeScope(scopeEvent('friends'))
     page.setData({ selectedTargetUserIds: ['must-clear'] })
     await page.submitPublish()
     assert.deepEqual(loaded.calls.publish[0].targetUserIds, [])
@@ -154,10 +156,12 @@ test('friends and square always submit empty targets and square needs a fresh no
     assert.equal(loaded.calls.publish[2].publicShareConfirmed, true)
 
     await page.retryPreview()
+    await page.changeScope(scopeEvent('square'))
     await page.submitPublish()
     assert.equal(loaded.calls.modals.length, 4, 'refreshing preview must require another public confirmation')
 
     await page.onLoad({ handId: 'hand-public-next' })
+    await page.changeScope(scopeEvent('square'))
     await page.submitPublish()
     assert.equal(loaded.calls.modals.length, 5, 'changing hand must invalidate public confirmation')
   } finally { loaded.restore() }
@@ -173,6 +177,7 @@ test('an unchanged square retry confirms again while reusing the failed mutation
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ handId: 'hand-square-retry' })
+    await page.changeScope(scopeEvent('square'))
     await page.submitPublish()
     await page.submitPublish()
     assert.equal(loaded.calls.modals.length, 2, 'every square publish attempt needs a fresh confirmation')
@@ -187,6 +192,7 @@ test('double tap shares one publish flight and success trusts only the server sh
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ handId: 'private-hand' })
+    await page.changeScope(scopeEvent('friends'))
     const first = page.submitPublish()
     const second = page.submitPublish()
     assert.equal(loaded.calls.publish.length, 1)
@@ -220,6 +226,7 @@ test('input invalidation cannot start a second publish until the current service
       try {
         const page = createInstance(loaded.definition)
         await page.onLoad({ handId: 'hand-flight' })
+        await page.changeScope(scopeEvent(invalidation === 'target' ? 'selected' : 'friends'))
         if (invalidation === 'target') page.toggleTarget(targetEvent('su_a'))
         const firstFlight = page.submitPublish()
 
@@ -244,6 +251,7 @@ test('input invalidation cannot start a second publish until the current service
 
         if (invalidation === 'scope') await page.changeScope(scopeEvent('square'))
         if (invalidation === 'target') page.toggleTarget(targetEvent('su_b'))
+        if (invalidation === 'retry') await page.changeScope(scopeEvent('friends'))
         await page.submitPublish()
         assert.equal(loaded.calls.publish.length, 2, 'a new input may publish after the old service call settles')
         assert.notEqual(loaded.calls.publish[1].clientMutationId, loaded.calls.publish[0].clientMutationId)
@@ -266,6 +274,7 @@ test('failed unchanged input reuses its mutation id while target scope hash and 
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ handId: 'hand-1' })
+    await page.changeScope(scopeEvent('selected'))
     page.toggleTarget(targetEvent('su_a'))
     await page.submitPublish()
     await page.submitPublish()
@@ -280,10 +289,12 @@ test('failed unchanged input reuses its mutation id while target scope hash and 
     assert.notEqual(loaded.calls.publish[3].clientMutationId, loaded.calls.publish[2].clientMutationId)
 
     await page.retryPreview()
+    await page.changeScope(scopeEvent('friends'))
     await page.submitPublish()
     assert.notEqual(loaded.calls.publish[4].clientMutationId, loaded.calls.publish[3].clientMutationId)
 
     await page.onLoad({ handId: 'hand-2' })
+    await page.changeScope(scopeEvent('friends'))
     await page.submitPublish()
     assert.notEqual(loaded.calls.publish[5].clientMutationId, loaded.calls.publish[4].clientMutationId)
   } finally { loaded.restore() }
@@ -300,12 +311,13 @@ test('HAND_PREVIEW_STALE clears the hash, re-previews, and never auto-publishes 
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ handId: 'hand-stale' })
+    await page.changeScope(scopeEvent('friends'))
     await page.submitPublish()
     assert.equal(loaded.calls.publish.length, 1)
     assert.equal(loaded.calls.preview.length, 2)
     assert.equal(page.data.previewHash, 'fresh-hash')
     assert.deepEqual(page.data.snapshot, snapshot('fresh'))
-    assert.equal(page.data.scope, 'square')
+    assert.equal(page.data.scope, '')
     assert.equal(loaded.calls.publish.length, 1, 'fresh preview must require a new user submission')
     assert.equal(loaded.calls.navigation.length, 0)
   } finally { loaded.restore() }
@@ -322,6 +334,7 @@ test('error decisions use code rather than message and validation remains action
   try {
     const page = createInstance(loaded.definition)
     await page.onLoad({ handId: 'hand-errors' })
+    await page.changeScope(scopeEvent('friends'))
     await page.submitPublish()
     assert.equal(loaded.calls.preview.length, 1, 'stale-looking message must not trigger a preview refresh')
     await page.submitPublish()
@@ -391,6 +404,7 @@ test('preview retry hand change and unload suppress stale publish state and navi
       try {
         const page = createInstance(loaded.definition)
         await page.onLoad({ handId: 'hand-old' })
+        await page.changeScope(scopeEvent('friends'))
         const flight = page.submitPublish()
         let invalidationFlight = Promise.resolve()
         if (invalidation === 'retry') invalidationFlight = page.retryPreview()
@@ -435,6 +449,7 @@ test('page visibility lifecycle suppresses hidden work and re-previews only afte
       const page = createInstance(loaded.definition)
       await page.onLoad({ handId: 'hand-modal-hide' })
       await page.onShow()
+      await page.changeScope(scopeEvent('square'))
       const publishFlight = page.submitPublish()
       page.onHide()
       const patchCount = page._patches.length
@@ -484,6 +499,7 @@ test('page visibility lifecycle suppresses hidden work and re-previews only afte
       const page = createInstance(loadedPublish.definition)
       await page.onLoad({ handId: 'hand-publish-hide' })
       await page.onShow()
+      await page.changeScope(scopeEvent('friends'))
       const oldFlight = page.submitPublish()
       page.onHide()
       await page.onShow()

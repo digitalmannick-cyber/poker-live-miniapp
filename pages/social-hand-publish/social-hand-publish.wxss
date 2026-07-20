@@ -17,6 +17,9 @@
 .preview-head, .hero-line, .friend-picker-head, .action-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
 .preview-title { color: #fff; font-size: 42rpx; font-weight: 1000; letter-spacing: 1rpx; }
 .preview-subtitle { margin-top: 8rpx; color: rgba(255,255,255,.52); font-size: 22rpx; }
+.privacy-confirmation { margin-top: 24rpx; padding: 18rpx 20rpx; border-left: 6rpx solid #00d1ff; border-radius: 4rpx 16rpx 16rpx 4rpx; background: rgba(0,209,255,.07); }
+.privacy-confirmation-title { color: #d8f8ff; font-size: 23rpx; font-weight: 1000; }
+.privacy-confirmation-copy { margin-top: 7rpx; color: rgba(255,255,255,.62); font-size: 21rpx; line-height: 1.55; }
 .bb-stamp { flex: none; padding: 10rpx 13rpx; border: 2rpx solid #00d1ff; color: #00d1ff; font-size: 25rpx; font-weight: 1000; transform: rotate(-4deg); }
 .hero-line { margin-top: 30rpx; padding: 24rpx; border-left: 7rpx solid #e60012; background: linear-gradient(90deg, rgba(230,0,18,.16), rgba(255,255,255,.035)); }
 .hero-label { color: #fff; font-size: 29rpx; font-weight: 1000; }

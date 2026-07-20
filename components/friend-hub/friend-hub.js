@@ -1,6 +1,7 @@
 const socialService = require('../../services/social-service')
 const dataService = require('../../services/data-service')
 const socialCache = require('../../utils/social-cache')
+const socialDemoData = require('../../utils/social-demo-data')
 
 const FEED_PAGE_SIZE = 20
 const SOCIAL_CACHE_SCHEMA_VERSION = socialCache.SOCIAL_CACHE_SCHEMA_VERSION || 1
@@ -45,6 +46,10 @@ function decorateFeedItem(item) {
     stackBbLabel: Number.isFinite(summary.effectiveStackBb) ? `${summary.effectiveStackBb} BB` : '--',
     timeLabel: formatFeedTime(source.createdAt)
   })
+}
+
+function decorateDemoFeedItem(item) {
+  return Object.assign(decorateFeedItem(item), { demo: true })
 }
 
 function formatDuration(minutes) {
@@ -213,7 +218,8 @@ Component({
     feedLoadingMore: false,
     feedMoreError: '',
     feedOffline: false,
-    feedReadOnly: false
+    feedReadOnly: false,
+    demoMode: socialDemoData.isEnabled()
   },
 
   lifetimes: {
@@ -223,7 +229,8 @@ Component({
       this._rankingLoadSequence = Number(this._rankingLoadSequence) || 0
       this._feedGeneration = Number(this._feedGeneration) || 0
       if (this.data.activeSection === 'ranking') this.loadRanking(this.data.rankingRange)
-      if (this.data.activeSection === 'feed' && this.data.socialUserId) this.loadFeed()
+      if (this.data.activeSection === 'friends' && this.data.demoMode) this.loadFriends()
+      if (this.data.activeSection === 'feed' && (this.data.socialUserId || this.data.demoMode)) this.loadFeed()
     },
 
     detached() {
@@ -294,6 +301,11 @@ Component({
     },
 
     requestFeedFirstPage() {
+      if (this.data.demoMode) {
+        const cards = socialDemoData.getFeed().map(decorateDemoFeedItem)
+        this.setData({ feedStatus: 'ready', feedError: '', feedItems: cards, feedNextCursor: '', feedLoadingMore: false, feedMoreError: '', feedOffline: false, feedReadOnly: true })
+        return Promise.resolve(cards)
+      }
       const socialUserId = String(this.data.socialUserId || '')
       if (!socialUserId || this._friendHubAttached !== true) return Promise.resolve([])
       const generation = Number(this._feedGeneration) || 0
@@ -464,6 +476,12 @@ Component({
       if (config.append) this.setData({ loadingMore: true, loadMoreError: '' })
       else this.setData({ status: 'loading', errorMessage: '', loadMoreError: '', friendsOffline: false, friendsReadOnly: false })
 
+      if (this.data.demoMode) {
+        const cards = socialDemoData.getFriends().map(item => Object.assign(buildFriendCard(item.remote, item.note), { demo: true }))
+        this.setData({ status: 'ready', friends: cards, nextOffset: null, loadingMore: false, loadMoreError: '', errorMessage: '', friendsOffline: false, friendsReadOnly: true })
+        return cards
+      }
+
       try {
         const response = copyFriendsResponse(await socialService.listFriends({ offset, limit: 20 }))
         if (!this.isCurrentLoad(sequence, accountKey)) return this.data.friends
@@ -538,6 +556,13 @@ Component({
       const sequence = (Number(this._rankingLoadSequence) || 0) + 1
       this._rankingLoadSequence = sequence
       this.setData({ rankingRange: range, rankingStatus: 'loading', rankingError: '', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null, rankingOffline: false, rankingReadOnly: false })
+      if (this.data.demoMode) {
+        const response = socialDemoData.getRanking(range)
+        const rows = response.top10.map(buildRankingRow)
+        const myRank = buildRankingRow(response.myRank)
+        this.setData({ rankingStatus: 'ready', rankingRows: rows, rankingPodium: rows.slice(0, 3), rankingListRows: rows.slice(3), rankingMyRank: myRank, rankingError: '', rankingOffline: false, rankingReadOnly: true })
+        return rows
+      }
       try {
         const response = copyRankingResponse(await socialService.listRanking({ rangeKey: range }))
         if (sequence !== this._rankingLoadSequence || this._friendHubAttached === false || String(this.data.accountKey || '') !== accountKey) return []
@@ -589,7 +614,7 @@ Component({
     },
 
     openFriend(event) {
-      if (this.data.friendsReadOnly) return
+      if (this.data.friendsReadOnly || this.data.demoMode) return
       const friendUserId = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.id || '')
       if (friendUserId) this.triggerEvent('openfriend', { friendUserId })
     },

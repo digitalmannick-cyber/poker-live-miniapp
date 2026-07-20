@@ -131,7 +131,7 @@ test('profile settings editor saves the typed draft row even when plus was not t
   assert.equal(lastToast && lastToast.icon, 'success')
 })
 
-test('profile social privacy controls explain ranking removal and save supported defaults', async () => {
+test('profile keeps only the friend statistics switch and preserves the legacy scope field', async () => {
   const page = installProfilePage()
   await page.loadSocialSettings()
   assert.equal(page.data.socialSettings.statsVisible, true)
@@ -142,20 +142,15 @@ test('profile social privacy controls explain ranking removal and save supported
   assert.match(String(socialSettingsPatch.clientMutationId), /^social_settings_/)
   assert.equal(page.data.socialSettings.statsVisible, false)
 
-  await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'selected' } } })
-  assert.equal(socialSettingsPatch.defaultShareScope, 'selected')
-  assert.equal(Object.prototype.hasOwnProperty.call(socialSettingsPatch, 'selectedFriendIds'), false)
+  assert.equal(typeof page.selectDefaultShareScope, 'undefined')
 })
 
-test('profile markup clearly describes social privacy and all supported default scopes', () => {
+test('profile places the only social setting in account security and removes publish defaults', () => {
   const wxml = require('node:fs').readFileSync(path.resolve(__dirname, '../pages/profile/profile.wxml'), 'utf8')
-  assert.match(wxml, /好友统计可见/)
-  assert.match(wxml, /退出本周、月度和累计排行榜/)
-  assert.match(wxml, /广场[\s\S]*全部好友[\s\S]*指定好友/)
-  assert.match(wxml, /隐私与分享/)
-  assert.match(wxml, /固定 BB 化/)
-  assert.match(wxml, /Hero 保留[\s\S]*非 Hero 使用匿名代号/)
-  assert.match(wxml, /不可关闭/)
+  const accountSection = wxml.slice(wxml.indexOf('账号与安全'))
+  assert.match(accountSection, /好友统计可见/)
+  assert.match(accountSection, /social-stats-row/)
+  assert.doesNotMatch(wxml, /隐私与分享|默认手牌发布范围|selectDefaultShareScope/)
 })
 
 test('saving a public nickname also updates the social profile', async () => {
@@ -190,7 +185,7 @@ test('a stale profile GET cannot overwrite a successful privacy save and loading
   socialSettingsSaver = patch => new Promise(resolve => { saveCalls += 1; resolveSave = () => resolve({ statsVisible: patch.statsVisible, defaultShareScope: patch.defaultShareScope }) })
   const saving = page.toggleSocialStatsVisible()
   assert.equal(page.data.socialSettingsSaving, true)
-  assert.equal(await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'selected' } } }), null, 'saving must block a second write')
+  assert.equal(await page.toggleSocialStatsVisible(), null, 'saving must block a second write')
   resolveSave()
   await saving
   assert.equal(page.data.socialSettings.statsVisible, false)
@@ -199,9 +194,6 @@ test('a stale profile GET cannot overwrite a successful privacy save and loading
   await loading
   assert.deepEqual(page.data.socialSettings, { statsVisible: false, defaultShareScope: 'friends' }, 'late GET must not reopen statistics')
 
-  socialSettingsSaver = patch => Promise.resolve({ statsVisible: patch.statsVisible, defaultShareScope: patch.defaultShareScope })
-  await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'selected' } } })
-  assert.deepEqual(page.data.socialSettings, { statsVisible: false, defaultShareScope: 'selected' })
   assert.equal(socialSettingsPatch.statsVisible, false)
 })
 
@@ -236,14 +228,12 @@ test('unknown or failed social settings are read-only until a successful reload'
   assert.equal(page.data.socialSettingsStatus, 'error')
   assert.equal(await page.toggleSocialStatsVisible(), null)
   assert.equal(lastToast.title, '社交服务暂不可用，请重试')
-  assert.equal(await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'square' } } }), null)
-  assert.equal(lastToast.title, '社交服务暂不可用，请重试')
   assert.equal(await page.saveSocialSettings({ statsVisible: false, defaultShareScope: 'selected' }), null)
   assert.equal(saveCalls, 0)
   assert.deepEqual(page.data.socialSettings, { statsVisible: true, defaultShareScope: 'friends' }, 'unknown server privacy must not be overwritten by local defaults')
 })
 
-test('a failed scope tap reloads settings and applies the intended choice after recovery', async () => {
+test('a failed statistics tap reloads settings and applies the intended choice after recovery', async () => {
   const page = installProfilePage()
   let loadCalls = 0
   socialProfileLoader = () => {
@@ -253,10 +243,10 @@ test('a failed scope tap reloads settings and applies the intended choice after 
   }
 
   assert.equal(await page.loadSocialSettings(), null)
-  await page.selectDefaultShareScope({ currentTarget: { dataset: { scope: 'square' } } })
+  await page.toggleSocialStatsVisible()
 
   assert.equal(loadCalls, 2)
-  assert.equal(socialSettingsPatch.defaultShareScope, 'square')
-  assert.equal(page.data.socialSettings.defaultShareScope, 'square')
+  assert.equal(socialSettingsPatch.statsVisible, false)
+  assert.equal(page.data.socialSettings.statsVisible, false)
   assert.equal(lastToast.title, '社交设置已保存')
 })

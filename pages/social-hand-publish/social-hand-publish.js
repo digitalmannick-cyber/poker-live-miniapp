@@ -20,7 +20,7 @@ function safeDecodeURIComponent(value) {
 
 function normalizeScope(value) {
   const scope = text(value)
-  return SCOPES.indexOf(scope) >= 0 ? scope : 'friends'
+  return SCOPES.indexOf(scope) >= 0 ? scope : ''
 }
 
 function eventValue(event, key) {
@@ -85,7 +85,7 @@ Page({
     status: 'loading',
     snapshot: null,
     previewHash: '',
-    scope: 'friends',
+    scope: '',
     friends: [],
     nextFriendOffset: null,
     friendLoading: false,
@@ -167,7 +167,7 @@ Page({
       status: 'loading',
       snapshot: null,
       previewHash: '',
-      scope: 'friends',
+      scope: '',
       friends: [],
       nextFriendOffset: null,
       friendLoading: false,
@@ -194,16 +194,14 @@ Page({
         this.setData({ status: 'unavailable', errorCode: 'CONTENT_UNAVAILABLE', errorMessage: '服务端预览不可用。' })
         return
       }
-      const scope = normalizeScope(result && result.defaultShareScope)
       this.setData({
         status: 'ready',
         snapshot,
         previewHash,
-        scope,
+        scope: '',
         errorCode: '',
         errorMessage: ''
       })
-      if (scope === 'selected') await this.loadFirstFriends()
     } catch (error) {
       if (!this.isPreviewCurrent(sequence, lifecycle, handId)) return
       const code = errorCode(error)
@@ -350,6 +348,10 @@ Page({
     const targetUserIds = scope === 'selected' ? sortedTargets(this.data.selectedTargetUserIds) : []
     if (!handId || !previewHash || !this.data.snapshot) {
       this.setData({ status: 'error', errorCode: 'CONTENT_UNAVAILABLE', errorMessage: '请先重新读取手牌预览。' })
+      return
+    }
+    if (!scope) {
+      this.setData({ status: 'ready', errorCode: 'INVALID_SHARE_SCOPE', errorMessage: '请选择本次手牌的发布范围。' })
       return
     }
     if (scope === 'selected' && (targetUserIds.length < 1 || targetUserIds.length > MAX_SELECTED)) {

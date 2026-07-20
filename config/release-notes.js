@@ -1,13 +1,13 @@
 module.exports = {
-  version: '3.20',
+  version: '3.21',
   eyebrow: 'VERSION UPDATE',
-  title: '界面与反馈体验升级',
-  summary: '“我的”页面与 Session 历史列表全面焕新，并完善反馈和 AI 提醒体验。',
+  title: '好友分享流程优化',
+  summary: '简化社交设置，发布手牌时直接核对匿名 BB 预览并选择本次可见范围。',
   items: [
-    { title: '我的页面焕新', description: '使用 P5 风格重新组织偏好、数据、提醒、帮助与账号设置' },
-    { title: '反馈与建议', description: '接入微信原生客服，支持直接发送文字、问题截图和功能建议' },
-    { title: 'Session 列表升级', description: '强化本场输赢展示，统一卡片信息密度与真机小屏布局' },
-    { title: 'AI 提醒优化', description: '更新订阅消息模板字段与云函数权限，提高提醒送达稳定性' }
+    { title: '按手选择发布范围', description: '每次发布都需选择广场、全部好友或指定好友，不再沿用默认范围' },
+    { title: '发布前隐私确认', description: '直接展示 BB 化结果、Hero 与其他玩家匿名代号，确认后再发布' },
+    { title: '社交设置精简', description: '仅保留好友统计可见，并移入账号与安全区域' },
+    { title: '好友演示数据', description: '开发者工具内提供只读好友、动态和 Top 10 排行榜数据，便于检查界面效果' }
   ],
   imageUrl: '',
   acknowledgeText: '我知道了'
