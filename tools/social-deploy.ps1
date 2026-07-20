@@ -130,6 +130,26 @@ function Invoke-TcbJson {
   return Get-JsonFromOutput $result.Stdout
 }
 
+function Invoke-TcbWrite {
+  param([string[]]$Arguments)
+  $result = Invoke-TcbProcess $Arguments
+  if ($result.ExitCode -eq 0) { return }
+  $sanitized = "$($result.Stdout)`n$($result.Stderr)"
+  $sensitive = @($env:SOCIAL_INVITE_TOKEN_SECRET, $env:SOCIAL_ADMIN_OPENIDS) + @($script:SensitiveValues)
+  foreach ($secret in $sensitive) {
+    if (-not [string]::IsNullOrEmpty($secret)) { $sanitized = $sanitized.Replace($secret, '[REDACTED]') }
+  }
+  $operation = if ($Arguments -contains 'fn') {
+    $position = [Array]::IndexOf($Arguments, 'fn')
+    'fn.' + $(if ($position + 1 -lt $Arguments.Count) { $Arguments[$position + 1] } else { 'unknown' })
+  } elseif ($Arguments.Count -ge 2) {
+    "$($Arguments[0]).$($Arguments[1])"
+  } else {
+    [string]$Arguments[0]
+  }
+  throw "CloudBase CLI write operation $operation failed (exit $($result.ExitCode)): $sanitized"
+}
+
 function Invoke-TcbJsonReadWithRetry {
   param([string[]]$Arguments)
   for ($attempt = 1; $attempt -le 5; $attempt += 1) {
@@ -459,9 +479,9 @@ function Deploy-AndWaitFunctionEnvironment {
     )
     # Secrets are read from the ACL-restricted config file and never appear in child-process argv.
     if ($DeployCode) {
-      $null = Invoke-TcbJson @('--config-file', $temporaryConfig, '--yes', 'fn', 'deploy', 'poker_social', '--force', '--json')
+      Invoke-TcbWrite @('--config-file', $temporaryConfig, '--yes', 'fn', 'deploy', 'poker_social', '--force', '--json')
     } else {
-      $null = Invoke-TcbJson @('--config-file', $temporaryConfig, '--yes', 'config', 'update', 'fn', 'poker_social', '--json')
+      Invoke-TcbWrite @('--config-file', $temporaryConfig, '--yes', 'config', 'update', 'fn', 'poker_social', '--json')
     }
     return Wait-FunctionEnvironment $Map $EnvId $Region
   } finally {

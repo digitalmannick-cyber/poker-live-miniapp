@@ -123,6 +123,8 @@ test('secrets use an ACL-restricted temporary config and never an API body argum
   assert.match(source, /RedirectStandardError = \$true/)
   assert.match(source, /WaitForExit\(\$TimeoutMilliseconds\)/)
   assert.match(source, /'config', 'update', 'fn', 'poker_social'/)
+  assert.match(source, /function Invoke-TcbWrite/)
+  assert.match(source, /Invoke-TcbWrite @\('--config-file'/)
   assert.match(source, /functionRoot = 'cloudfunctions'/)
   assert.doesNotMatch(source, /functionRoot = \[IO\.Path\]::GetFullPath/)
 })
