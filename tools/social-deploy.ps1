@@ -560,7 +560,7 @@ if ([string]::IsNullOrWhiteSpace($adminOpenIds)) {
   throw 'SOCIAL_ADMIN_OPENIDS must be supplied through the process environment for Apply'
 }
 $adminIds = @($adminOpenIds.Split(','))
-if ($adminIds.Count -eq 0 -or ($adminIds | Select-Object -Unique).Count -ne $adminIds.Count -or
+if ($adminIds.Count -eq 0 -or @($adminIds | Select-Object -Unique).Count -ne $adminIds.Count -or
     @($adminIds | Where-Object { $_ -notmatch '^[A-Za-z0-9_-]{16,128}$' }).Count -gt 0) {
   throw 'SOCIAL_ADMIN_OPENIDS must be a unique comma-separated list of validated OpenID tokens without whitespace'
 }

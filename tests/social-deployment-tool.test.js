@@ -154,6 +154,11 @@ test('apply validates inputs before locking or mutating and supports a zero-writ
   assert.match(source, /\$mutationStarted -and \$functionMayExist/)
 })
 
+test('single administrator validation keeps the unique result array-shaped under strict mode', () => {
+  const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
+  assert.match(source, /@\(\$adminIds \| Select-Object -Unique\)\.Count -ne \$adminIds\.Count/)
+})
+
 test('every planned index is verified with a hinted read before function staging', () => {
   const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
   const smoke = source.indexOf('Invoke-IndexSmokeQuery $index')
