@@ -119,6 +119,18 @@ function Invoke-TcbJson {
   return Get-JsonFromOutput $result.Stdout
 }
 
+function Invoke-TcbJsonReadWithRetry {
+  param([string[]]$Arguments)
+  for ($attempt = 1; $attempt -le 3; $attempt += 1) {
+    try {
+      return Invoke-TcbJson $Arguments
+    } catch {
+      if ($attempt -ge 3 -or -not (Test-TransientCloudReadFailure ([string]$_.Exception.Message))) { throw }
+      Start-Sleep -Seconds 2
+    }
+  }
+}
+
 function ConvertTo-TcbBodyArgument {
   param([object]$Body)
   return ($Body | ConvertTo-Json -Depth 20 -Compress)
@@ -134,8 +146,12 @@ function Invoke-CloudApi {
     [string]$Region
   )
   $bodyArg = ConvertTo-TcbBodyArgument $Body
-  return Invoke-TcbJson @('api', $Service, $Action, '--api-version', $ApiVersion, '--body', $bodyArg,
+  $arguments = @('api', $Service, $Action, '--api-version', $ApiVersion, '--body', $bodyArg,
     '--json', '-e', $EnvId, '-r', $Region)
+  if ($Action -match '^(Describe|Get|RunCommands)') {
+    return Invoke-TcbJsonReadWithRetry $arguments
+  }
+  return Invoke-TcbJson $arguments
 }
 
 function Invoke-TcbApi {
@@ -151,18 +167,6 @@ function Invoke-ScfApi {
 function Test-TransientCloudReadFailure {
   param([string]$Message)
   return $Message -match 'ETIMEDOUT|connect ETIMEDOUT|请求超时|temporarily unavailable'
-}
-
-function Invoke-ScfReadWithRetry {
-  param([string]$Action, [object]$Body, [string]$EnvId, [string]$Region)
-  for ($attempt = 1; $attempt -le 3; $attempt += 1) {
-    try {
-      return Invoke-ScfApi $Action $Body $EnvId $Region
-    } catch {
-      if ($attempt -ge 3 -or -not (Test-TransientCloudReadFailure ([string]$_.Exception.Message))) { throw }
-      Start-Sleep -Seconds 2
-    }
-  }
 }
 
 function Get-Sha256Text {
@@ -236,7 +240,7 @@ function Invoke-IndexSmokeQuery {
 
 function Get-RemoteFunction {
   param([string]$EnvId, [string]$Region)
-  return (Invoke-ScfReadWithRetry 'GetFunction' @{ FunctionName = 'poker_social'; Namespace = $EnvId } $EnvId $Region).data
+  return (Invoke-ScfApi 'GetFunction' @{ FunctionName = 'poker_social'; Namespace = $EnvId } $EnvId $Region).data
 }
 
 function Try-GetRemoteFunction {
@@ -251,7 +255,7 @@ function Try-GetRemoteFunction {
 
 function Get-RemoteFunctionCodeSha256 {
   param([string]$EnvId, [string]$Region)
-  $result = Invoke-ScfReadWithRetry 'GetFunctionAddress' @{
+  $result = Invoke-ScfApi 'GetFunctionAddress' @{
     FunctionName = 'poker_social'
     Namespace = $EnvId
     Qualifier = '$LATEST'
@@ -431,7 +435,7 @@ if ($DisableAdminModeration) {
     throw 'ConfirmEnvironmentId does not exactly match the fixed social environment'
   }
   if ($ExpectedCommit -ne $commit) { throw 'ExpectedCommit does not exactly match HEAD' }
-  $emergencyEnvironment = Invoke-TcbJson @('env', 'detail', '-e', $emergencyEnvId, '--json')
+  $emergencyEnvironment = Invoke-TcbJsonReadWithRetry @('env', 'detail', '-e', $emergencyEnvId, '--json')
   if ($emergencyEnvironment.data.envId -ne $emergencyEnvId -or $emergencyEnvironment.data.status -ne 'NORMAL') {
     throw 'The fixed CloudBase environment is missing or not NORMAL'
   }
@@ -479,7 +483,7 @@ $inputStatus = (& git -C $Root status --porcelain=v1 -- @deploymentInputs | Out-
 if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect deployment input status' }
 if ($inputStatus) { throw 'Deployment inputs differ from HEAD or are untracked; commit and review them before applying' }
 
-$environment = Invoke-TcbJson @('env', 'detail', '-e', $plan.envId, '--json')
+$environment = Invoke-TcbJsonReadWithRetry @('env', 'detail', '-e', $plan.envId, '--json')
 if ($environment.data.envId -ne $plan.envId -or $environment.data.status -ne 'NORMAL') {
   throw 'The configured CloudBase environment is missing or not NORMAL'
 }
@@ -501,7 +505,7 @@ foreach ($external in $plan.externalCollections) {
   }
 }
 
-$permissionsResult = Invoke-TcbJson @('permission', 'get', 'collection', '-e', $plan.envId, '--json')
+$permissionsResult = Invoke-TcbJsonReadWithRetry @('permission', 'get', 'collection', '-e', $plan.envId, '--json')
 $permissionByCollection = @{}
 foreach ($item in @($permissionsResult.data.PermissionList)) { $permissionByCollection[$item.Resource] = $item.Permission }
 
@@ -677,7 +681,7 @@ try {
     $null = Invoke-TcbApi 'UpdateTable' $body $plan.envId $region
   }
 
-  $postPermissions = Invoke-TcbJson @('permission', 'get', 'collection', '-e', $plan.envId, '--json')
+  $postPermissions = Invoke-TcbJsonReadWithRetry @('permission', 'get', 'collection', '-e', $plan.envId, '--json')
   $postPermissionMap = @{}
   foreach ($item in @($postPermissions.data.PermissionList)) { $postPermissionMap[$item.Resource] = $item.Permission }
   foreach ($collection in $plan.managedCollections) {
