@@ -313,7 +313,7 @@ function Get-RemoteFunctionCodeSha256 {
 
 function Invoke-StagedFunctionSmoke {
   param([string]$EnvId)
-  $result = Invoke-TcbJson @('fn', 'invoke', 'poker_social', '-d', '{"action":"get_my_social_profile"}', '--json', '-e', $EnvId)
+  $result = Invoke-TcbJsonReadWithRetry @('fn', 'invoke', 'poker_social', '-d', '{"action":"get_my_social_profile"}', '--json', '-e', $EnvId)
   $invokeResult = $result.data
   if (-not $invokeResult -or $null -eq $invokeResult.PSObject.Properties['InvokeResult'] -or
       [int]$invokeResult.InvokeResult -ne 0) {

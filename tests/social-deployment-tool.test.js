@@ -193,6 +193,7 @@ test('function convergence uses the remote code digest and a staged startup smok
   assert.match(source, /\$invokeResult = \$result\.data/)
   assert.match(source, /\[int\]\$invokeResult\.InvokeResult -ne 0/)
   assert.match(source, /\$invokeResult\.RetMsg/)
+  assert.match(source, /Invoke-TcbJsonReadWithRetry @\('fn', 'invoke', 'poker_social'/)
   assert.match(source, /\$null -ne \$payload\.data/)
   assert.match(source, /Function code or environment changed after staged verification/)
   assert.match(source, /Function code changed while enabling administrators/)
@@ -215,7 +216,7 @@ if (-not $definition) { throw 'smoke function not found' }
 Invoke-Expression $definition.Extent.Text
 $fixtureJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:SOCIAL_SMOKE_FIXTURE))
 $script:SmokeFixture = $fixtureJson | ConvertFrom-Json
-function Invoke-TcbJson { return $script:SmokeFixture }
+function Invoke-TcbJsonReadWithRetry { return $script:SmokeFixture }
 Invoke-StagedFunctionSmoke 'fixture-env'
 `
   return spawnSync('powershell.exe', ['-NoProfile', '-Command', command], {
