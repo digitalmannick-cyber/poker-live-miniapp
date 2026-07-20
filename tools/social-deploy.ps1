@@ -114,18 +114,28 @@ function Invoke-TcbJson {
     foreach ($secret in $sensitive) {
       if (-not [string]::IsNullOrEmpty($secret)) { $sanitized = $sanitized.Replace($secret, '[REDACTED]') }
     }
-    throw "CloudBase CLI failed (exit $($result.ExitCode)): $sanitized"
+    $operation = if ($Arguments.Count -ge 3 -and $Arguments[0] -eq 'api') {
+      "$($Arguments[1]).$($Arguments[2])"
+    } elseif ($Arguments -contains 'fn') {
+      $position = [Array]::IndexOf($Arguments, 'fn')
+      'fn.' + $(if ($position + 1 -lt $Arguments.Count) { $Arguments[$position + 1] } else { 'unknown' })
+    } elseif ($Arguments.Count -ge 2) {
+      "$($Arguments[0]).$($Arguments[1])"
+    } else {
+      [string]$Arguments[0]
+    }
+    throw "CloudBase CLI operation $operation failed (exit $($result.ExitCode)): $sanitized"
   }
   return Get-JsonFromOutput $result.Stdout
 }
 
 function Invoke-TcbJsonReadWithRetry {
   param([string[]]$Arguments)
-  for ($attempt = 1; $attempt -le 3; $attempt += 1) {
+  for ($attempt = 1; $attempt -le 5; $attempt += 1) {
     try {
       return Invoke-TcbJson $Arguments
     } catch {
-      if ($attempt -ge 3 -or -not (Test-TransientCloudReadFailure ([string]$_.Exception.Message))) { throw }
+      if ($attempt -ge 5 -or -not (Test-TransientCloudReadFailure ([string]$_.Exception.Message))) { throw }
       Start-Sleep -Seconds 2
     }
   }

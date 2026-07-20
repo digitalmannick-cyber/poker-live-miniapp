@@ -107,6 +107,7 @@ test('PowerShell 5.1 compatibility and tracked-input gate are explicit', () => {
   assert.match(source, /\[BitConverter\]::ToString/)
   assert.match(source, /git -C \$Root status --porcelain=v1/)
   assert.match(source, /differ from HEAD or are untracked/)
+  assert.match(source, /CloudBase CLI operation \$operation failed/)
 })
 
 test('secrets use an ACL-restricted temporary config and never an API body argument', () => {
