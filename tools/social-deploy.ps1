@@ -798,9 +798,14 @@ try {
   # DescribeTable has no ready flag. A hinted read proves that each exact index can be selected by the database.
   if ($plannedIndexNamesVerified -and $missingIndexes.Count -eq 0) {
     $indexSmokeCommands = $plannedIndexSmokeCommands
-  } elseif ($missingIndexes.Count -eq 0 -and $resolvedIndexNameByCanonical.Count -eq $plan.indexes.Count) {
+  } elseif ($missingIndexes.Count -eq 0) {
     $indexSmokeCommands = @($plan.indexes | ForEach-Object {
-      New-IndexSmokeCommand $_ ([string]$resolvedIndexNameByCanonical[[string]$_.canonical])
+      $resolvedName = if ($resolvedIndexNameByCanonical.ContainsKey([string]$_.canonical)) {
+        [string]$resolvedIndexNameByCanonical[[string]$_.canonical]
+      } else {
+        $null
+      }
+      New-IndexSmokeCommand $_ $resolvedName
     })
   } else {
     $indexSmokeCommands = @()
