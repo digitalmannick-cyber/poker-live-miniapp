@@ -6,22 +6,32 @@
 
 - 使用本次验收通过的提交，不夹带版本号、发布海报或其他功能变更。
 - 确认管理员微信 OpenID 来自可信的服务端查询，不在工单、截图、客户端日志或代码仓库中传播。
-- 备份当前数据库安全规则、索引配置、`poker_social` 云函数版本与环境变量。
+- 备份当前数据库权限、索引配置与 `poker_social` 云函数版本。环境变量只能安全地在本机内存中读取和合并，日志、计划和验收报告均不得输出值。
 
 ## 二、固定部署顺序
 
-1. 部署 `database-security-rules.json`，确认 `social_moderation_audits` 客户端读写均被拒绝。
-2. 部署 `database-indexes.json` 中审计集合的两个索引：
-   - `targetAuthorId ASC, createdAt ASC, _id ASC`
-   - `moderatorId ASC, createdAt ASC, _id ASC`
-3. 等待两个索引均变为可用状态。
-4. 部署 `poker_social` 云函数。此时尚未配置管理员名单，管理员能力应默认失败关闭。
-5. 创建 `cloudfunctions/poker_social/database-security-rules.json` 中声明的全部集合；创建后立即设置为客户端不可读写，再创建 `database-indexes.json` 中的全部索引并等待索引可用。
-6. 使用仓库根目录的独立配置 `cloudbaserc.social.json` 部署 `poker_social`；不要使用默认 `cloudbaserc.json` 的 `--all`，后者只管理既有 `poker_review`。
-7. 为 `poker_social` 配置至少 32 个随机字节的 `SOCIAL_INVITE_TOKEN_SECRET`。密钥只能保存在云函数环境变量中，不写入仓库、聊天或截图。
-8. 为 `poker_social` 配置 `SOCIAL_ADMIN_OPENIDS`，使用英文逗号分隔确认过的 OpenID；不得加入昵称、玩家 ID 或客户端生成的标识。
-9. 部署后回查云函数运行时、入口、超时、依赖安装、两个环境变量是否存在（仅确认存在，不输出值），并回查全部集合权限和索引状态。
-6. 重新冷启动云函数实例，确认环境变量已生效。
+1. 在仓库根目录运行 `tools/social-deploy.ps1`。默认模式只读取云端状态并输出 `PlanId`，不得创建集合、索引或云函数。
+2. 确认计划只管理 `database-security-rules.json` 中的 20 个集合；缺失集合必须在创建时直接设为 `ADMINONLY`，已有受管集合也必须收敛为 `ADMINONLY`。
+3. `hand_actions` 是既有牌谱业务集合，只允许校验和补充清单中的两个索引；部署工具不得创建它，也不得修改其现有权限。
+4. 按 `database-indexes.json` 补充缺少的索引。已有同字段顺序和方向的索引直接复用；保留额外索引；同名异形状必须失败关闭。
+5. 逐集合回读权限和索引字段形状，再对每个计划索引执行带真实索引名 `hint` 的 `RunCommands/QUERY` 只读查询。全部查询成功后才继续；`DescribeTable` 只列出索引形状，不能单独证明索引已经可用。
+6. 使用独立配置 `cloudbaserc.social.json` 部署 `poker_social`，首次部署不写入 `SOCIAL_ADMIN_OPENIDS`，使管理员能力失败关闭；不得使用默认配置或 `--all`。
+7. 首次部署由工具在本机内存中生成 32 个随机字节的 base64url `SOCIAL_INVITE_TOKEN_SECRET`；也允许通过本机进程环境安全传入同等强度的值。密钥不写入仓库、聊天、命令行参数或截图；重复部署默认沿用线上密钥，避免现有邀请失效。
+8. 回查运行时 `Nodejs20.19`、入口 `index.main`、超时 60 秒、内存 256 MB、依赖安装以及环境变量键名；仅确认键存在，不输出值。再通过 `GetFunctionAddress.CodeSha256` 记录并校验实际远端代码摘要，不能只依赖提交号标记。
+9. 在管理员名单为空的 staged 状态调用一次 `poker_social`，无微信身份请求必须返回结构化 `UNAUTHENTICATED`。数据库、代码摘要、运行时与该启动验证均成功后，才通过仅更新函数配置的操作启用 `SOCIAL_ADMIN_OPENIDS`，不得再次上传函数代码。名单使用英文逗号分隔的可信微信 OpenID，不得使用昵称、玩家 ID 或客户端生成标识。
+10. 重新冷启动云函数并执行普通账号、管理员账号和第三账号的真实小程序验收；本地 mock 或无身份 `tcb fn invoke` 不能替代该步骤。
+
+写操作必须同时提供只读预检得到的 `PlanId`、完整环境 ID 和当前完整 Git SHA。真实命令仅在取得用户授权后执行：
+
+```powershell
+.\tools\social-deploy.ps1 `
+  -Apply `
+  -PlanId <只读预检输出> `
+  -ConfirmEnvironmentId cloud1-d3ggy9aq3be912e34 `
+  -ExpectedCommit <完整Git-SHA>
+```
+
+管理员 OpenID 必须预先放入本机进程环境，不写在上述命令中；邀请密钥未提供时由工具安全生成。
 
 ## 三、双账号验收
 
@@ -46,4 +56,4 @@
 
 ## 五、回滚条件
 
-出现权限误判、重复扣数、审计未写入、审计可被客户端读取或账号清除卡死时，立即移除 `SOCIAL_ADMIN_OPENIDS` 使能力失败关闭，再回滚云函数；保留已部署的拒绝规则和审计索引不会扩大客户端权限。
+出现权限误判、重复扣数、审计未写入、审计可被客户端读取或账号清除卡死时，首先使用工具的 `-DisableAdminModeration` 显式安全停用管理员能力。该紧急路径绕过数据库与 manifest 预检，只更新函数环境配置，不上传代码。保留已部署的 `ADMINONLY` 集合和新增索引；不得自动删除集合、文档、`hand_actions` 索引或云函数。若需要恢复旧函数版本，必须在管理员能力已关闭后由运维人员依据备份单独执行并回读验证。
