@@ -1472,29 +1472,40 @@
 }
 
 .session-history-head-card {
-  padding: 22rpx 24rpx;
-  overflow: visible;
+  position: relative;
+  margin-left: -12rpx;
+  margin-right: -12rpx;
+  padding: 10rpx 8rpx 12rpx;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .session-history-head-card::before {
-  opacity: 0.15;
+  display: none;
 }
 
 .session-history-head-card::after {
-  left: -74rpx;
-  top: -88rpx;
-  width: 420rpx;
-  height: 250rpx;
-  opacity: 0.72;
+  content: '';
+  position: absolute;
+  left: 12rpx;
+  right: 12rpx;
+  bottom: 0;
+  height: 2rpx;
+  display: block;
+  background: #e60012;
+  transform: skewX(-24deg);
+  box-shadow: 0 0 10rpx rgba(230, 0, 18, 0.42);
 }
 
 .session-history-head {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 214rpx;
+  grid-template-columns: minmax(0, 1fr) 244rpx;
   align-items: center;
-  gap: 18rpx;
+  gap: 64rpx;
 }
 
 .session-history-title {
@@ -1503,18 +1514,24 @@
   align-items: center;
   gap: 10rpx;
   min-width: 0;
-  padding: 18rpx 44rpx 18rpx 26rpx;
+  padding: 26rpx 44rpx 26rpx 32rpx;
   color: #090a0d;
   background:
     repeating-linear-gradient(135deg, rgba(0,0,0,0.035) 0 1rpx, transparent 1rpx 16rpx),
     #f4f4f1;
   clip-path: polygon(0 7%, 100% 0, 89% 100%, 2% 94%);
-  font-size: 33rpx;
+  font-size: 52rpx;
   line-height: 1;
   font-weight: 1000;
+  font-style: italic;
   white-space: nowrap;
   transform: rotate(-1deg);
   box-sizing: border-box;
+}
+
+.session-history-title text:last-child {
+  font-style: italic;
+  letter-spacing: -0.8rpx;
 }
 
 .session-history-title::after {
@@ -1530,15 +1547,29 @@
 
 .session-history-create {
   width: 100%;
-  min-height: 72rpx;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  height: 92rpx;
+  min-height: 92rpx;
   margin: 0;
   padding: 0 18rpx;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
   border-radius: 0;
   clip-path: polygon(10% 0, 100% 5%, 88% 100%, 0 94%);
   box-shadow: 0 12rpx 28rpx rgba(230, 0, 18, 0.24);
 }
 
 .session-history-list-card {
+  margin-left: -12rpx;
+  margin-right: -12rpx;
   padding: 0;
   overflow: visible;
   background: transparent;
@@ -1617,7 +1648,7 @@
 .session-swipe-row {
   position: relative;
   overflow: hidden;
-  border-radius: 22rpx;
+  border-radius: 0;
   margin-bottom: 14rpx;
 }
 
@@ -1638,12 +1669,13 @@
 }
 
 .session-history-card {
-  min-height: 180rpx;
+  min-height: 190rpx;
   padding: 0;
-  border-radius: 8rpx;
+  border-radius: 0;
   overflow: hidden;
   border: 2rpx solid rgba(255,255,255,0.18);
   background: linear-gradient(145deg, #15171d, #090a0e);
+  clip-path: polygon(1% 0, 99% 0, 100% 8%, 98.5% 100%, 1% 100%, 0 92%);
   box-sizing: border-box;
 }
 
@@ -1659,10 +1691,10 @@
 
 .session-history-card-layout {
   position: relative;
-  min-height: 180rpx;
+  min-height: 190rpx;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(268rpx, 48%);
-  grid-template-rows: minmax(112rpx, auto) 68rpx;
+  grid-template-columns: minmax(0, 1fr) minmax(258rpx, 46%);
+  grid-template-rows: 118rpx 72rpx;
   overflow: hidden;
 }
 
@@ -1682,25 +1714,26 @@
   position: relative;
   z-index: 2;
   min-width: 0;
-  padding: 24rpx 14rpx 10rpx 28rpx;
+  padding: 24rpx 14rpx 8rpx 60rpx;
 }
 
 .session-history-name {
   overflow: hidden;
   color: #ffffff;
-  font-size: 32rpx;
+  font-size: 36rpx;
   line-height: 1.1;
   font-weight: 1000;
+  font-style: italic;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .session-history-date {
-  margin-top: 12rpx;
+  margin-top: 10rpx;
   color: rgba(255,255,255,0.62);
-  font-size: 23rpx;
+  font-size: 24rpx;
   line-height: 1.1;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .session-history-result {
@@ -1708,12 +1741,12 @@
   z-index: 1;
   grid-row: 1 / 3;
   grid-column: 2;
-  padding: 22rpx 18rpx 72rpx 30rpx;
+  padding: 20rpx 28rpx 72rpx 28rpx;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
-  clip-path: polygon(19% 0, 100% 0, 100% 100%, 0 100%, 12% 58%);
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -1726,13 +1759,12 @@
 
 .session-history-result::before {
   inset: 0;
-  opacity: 0.48;
-  background:
-    repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 1rpx, transparent 1rpx 14rpx),
-    radial-gradient(circle at 80% 18%, rgba(255,255,255,0.10), transparent 42%);
+  z-index: 0;
+  clip-path: polygon(52% 0, 100% 0, 100% 100%, 0 100%, 12% 58%);
 }
 
 .session-history-result::after {
+  z-index: 0;
   right: -34rpx;
   bottom: -28rpx;
   width: 190rpx;
@@ -1742,7 +1774,14 @@
 
 .session-history-result.positive {
   color: #00d1ff;
-  background: linear-gradient(135deg, rgba(0, 21, 28, 0.52), rgba(0, 209, 255, 0.24));
+  background: transparent;
+}
+
+.session-history-result.positive::before {
+  background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 1rpx, transparent 1rpx 14rpx),
+    radial-gradient(circle at 80% 18%, rgba(255,255,255,0.10), transparent 42%),
+    linear-gradient(135deg, rgba(0, 21, 28, 0.52), rgba(0, 209, 255, 0.24));
 }
 
 .session-history-result.positive::after {
@@ -1751,7 +1790,14 @@
 
 .session-history-result.negative {
   color: #ff3b3b;
-  background: linear-gradient(135deg, rgba(35, 0, 6, 0.48), rgba(230, 0, 18, 0.30));
+  background: transparent;
+}
+
+.session-history-result.negative::before {
+  background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 1rpx, transparent 1rpx 14rpx),
+    radial-gradient(circle at 80% 18%, rgba(255,255,255,0.10), transparent 42%),
+    linear-gradient(135deg, rgba(35, 0, 6, 0.48), rgba(230, 0, 18, 0.30));
 }
 
 .session-history-result.negative::after {
@@ -1761,28 +1807,30 @@
 .session-history-result-label,
 .session-history-result-value {
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 .session-history-result-label {
-  font-size: 20rpx;
+  font-size: 22rpx;
   line-height: 1;
   font-weight: 950;
 }
 
 .session-history-result-value {
   max-width: 100%;
-  margin-top: 10rpx;
+  margin-top: 8rpx;
   overflow: visible;
-  font-size: 36rpx;
+  font-size: 48rpx;
   line-height: 1;
-  font-weight: 1000;
-  letter-spacing: -1.4rpx;
+  font-family: "Arial Narrow", Arial, sans-serif;
+  font-weight: 900;
+  letter-spacing: -1rpx;
+  text-shadow: none;
   white-space: nowrap;
 }
 
 .session-history-result-value.compact {
-  font-size: 29rpx;
+  font-size: 37rpx;
   letter-spacing: -1.8rpx;
 }
 
@@ -1793,11 +1841,13 @@
   grid-row: 2;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: 310rpx 120rpx 108rpx;
   align-items: center;
-  gap: 9rpx;
-  padding: 8rpx 22rpx 14rpx 28rpx;
-  background: linear-gradient(90deg, rgba(9,10,14,0.98) 0 56%, rgba(9,10,14,0.86) 72%, rgba(9,10,14,0.28) 100%);
+  justify-content: start;
+  gap: 16rpx;
+  padding: 10rpx 18rpx 10rpx 18rpx;
+  border-top: 1rpx solid rgba(255,255,255,0.10);
+  background: linear-gradient(90deg, rgba(7,8,12,0.99) 0 67%, rgba(7,8,12,0.90) 80%, rgba(7,8,12,0.30) 100%);
   box-sizing: border-box;
 }
 
@@ -1806,12 +1856,28 @@
   overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 9rpx;
+  gap: 8rpx;
   color: rgba(255,255,255,0.68);
-  font-size: 20rpx;
+  font-size: 22rpx;
   line-height: 1;
   font-weight: 750;
   white-space: nowrap;
+}
+
+.session-history-metric {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5rpx;
+}
+
+.session-history-metric-icon {
+  width: 28rpx;
+  height: 28rpx;
+  flex-shrink: 0;
+  opacity: 0.82;
+  transform: scale(1.65);
+  filter: grayscale(1) saturate(0) brightness(2.8);
 }
 
 .session-history-divider {
@@ -1822,21 +1888,33 @@
 }
 
 .session-summary-trigger.session-history-summary {
-  min-width: 94rpx;
-  height: 42rpx;
-  padding: 0 13rpx 0 18rpx;
+  width: 112rpx;
+  min-width: 112rpx;
+  height: 46rpx;
+  padding: 0 12rpx;
+  gap: 5rpx;
+  border-radius: 8rpx;
+  clip-path: polygon(6% 0, 94% 0, 100% 18%, 100% 82%, 94% 100%, 6% 100%, 0 82%, 0 18%);
+  border-color: rgba(0, 209, 255, 0.84);
+  background: linear-gradient(180deg, rgba(8, 18, 24, 0.98), rgba(4, 8, 13, 0.98));
+  box-shadow: inset 0 0 12rpx rgba(0, 209, 255, 0.10), 0 0 8rpx rgba(0, 209, 255, 0.16);
   font-size: 18rpx;
   flex-shrink: 0;
 }
 
 .session-summary-trigger.session-history-summary::before {
-  left: 9rpx;
-  width: 5rpx;
-  height: 18rpx;
+  display: none;
+}
+
+.session-history-summary-icon {
+  width: 22rpx;
+  height: 22rpx;
+  flex-shrink: 0;
+  filter: brightness(0) saturate(100%) invert(65%) sepia(93%) saturate(1846%) hue-rotate(148deg) brightness(101%) contrast(101%);
 }
 
 .session-history-status {
-  min-height: 42rpx;
+  min-height: 46rpx;
   padding: 0 14rpx;
   font-size: 18rpx;
   flex-shrink: 0;
@@ -1920,52 +1998,6 @@
   box-shadow: 0 0 12rpx rgba(0, 209, 255, 0.72);
 }
 
-@media (max-width: 360px) {
-  .session-history-head {
-    grid-template-columns: minmax(0, 1fr) 190rpx;
-  }
-
-  .session-history-title {
-    padding-left: 20rpx;
-    padding-right: 34rpx;
-    font-size: 30rpx;
-  }
-
-  .session-history-card-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(248rpx, 48%);
-  }
-
-  .session-history-info {
-    padding-left: 22rpx;
-  }
-
-  .session-history-name {
-    font-size: 29rpx;
-  }
-
-  .session-history-result-value {
-    font-size: 32rpx;
-  }
-
-  .session-history-result-value.compact {
-    font-size: 27rpx;
-  }
-
-  .session-history-footer {
-    gap: 6rpx;
-    padding-left: 22rpx;
-    padding-right: 16rpx;
-  }
-
-  .session-history-metrics {
-    gap: 6rpx;
-    font-size: 18rpx;
-  }
-
-  .session-summary-trigger.session-history-summary {
-    min-width: 86rpx;
-  }
-}
 
 .session-summary-layer {
   position: fixed;

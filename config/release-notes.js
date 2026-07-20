@@ -1,13 +1,13 @@
 module.exports = {
-  version: '3.15',
+  version: '3.20',
   eyebrow: 'VERSION UPDATE',
-  title: '手牌录入体验升级',
-  summary: '完整录入、金额输入与手牌数据处理进一步优化。',
+  title: '界面与反馈体验升级',
+  summary: '“我的”页面与 Session 历史列表全面焕新，并完善反馈和 AI 提醒体验。',
   items: [
-    { title: '完整录入优化', description: '放大牌桌座位与手牌，强化当前行动和节点提示' },
-    { title: '金额输入优化', description: '有效筹码和下注金额支持快捷选择与直接输入' },
-    { title: '手牌数据修复', description: '按手牌当时级别复盘，并补全逐街行动导出' },
-    { title: '稳定性优化', description: '修复全押、秀牌、AI 建议和选择器显示问题' }
+    { title: '我的页面焕新', description: '使用 P5 风格重新组织偏好、数据、提醒、帮助与账号设置' },
+    { title: '反馈与建议', description: '接入微信原生客服，支持直接发送文字、问题截图和功能建议' },
+    { title: 'Session 列表升级', description: '强化本场输赢展示，统一卡片信息密度与真机小屏布局' },
+    { title: 'AI 提醒优化', description: '更新订阅消息模板字段与云函数权限，提高提醒送达稳定性' }
   ],
   imageUrl: '',
   acknowledgeText: '我知道了'

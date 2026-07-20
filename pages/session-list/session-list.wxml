@@ -130,7 +130,7 @@
   <view wx:elif="{{sessions.length}}" class="card session-history-head-card">
     <view class="session-history-head">
       <view class="session-history-title"><text>全部</text><text>Session</text></view>
-      <button class="primary-btn small-btn new-session-btn session-history-create onboarding-target-session" bindtap="goNewSession">+ 新建</button>
+      <view class="primary-btn small-btn new-session-btn session-history-create onboarding-target-session" role="button" bindtap="goNewSession">+ 新建</view>
     </view>
   </view>
 
@@ -159,9 +159,15 @@
           </view>
           <view class="session-history-footer">
             <view class="session-history-metrics">
-              <text>买入 {{item.buyIn}}</text>
+              <view class="session-history-metric">
+                <image class="session-history-metric-icon" src="/assets/session-icons/p5-buyin-v251.png" mode="aspectFit"></image>
+                <text>买入 {{item.buyIn}}</text>
+              </view>
               <text class="session-history-divider"></text>
-              <text>手牌 {{item.handCount}}</text>
+              <view class="session-history-metric">
+                <image class="session-history-metric-icon" src="/assets/session-icons/p5-full-v251.png" mode="aspectFit"></image>
+                <text>手牌 {{item.handCount}}</text>
+              </view>
             </view>
             <view
               wx:if="{{item.summaryEligible}}"
@@ -169,7 +175,10 @@
               catchtap="openSessionSummary"
               data-id="{{item._id}}"
               aria-label="查看 AI Session 总结"
-            >AI总结</view>
+            >
+              <image class="session-history-summary-icon" src="/assets/session-icons/p5-quick-v251.png" mode="aspectFit"></image>
+              <text>AI总结</text>
+            </view>
             <view class="badge-outline session-status-badge session-history-status {{item.status === 'active' ? 'active' : 'finished'}}">
               {{item.status === 'active' ? '进行中' : '已结束'}}
             </view>

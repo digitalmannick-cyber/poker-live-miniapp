@@ -32,3 +32,21 @@ test('cloud backup pagination supports player notes collection', () => {
   const source = fs.readFileSync(path.join(root, 'cloudfunctions', 'poker_data', 'index.js'), 'utf8')
   assert.match(source, /playerNotes:\s*COLLECTIONS\.playerNotes/)
 })
+
+test('AI reminder subscribe template matches current WeChat template fields', () => {
+  const configSource = fs.readFileSync(path.join(root, 'config', 'cloud.js'), 'utf8')
+  assert.match(configSource, /cMnLCh7VSbPFR8PzOg0FOteglq-3AaRGsblNAzdShos/)
+
+  const cloudSource = fs.readFileSync(path.join(root, 'cloudfunctions', 'poker_data', 'index.js'), 'utf8')
+  const activeStart = cloudSource.indexOf('async function sendAiReminderSubscribeMessage(event, ownerOpenId)')
+  const activeEnd = cloudSource.indexOf('exports.main', activeStart)
+  const activeSender = cloudSource.slice(activeStart, activeEnd)
+  assert.match(activeSender, /thing1:\s*{/)
+  assert.match(activeSender, /thing3:\s*{/)
+  assert.match(activeSender, /time2:\s*{/)
+  assert.match(activeSender, /thing4:\s*{/)
+  assert.doesNotMatch(activeSender, /time7:\s*{/)
+  assert.doesNotMatch(activeSender, /short_thing1:\s*{/)
+  assert.doesNotMatch(activeSender, /number2:\s*{/)
+  assert.doesNotMatch(activeSender, /time3:\s*{/)
+})

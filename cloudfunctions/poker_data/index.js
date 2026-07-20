@@ -420,6 +420,17 @@ function resolveOwnerOpenId(event, identity) {
     }
     return { ownerOpenId, externalAgent: true }
   }
+  if (action === 'send_ai_reminder_subscribe') {
+    const token = getAuthorizationToken(event)
+    const ownerOpenId = String(event && event.ownerOpenId || AGENT_EXPORT_OWNER_OPENID || '').trim()
+    if (!AGENT_EXPORT_TOKEN || !ownerOpenId) {
+      return { error: { code: 'EXTERNAL_ACTION_NOT_CONFIGURED', message: 'missing AGENT_EXPORT_TOKEN or ownerOpenId' } }
+    }
+    if (!token || token !== AGENT_EXPORT_TOKEN) {
+      return { error: { code: 'EXTERNAL_ACTION_UNAUTHORIZED', message: 'invalid action token' } }
+    }
+    return { ownerOpenId, externalAgent: true }
+  }
   return { error: { code: 'MISSING_OPENID', message: 'missing openid' } }
 }
 
@@ -1550,7 +1561,36 @@ function truncateSubscribeValue(value, maxLength) {
   return text.length > maxLength ? text.slice(0, maxLength) : text
 }
 
-async function sendAiReminderSubscribeMessage(event, ownerOpenId) {
+function formatSubscribeTime(value) {
+  const date = new Date(Number(value) || Date.now())
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return year + '-' + month + '-' + day + ' ' + hour + ':' + minute
+}
+
+function getReminderPlanName(reminder) {
+  const type = String(reminder && reminder.type || '').trim()
+  if (type === 'profit_target') return 'AI止盈提醒'
+  if (type === 'loss_limit') return 'AI止损提醒'
+  if (type === 'trailing_profit') return 'AI回撤提醒'
+  if (type === 'post_loss_extra_risk') return 'AI风控提醒'
+  if (type === 'session_max_hours' || type === 'session_pre_reminder') return 'AI时长提醒'
+  if (type === 'text_reminder') return truncateSubscribeValue(reminder && reminder.title || 'AI纪律提醒', 20)
+  return truncateSubscribeValue(reminder && reminder.title || 'AI自动提醒', 20)
+}
+
+function getReminderPlanContent(reminder) {
+  return truncateSubscribeValue(reminder && (reminder.message || reminder.title) || '牌局状态提醒已触发', 20)
+}
+
+function getReminderWarmTip() {
+  return '仅供参考，具体操作自己把控'
+}
+
+async function sendAiReminderSubscribeMessageLegacy(event, ownerOpenId) {
   const reminder = event && event.reminder || {}
   const templateId = String(event && event.templateId || AI_REMINDER_SUBSCRIBE_TEMPLATE_ID).trim()
   if (!templateId) {
@@ -1574,6 +1614,46 @@ async function sendAiReminderSubscribeMessage(event, ownerOpenId) {
       },
       time2: {
         value: new Date(Number(reminder.createdAt) || Date.now()).toISOString().slice(0, 16).replace('T', ' ')
+      }
+    }
+  })
+
+  return {
+    code: 0,
+    data: {
+      sent: true,
+      result
+    }
+  }
+}
+
+async function sendAiReminderSubscribeMessage(event, ownerOpenId) {
+  const reminder = event && event.reminder || {}
+  const templateId = String(event && event.templateId || AI_REMINDER_SUBSCRIBE_TEMPLATE_ID).trim()
+  if (!templateId) {
+    return { code: 'MISSING_TEMPLATE_ID', message: 'missing AI_REMINDER_SUBSCRIBE_TEMPLATE_ID' }
+  }
+  if (!cloud.openapi || !cloud.openapi.subscribeMessage || typeof cloud.openapi.subscribeMessage.send !== 'function') {
+    return { code: 'SUBSCRIBE_API_UNAVAILABLE', message: 'subscribeMessage.send unavailable' }
+  }
+
+  const result = await cloud.openapi.subscribeMessage.send({
+    touser: ownerOpenId,
+    templateId,
+    page: 'pages/profile/profile',
+    miniprogramState: 'developer',
+    data: {
+      thing1: {
+        value: getReminderPlanName(reminder)
+      },
+      thing3: {
+        value: getReminderPlanContent(reminder)
+      },
+      time2: {
+        value: formatSubscribeTime(reminder.createdAt)
+      },
+      thing4: {
+        value: getReminderWarmTip()
       }
     }
   })
