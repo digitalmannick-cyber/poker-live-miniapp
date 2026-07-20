@@ -119,6 +119,20 @@ test('deployment can explicitly keep administrator moderation disabled after ver
   assert.match(source, /Disabled-administrator function verification failed/)
 })
 
+test('function-only deployment preserves remote environment and bypasses database mutations', () => {
+  const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
+  assert.match(source, /\[switch\]\$ApplyFunctionOnly/)
+  const branch = source.indexOf('if ($ApplyFunctionOnly)')
+  const describeTables = source.indexOf("Invoke-TcbApi 'DescribeTables'", branch)
+  assert(branch > 0 && describeTables > branch)
+  const branchSource = source.slice(branch, describeTables)
+  assert.match(branchSource, /foreach \(\$key in \$remoteEnvironment\.Keys\)/)
+  assert.match(branchSource, /Deploy-AndWaitFunctionEnvironment .* -DeployCode/)
+  assert.match(branchSource, /Test-EnvironmentMapEqual \$verifiedEnvironment \$expectedEnvironment/)
+  assert.match(branchSource, /without changing database resources or administrator configuration/)
+  assert.doesNotMatch(branchSource, /SOCIAL_ADMIN_OPENIDS.*Remove/)
+})
+
 test('PowerShell 5.1 compatibility and tracked-input gate are explicit', () => {
   const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
   assert.doesNotMatch(source, /Convert\]::ToHexString/)

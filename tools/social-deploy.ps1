@@ -3,6 +3,9 @@ param(
   [Parameter(ParameterSetName = 'Apply', Mandatory = $true)]
   [switch]$Apply,
 
+  [Parameter(ParameterSetName = 'CodeOnly', Mandatory = $true)]
+  [switch]$ApplyFunctionOnly,
+
   [Parameter(ParameterSetName = 'Apply')]
   [switch]$KeepAdminModerationDisabled,
 
@@ -14,10 +17,12 @@ param(
 
   [Parameter(ParameterSetName = 'Apply', Mandatory = $true)]
   [Parameter(ParameterSetName = 'Disable', Mandatory = $true)]
+  [Parameter(ParameterSetName = 'CodeOnly', Mandatory = $true)]
   [string]$ConfirmEnvironmentId,
 
   [Parameter(ParameterSetName = 'Apply', Mandatory = $true)]
   [Parameter(ParameterSetName = 'Disable', Mandatory = $true)]
+  [Parameter(ParameterSetName = 'CodeOnly', Mandatory = $true)]
   [string]$ExpectedCommit,
 
   [string]$Root = ''
@@ -567,6 +572,34 @@ $region = $environment.data.region
 
 $remoteFunction = Try-GetRemoteFunction $plan.envId $region
 $functionExists = $null -ne $remoteFunction
+
+if ($ApplyFunctionOnly) {
+  if ($ConfirmEnvironmentId -ne $plan.envId) { throw 'ConfirmEnvironmentId does not exactly match the configured environment' }
+  if ($ExpectedCommit -ne $commit) { throw 'ExpectedCommit does not exactly match HEAD' }
+  if (-not $functionExists) { throw 'poker_social must already exist for a function-only deployment' }
+  $remoteEnvironment = Get-FunctionEnvironmentMap $remoteFunction
+  if (-not $remoteEnvironment.Contains('SOCIAL_INVITE_TOKEN_SECRET') -or
+      [string]$remoteEnvironment['SOCIAL_INVITE_TOKEN_SECRET'] -notmatch '^[A-Za-z0-9_-]{43,128}$') {
+    throw 'The deployed invite secret is missing or invalid; function-only deployment is forbidden'
+  }
+  $expectedEnvironment = [ordered]@{}
+  foreach ($key in $remoteEnvironment.Keys) { $expectedEnvironment[$key] = $remoteEnvironment[$key] }
+  $expectedEnvironment['SOCIAL_DEPLOY_COMMIT'] = $commit
+  $expectedEnvironment.Remove('SOCIAL_DEPLOY_CODE_SHA256')
+  $null = Deploy-AndWaitFunctionEnvironment $expectedEnvironment $configPath $Root $plan.envId $region -DeployCode
+  $deployedCodeSha256 = Get-RemoteFunctionCodeSha256 $plan.envId $region
+  $expectedEnvironment['SOCIAL_DEPLOY_CODE_SHA256'] = $deployedCodeSha256
+  $verifiedFunction = Deploy-AndWaitFunctionEnvironment $expectedEnvironment $configPath $Root $plan.envId $region
+  $verifiedEnvironment = Get-FunctionEnvironmentMap $verifiedFunction
+  $verifiedCodeSha256 = Get-RemoteFunctionCodeSha256 $plan.envId $region
+  if (-not (Test-EnvironmentMapEqual $verifiedEnvironment $expectedEnvironment) -or
+      [string]$verifiedCodeSha256 -ne [string]$deployedCodeSha256) {
+    throw 'Function-only deployment verification failed'
+  }
+  Invoke-StagedFunctionSmoke $plan.envId
+  Write-Output 'poker_social function code converged without changing database resources or administrator configuration.'
+  return
+}
 
 $tablesResult = Invoke-TcbApi 'DescribeTables' @{
   EnvId = $plan.envId; Tag = $tag; MgoLimit = 300; MgoOffset = 0
