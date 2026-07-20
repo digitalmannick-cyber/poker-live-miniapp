@@ -12,6 +12,12 @@ All social collections are server-only. Configure CloudBase client permissions t
 - `social_comments`: `shareId ASC, createdAt DESC, _id DESC`
 - `social_notifications`: `recipientId ASC, createdAt DESC, _id DESC`
 - `social_notification_outbox`: `status ASC, targetUserIds ARRAY, createdAt ASC, _id ASC`
+- `social_invites`: `inviterId ASC, createdAt DESC, _id DESC`
+- `social_player_card_shares`: `targetUserId ASC, status ASC, createdAt DESC, _id DESC`
+- `social_comments`: `authorId ASC, createdAt DESC, _id DESC`
+- `social_likes`: `actorId ASC, updatedAt DESC, _id DESC`
+
+These four base product-query indexes remain alongside the narrower account-clear convergence indexes below; neither shape substitutes for the other.
 
 ## Authoritative source reads
 
@@ -51,5 +57,12 @@ For an account-clear target, the outbox records the user in `skippedTargetIds` a
 - `social_user_owners`: deterministic owner-hash `_id` reservation point-read only; permanently retained as an account-lifecycle tombstone and contains no raw OpenID
 - `social_hand_share_slots`: deterministic `_id` point-read only
 - `social_notification_state`: deterministic `_id` point-read only
+
+## Deterministic point reads with additional account-clear indexes
+
+- `social_rate_limits`: deterministic actor/action `_id`; account clear additionally uses the declared actor/publisher indexes
+- `social_likes`: deterministic share/actor `_id`; account clear additionally uses the declared actor index
+- `social_notification_heads`: deterministic recipient/kind/window `_id`; account clear additionally uses the declared recipient index
+- `social_notification_actors`: deterministic notification/actor `_id`; account clear additionally uses the declared notification and actor indexes
 
 Transaction stores expose deterministic document `get`, `set`, and `remove` only. All indexed list queries execute outside transactions, then transactions re-read and re-check each selected document before mutation.

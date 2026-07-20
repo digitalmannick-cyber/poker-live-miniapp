@@ -3,11 +3,13 @@ const { socialError } = require('./social-error')
 const { POKER_STICKER_IDS } = require('./poker-stickers')
 
 const RATE_LIMITS = Object.freeze({
+  friendRequest: Object.freeze({ windowMs: 24 * 60 * 60 * 1000, max: 20 }),
+  playerCard: Object.freeze({ windowMs: 24 * 60 * 60 * 1000, max: 20 }),
   comment: Object.freeze({ windowMs: 60_000, max: 10 }),
   like: Object.freeze({ windowMs: 60_000, max: 30 })
 })
 
-function interactionRateId(actorId, action) {
+function rateLimitId(actorId, action) {
   return 'rl_' + crypto.createHash('sha256').update(JSON.stringify([String(actorId || ''), String(action || '')])).digest('hex')
 }
 
@@ -51,11 +53,11 @@ function normalizeLikeInput(event) {
   return { shareId, liked: event.liked }
 }
 
-async function consumeInteractionRate(store, actorId, action, at) {
+async function consumeRateLimit(store, actorId, action, at) {
   const config = RATE_LIMITS[action]
-  if (!config) throw new Error('interaction rate limit unavailable')
-  if (!Number.isSafeInteger(at) || at <= 0) throw new Error('interaction clock unavailable')
-  const id = interactionRateId(actorId, action)
+  if (!config) throw new Error('social rate limit unavailable')
+  if (!Number.isSafeInteger(at) || at <= 0) throw new Error('social rate limit clock unavailable')
+  const id = rateLimitId(actorId, action)
   const current = await store.get('social_rate_limits', id)
   const floor = at - config.windowMs
   const occurredAt = (Array.isArray(current && current.occurredAt) ? current.occurredAt : [])
@@ -72,9 +74,11 @@ async function consumeInteractionRate(store, actorId, action, at) {
 
 module.exports = {
   RATE_LIMITS,
-  interactionRateId,
+  rateLimitId,
+  interactionRateId: rateLimitId,
   normalizeId,
   normalizeCommentInput,
   normalizeLikeInput,
-  consumeInteractionRate
+  consumeRateLimit,
+  consumeInteractionRate: consumeRateLimit
 }

@@ -1062,7 +1062,7 @@ social_likes: deterministic share+actor _id
 social_likes: actorId ASC, updatedAt DESC, _id DESC
 
 social_notifications: recipientId ASC, createdAt DESC, _id DESC
-social_notifications: actor.socialUserId ASC, createdAt ASC, _id ASC
+social_notifications: actorSnapshot.socialUserId ASC, createdAt ASC, _id ASC
 social_notification_state: deterministic _id
 social_notification_heads: deterministic _id
 social_notification_heads: recipientId ASC, latestAt ASC, _id ASC
@@ -1071,6 +1071,8 @@ social_notification_actors: actorId ASC, createdAt ASC, _id ASC
 social_notification_actors: notificationId ASC, createdAt ASC, _id ASC
 social_mutations: actorId ASC, createdAt ASC, _id ASC
 ```
+
+勘误：通知持久化 schema 的真实字段是 `actorSnapshot.socialUserId`；早期文本中的 `actor.socialUserId` 仅表示同一公开 actor 快照语义，不是可部署字段名。manifest、repository 与查询验收统一使用 `actorSnapshot.socialUserId`。
 
 私有 `player_card_import_receipts` 还必须声明 `ownerOpenId ASC, playerId ASC, _id ASC`，供账号清除按 owner/player 分页删除；不能只依赖单 share 的 deterministic point read。
 

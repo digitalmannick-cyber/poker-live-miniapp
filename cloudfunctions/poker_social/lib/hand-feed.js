@@ -4,7 +4,7 @@ const { getPairId } = require('./friendship')
 const { canReadShare } = require('./visibility')
 const { copyHandSnapshot, ownerIdentity, playerIdentity } = require('./hand-share')
 const { FRIEND_ID_QUERY_CHUNK_SIZE } = require('./repository')
-const { requireActiveSocialUser } = require('./social-lifecycle')
+const { SOCIAL_LIFECYCLE, lifecycleOf, requireActiveSocialUser } = require('./social-lifecycle')
 
 const SOURCE_READ_CONCURRENCY = 8
 const STREAM_HEAD_CONCURRENCY = 8
@@ -129,6 +129,8 @@ async function requireReadableLiveShare(repository, viewerId, shareIdValue) {
   const shareId = text(shareIdValue)
   if (!shareId || shareId.length > MAX_SHARE_ID_LENGTH) throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
   const share = await pointRead(repository, 'getHandShareById', 'social_hand_shares', shareId)
+  const publisher = share && await pointRead(repository, 'getSocialUserById', 'social_users', text(share.publisherId))
+  if (lifecycleOf(publisher) !== SOCIAL_LIFECYCLE.ACTIVE) throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
   const handId = text(share && share.source && share.source.handId)
   const hand = handId && await pointRead(repository, 'getSourceHandById', 'hands', handId)
   if (!exactSourceMatch(share, hand)) throw socialError('CONTENT_UNAVAILABLE', 'content unavailable')
@@ -145,7 +147,7 @@ async function pointRead(repository, method, collection, id) {
 
 async function publicPublisher(repository, publisherId, avatarUrl) {
   const publisher = await repository.get('social_users', publisherId)
-  if (!publisher || text(publisher._id) !== text(publisherId)) return null
+  if (lifecycleOf(publisher) !== SOCIAL_LIFECYCLE.ACTIVE || text(publisher._id) !== text(publisherId)) return null
   const profile = publisher.profile && typeof publisher.profile === 'object' ? publisher.profile : {}
   const avatarFileId = text(publisher.avatarFileId || profile.avatarFileId)
   let resolved = ''

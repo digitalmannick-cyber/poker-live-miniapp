@@ -22,6 +22,39 @@ const SOCIAL_COLLECTIONS = Object.freeze({
 })
 
 const SERVER_ONLY_SOCIAL_COLLECTIONS = Object.freeze(Object.values(SOCIAL_COLLECTIONS))
+const DETERMINISTIC_POINT_READ_COLLECTIONS = Object.freeze([
+  SOCIAL_COLLECTIONS.SOCIAL_USER_OWNERS,
+  SOCIAL_COLLECTIONS.SOCIAL_HAND_SHARE_SLOTS,
+  SOCIAL_COLLECTIONS.SOCIAL_RATE_LIMITS,
+  SOCIAL_COLLECTIONS.SOCIAL_LIKES,
+  SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_STATE,
+  SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_HEADS,
+  SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATION_ACTORS
+])
+const ACCOUNT_CLEAR_QUERY_STAGES = Object.freeze([
+  'invites',
+  'friendships_a_pending',
+  'friendships_a_accepted',
+  'friendships_a_rejected',
+  'friendships_b_pending',
+  'friendships_b_accepted',
+  'friendships_b_rejected',
+  'hand_shares',
+  'card_shares_sent',
+  'card_shares_received',
+  'comments',
+  'likes',
+  'recipient_notifications',
+  'recipient_heads',
+  'actor_notifications',
+  'actor_memberships',
+  'outbox_publisher',
+  'outbox_target',
+  'rate_actor',
+  'rate_publisher',
+  'mutations',
+  'daily_stats'
+])
 
 const PRIVATE_PAGE_SIZE = 100
 const FRIEND_ID_QUERY_CHUNK_SIZE = 10
@@ -123,6 +156,7 @@ function createCloudSocialRepository(database) {
       if (!id || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > ACCOUNT_CLEAR_BATCH_SIZE) {
         throw new Error('account clear limit unavailable')
       }
+      if (!ACCOUNT_CLEAR_QUERY_STAGES.includes(String(stage || ''))) throw new Error('account clear stage unavailable')
       const relationship = /^friendships_([ab])_(pending|accepted|rejected)$/.exec(String(stage || ''))
       let definition = null
       if (relationship) {
@@ -450,8 +484,8 @@ function createCloudSocialRepository(database) {
         ])
       }
       let request = client.collection(SOCIAL_COLLECTIONS.SOCIAL_NOTIFICATIONS).where(query)
-      if (typeof request.orderBy === 'function') request = request.orderBy('createdAt', 'desc').orderBy('_id', 'desc')
-      if (typeof request.limit === 'function') request = request.limit(limit + 1)
+      if (typeof request.orderBy !== 'function' || typeof request.limit !== 'function') throw new Error('notification query unavailable')
+      request = request.orderBy('createdAt', 'desc').orderBy('_id', 'desc').limit(limit + 1)
       const response = await request.get()
       return Array.isArray(response && response.data) ? response.data : []
     }
@@ -504,6 +538,8 @@ function createCloudSocialRepository(database) {
 module.exports = {
   SOCIAL_COLLECTIONS,
   SERVER_ONLY_SOCIAL_COLLECTIONS,
+  DETERMINISTIC_POINT_READ_COLLECTIONS,
+  ACCOUNT_CLEAR_QUERY_STAGES,
   FRIEND_ID_QUERY_CHUNK_SIZE,
   createCloudSocialRepository
 }

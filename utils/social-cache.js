@@ -7,10 +7,13 @@ const NOTIFICATIONS_CACHE_PREFIX = 'socialNotificationsFirstPage:'
 const ACCOUNT_IDENTITY_PREFIX = 'socialCacheAccountIdentity:'
 const RANKING_RANGES = Object.freeze(['week', 'month', 'all'])
 const PRIVATE_CACHE_KEY_TOKENS = new Set([
-  'openid', 'owneropenid', 'playerid', 'privateplayerid',
+  'openid', 'owneropenid', 'ownerhash', 'playerid', 'privateplayerid',
   'note', 'notes', 'notepreview', 'playernote', 'playernotes', 'leak', 'leaks', 'leaktag', 'leaktags',
   'battlehandids', 'linkedhandids', 'sourcehandid', 'handid', 'sessionid',
-  'actions', 'rawhand', 'permission', 'canread', 'avatarfileid'
+  'actions', 'rawhand', 'permission', 'canread', 'avatarfileid',
+  'profit', 'currentprofit', 'resultbb', 'allinev', 'allinevprofit', 'allinevadjustedprofit',
+  'buyin', 'cashout', 'hourlyrate', 'winrate', 'venue', 'lastvenue',
+  'voiceextract', 'aireview', 'ledgerstate', 'streetinputs', 'streetsummary'
 ])
 const SCOPE_LABELS = Object.freeze({
   square: '广场',

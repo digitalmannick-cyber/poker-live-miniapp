@@ -4,6 +4,7 @@ const { runIdempotent, requireClientMutationId } = require('./idempotency')
 const { requireAcceptedFriendship, isReadableCardShare } = require('./visibility')
 const { createNotificationWriter } = require('./notification')
 const { requireActiveSocialUser } = require('./social-lifecycle')
+const { consumeRateLimit } = require('./validation')
 
 const USER_COLLECTION = 'social_users'
 const PLAYER_NOTE_COLLECTION = 'player_notes'
@@ -154,6 +155,7 @@ function createPlayerCardHandlers(repository, options) {
           (!sourceKind || sourceKind === 'library')
         if (!validSource) throw socialError('PLAYER_CARD_SOURCE_NOT_FOUND', 'player card source not found')
         const at = now()
+        await consumeRateLimit(store, sender._id, 'playerCard', at)
         const share = {
           _id: 'pcs_' + crypto.randomBytes(16).toString('hex'),
           senderUserId: sender._id,

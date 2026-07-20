@@ -216,6 +216,39 @@
       ]
     },
     {
+      "collection": "social_invites",
+      "fields": [
+        { "field": "inviterId", "order": "ASC" },
+        { "field": "createdAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    },
+    {
+      "collection": "social_player_card_shares",
+      "fields": [
+        { "field": "targetUserId", "order": "ASC" },
+        { "field": "status", "order": "ASC" },
+        { "field": "createdAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    },
+    {
+      "collection": "social_comments",
+      "fields": [
+        { "field": "authorId", "order": "ASC" },
+        { "field": "createdAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    },
+    {
+      "collection": "social_likes",
+      "fields": [
+        { "field": "actorId", "order": "ASC" },
+        { "field": "updatedAt", "order": "DESC" },
+        { "field": "_id", "order": "DESC" }
+      ]
+    },
+    {
       "collection": "player_card_import_receipts",
       "fields": [
         { "field": "ownerOpenId", "order": "ASC" },
@@ -228,5 +261,14 @@
     "social_user_owners",
     "social_hand_share_slots",
     "social_notification_state"
+  ],
+  "deterministicPointReads": [
+    "social_user_owners",
+    "social_hand_share_slots",
+    "social_rate_limits",
+    "social_likes",
+    "social_notification_state",
+    "social_notification_heads",
+    "social_notification_actors"
   ]
 }

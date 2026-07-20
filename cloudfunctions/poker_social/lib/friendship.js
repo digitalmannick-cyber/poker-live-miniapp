@@ -5,6 +5,7 @@ const { MUTATION_COLLECTION, mutationRecordId, runIdempotent, requireClientMutat
 const { toProfileDto } = require('./profile')
 const { COLLECTIONS: NOTIFICATION_COLLECTIONS, stateDocumentId, createNotificationWriter } = require('./notification')
 const { requireActiveSocialUser } = require('./social-lifecycle')
+const { consumeRateLimit } = require('./validation')
 
 const USER_COLLECTION = 'social_users'
 const FRIENDSHIP_COLLECTION = 'social_friendships'
@@ -246,6 +247,7 @@ function createFriendshipHandlers(repository, options) {
           record._id = existing._id
           record.userIds = existing.userIds
         }
+        await consumeRateLimit(store, requester._id, 'friendRequest', at)
         await store.set(FRIENDSHIP_COLLECTION, pairId, record)
         await store.set(INVITE_COLLECTION, invite._id, Object.assign({}, invite, { usedCount: (Number(invite.usedCount) || 0) + 1, updatedAt: at }))
         await notificationWriter.write(store, {
