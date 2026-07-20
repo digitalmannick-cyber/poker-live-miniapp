@@ -362,11 +362,14 @@ function Deploy-AndWaitFunctionEnvironment {
   try {
     if ($DeployCode) {
       $config = Get-Content -LiteralPath $BaseConfigPath -Raw | ConvertFrom-Json
-      $config.functionRoot = [IO.Path]::GetFullPath((Join-Path $RepoRoot 'cloudfunctions'))
+      # CloudBase CLI resolves functionRoot from the current working directory even when
+      # --config-file points at a temporary file. An absolute value is incorrectly joined
+      # to the repository path by CLI 3.5.x, producing a duplicated Windows path.
+      $config.functionRoot = 'cloudfunctions'
     } else {
       $config = [pscustomobject][ordered]@{
         envId = $EnvId
-        functionRoot = [IO.Path]::GetFullPath((Join-Path $RepoRoot 'cloudfunctions'))
+        functionRoot = 'cloudfunctions'
         functions = @([pscustomobject][ordered]@{ name = 'poker_social' })
       }
     }
