@@ -40,6 +40,7 @@ test('invite inspection and forwarded token do not create a friendship', async (
   const inspected = await handlers.inspect_invite({ token: invite.token }, viewer)
 
   assert.equal(inspected.inviter.socialUserId, 'su_a')
+  assert.equal(inspected.requesterProfileReady, true)
   assert.deepEqual(repository.where('social_friendships', () => true), [])
   assert.equal(repository.where('social_invites', () => true).length, 1)
 })
@@ -193,6 +194,8 @@ test('create invite QR encodes the existing share token and persists no plaintex
   assert.deepEqual(retried, result)
   assert.equal(calls[0].scene, share.token)
   assert.equal(calls[1].scene, share.token)
+  assert.equal(calls[0].page, 'pages/social-invite/social-invite')
+  assert.equal(calls[0].checkPath, false)
   assert.equal(uploads[0].cloudPath, uploads[1].cloudPath)
   const mutation = repository.where('social_mutations', row => row.action === 'create_invite_qr')[0]
   assert.deepEqual(mutation.result, { inviteId: getInviteId(share.token), expiresAt: share.expiresAt })
@@ -211,6 +214,22 @@ test('create invite QR encodes the existing share token and persists no plaintex
     error => error.code === 'MUTATION_CONFLICT'
   )
   assert.doesNotMatch(JSON.stringify(result), /ownerOpenId|avatarFileId|digest/)
+})
+
+test('invite inspection tells a first-time visitor to initialize a profile without creating friendship state', async () => {
+  const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
+  const repository = createMemorySocialRepository({
+    social_users: [{ _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: 'A' } }]
+  })
+  const handlers = createFriendshipHandlers(repository, {
+    now: () => 1_000,
+    tokenSecret: '12345678901234567890123456789012'
+  })
+  const invite = await handlers.create_invite({ clientMutationId: 'first-time-invite' }, { ownerOpenId: 'openid-a' })
+  const inspected = await handlers.inspect_invite({ token: invite.token }, { ownerOpenId: 'openid-new' })
+
+  assert.equal(inspected.requesterProfileReady, false)
+  assert.deepEqual(repository.where('social_friendships', () => true), [])
 })
 
 test('social app routes friendship actions and social service requires client mutation identifiers for writes', async () => {

@@ -201,6 +201,60 @@ test('landing links decode safely, inspect before applying, and prevent duplicat
   }
 })
 
+test('a first-time invitee logs in, initializes the social profile, and continues with the same invite token', async () => {
+  const socialService = require('../services/social-service')
+  const dataService = require('../services/data-service')
+  const socialProfileSync = require('../utils/social-profile-sync')
+  const original = {
+    inspectInvite: socialService.inspectInvite,
+    sendFriendRequest: socialService.sendFriendRequest,
+    loginWechatAccount: dataService.loginWechatAccount,
+    getCurrentProfile: dataService.getCurrentProfile,
+    getCurrentPlayerId: dataService.getCurrentPlayerId,
+    syncSocialProfile: socialProfileSync.syncSocialProfile
+  }
+  const calls = []
+  global.wx = { showToast() {}, hideShareMenu() {}, showShareMenu() {} }
+  socialService.inspectInvite = async input => {
+    calls.push({ action: 'inspect', input })
+    return { inviter: { nickname: '邀请人' }, requesterProfileReady: false }
+  }
+  dataService.loginWechatAccount = async input => { calls.push({ action: 'login', input }); return true }
+  dataService.getCurrentProfile = () => ({ playerId: 'WX-NEWUSER', name: '新玩家' })
+  dataService.getCurrentPlayerId = () => 'WX-NEWUSER'
+  socialProfileSync.syncSocialProfile = async (profile, options) => {
+    calls.push({ action: 'profile', profile, current: options.isCurrent() })
+    return { socialUserId: 'su_new' }
+  }
+  socialService.sendFriendRequest = async input => {
+    calls.push({ action: 'request', input })
+    return { friendshipId: 'fr_new', status: 'pending' }
+  }
+
+  try {
+    const page = loadInvitePage()
+    await page.onLoad({ token: 'first_user_token' })
+    assert.equal(page.data.loginRequired, true)
+    await page.sendFriendRequest()
+
+    assert.deepEqual(calls.map(item => item.action), ['inspect', 'login', 'profile', 'request'])
+    assert.deepEqual(calls[1].input, { manual: true })
+    assert.equal(calls[2].current, true)
+    assert.equal(calls[3].input.token, 'first_user_token')
+    assert.equal(page.data.loginRequired, false)
+    assert.equal(page.data.status, 'sent')
+    assert.match(fs.readFileSync(inviteWxmlPath, 'utf8'), /首次使用流程[\s\S]*微信登录并发送申请/)
+  } finally {
+    socialService.inspectInvite = original.inspectInvite
+    socialService.sendFriendRequest = original.sendFriendRequest
+    dataService.loginWechatAccount = original.loginWechatAccount
+    dataService.getCurrentProfile = original.getCurrentProfile
+    dataService.getCurrentPlayerId = original.getCurrentPlayerId
+    socialProfileSync.syncSocialProfile = original.syncSocialProfile
+    delete global.Page
+  }
+})
+
 test('a QR display failure keeps the invite shareable and explains the fallback', async () => {
   const socialService = require('../services/social-service')
   const original = { createInvite: socialService.createInvite, createInviteQr: socialService.createInviteQr }

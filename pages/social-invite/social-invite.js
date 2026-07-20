@@ -1,5 +1,7 @@
 const socialService = require('../../services/social-service')
 const socialMutation = require('../../utils/social-mutation')
+const dataService = require('../../services/data-service')
+const socialProfileSync = require('../../utils/social-profile-sync')
 
 function safeDecodeInviteToken(value) {
   const raw = String(value || '').trim()
@@ -47,6 +49,8 @@ Page({
     loading: false,
     generating: false,
     submitting: false,
+    loginRequired: false,
+    loginError: '',
     errorMessage: ''
   },
 
@@ -111,6 +115,8 @@ Page({
       this.setData({
         inviter: result && result.inviter || null,
         expiresAt: Number(result && result.expiresAt) || 0,
+        loginRequired: result && result.requesterProfileReady === false,
+        loginError: '',
         status: 'ready'
       })
       showShareMenu()
@@ -128,8 +134,26 @@ Page({
 
   async sendFriendRequest() {
     if (this.data.submitting || !this.data.inviteToken) return
-    this.setData({ submitting: true, errorMessage: '' })
+    this.setData({ submitting: true, loginError: '', errorMessage: '' })
     try {
+      if (this.data.loginRequired) {
+        const loggedIn = await dataService.loginWechatAccount({ manual: true })
+        if (!loggedIn) {
+          this.setData({ loginError: '微信登录未完成，请检查网络后重试。' })
+          return
+        }
+        const profile = dataService.getCurrentProfile()
+        const playerId = String(profile && profile.playerId || '').trim().toUpperCase()
+        const synced = await socialProfileSync.syncSocialProfile(profile, {
+          force: true,
+          isCurrent: () => String(dataService.getCurrentPlayerId()).trim().toUpperCase() === playerId
+        })
+        if (!synced || !synced.socialUserId) {
+          this.setData({ loginError: '玩家资料初始化未完成，请重试。' })
+          return
+        }
+        this.setData({ loginRequired: false, loginError: '' })
+      }
       const result = await socialService.sendFriendRequest({
         token: this.data.inviteToken,
         clientMutationId: socialMutation.createMutationId('friend_request')
@@ -141,8 +165,12 @@ Page({
       hideShareMenu()
       showToast('好友申请已发送')
     } catch (error) {
-      this.setData(inviteErrorState(error))
-      hideShareMenu()
+      if (error && error.code === 'SOCIAL_PROFILE_REQUIRED') {
+        this.setData({ status: 'ready', loginRequired: true, loginError: '请先使用微信登录，再发送好友申请。' })
+      } else {
+        this.setData(inviteErrorState(error))
+        hideShareMenu()
+      }
     } finally {
       this.setData({ submitting: false })
     }

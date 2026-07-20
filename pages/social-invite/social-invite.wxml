@@ -38,7 +38,17 @@
       </view>
     </view>
     <view class="invite-card-text">发送申请后需对方确认。确认前，双方都不会看到彼此的牌局数据。</view>
+    <view wx:if="{{loginRequired}}" class="invite-login-flow">
+      <view class="invite-login-title">首次使用流程</view>
+      <view class="invite-login-steps">
+        <view><text>1</text>微信身份登录</view>
+        <view><text>2</text>建立玩家资料</view>
+        <view><text>3</text>发送好友申请</view>
+      </view>
+      <view class="invite-login-tip">邀请信息会保留，登录后会在当前页面继续。</view>
+    </view>
+    <view wx:if="{{loginError}}" class="invite-login-error">{{loginError}}</view>
     <view wx:if="{{status === 'sent'}}" class="invite-sent">申请已发送，等待对方确认</view>
-    <view wx:else class="invite-action invite-action-primary {{submitting ? 'is-disabled' : ''}}" bindtap="sendFriendRequest">{{submitting ? '正在发送' : '发送好友申请'}}</view>
+    <view wx:else class="invite-action invite-action-primary {{submitting ? 'is-disabled' : ''}}" bindtap="sendFriendRequest">{{submitting ? (loginRequired ? '正在登录' : '正在发送') : (loginRequired ? '微信登录并发送申请' : '发送好友申请')}}</view>
   </view>
 </view>

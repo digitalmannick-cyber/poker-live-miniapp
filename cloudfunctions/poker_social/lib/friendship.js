@@ -75,6 +75,20 @@ async function findActorUser(repository, actor) {
   return requireActiveSocialUser(user)
 }
 
+async function findOptionalActorUser(repository, actor) {
+  const ownerOpenId = String(actor && actor.ownerOpenId || '').trim()
+  if (!ownerOpenId) return null
+  const user = typeof repository.find === 'function'
+    ? await repository.find(USER_COLLECTION, { ownerOpenId })
+    : repository.where(USER_COLLECTION, row => row.ownerOpenId === ownerOpenId)[0]
+  if (!user) return null
+  try {
+    return requireActiveSocialUser(user)
+  } catch (error) {
+    return null
+  }
+}
+
 async function publicUserDto(user, avatarUrl) {
   const profile = toProfileDto(user, { avatarUrl: user && user.profile && user.profile.avatarFileId && avatarUrl ? await avatarUrl(user.profile.avatarFileId) : '' })
   const result = {
@@ -209,7 +223,11 @@ function createFriendshipHandlers(repository, options) {
     if (!config.qrCode || typeof config.qrCode.getUnlimited !== 'function' || typeof config.uploadTempFile !== 'function') {
       throw socialError('QR_UNAVAILABLE', 'qr unavailable')
     }
-    const image = await config.qrCode.getUnlimited({ scene: token, page: 'pages/social-invite/social-invite' })
+    const image = await config.qrCode.getUnlimited({
+      scene: token,
+      page: 'pages/social-invite/social-invite',
+      checkPath: false
+    })
     const uploaded = await config.uploadTempFile({ cloudPath: 'social-invites/' + result.inviteId + '.png', fileContent: image })
     const qrCodeUrl = String(uploaded && uploaded.url || '')
     if (!qrCodeUrl) throw socialError('QR_UNAVAILABLE', 'qr unavailable')
@@ -225,10 +243,15 @@ function createFriendshipHandlers(repository, options) {
       return createInviteQr(event, actor)
     },
 
-    async inspect_invite(event) {
+    async inspect_invite(event, actor) {
       const invite = await getActiveInvite(repository, event && event.token, now())
       const inviter = await findUserById(repository, invite.inviterId)
-      return { inviter: await publicUserDto(inviter, avatarUrl), expiresAt: invite.expiresAt }
+      const requester = await findOptionalActorUser(repository, actor)
+      return {
+        inviter: await publicUserDto(inviter, avatarUrl),
+        expiresAt: invite.expiresAt,
+        requesterProfileReady: !!requester
+      }
     },
 
     async send_friend_request(event, actor) {
