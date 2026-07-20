@@ -186,6 +186,8 @@ test('function convergence uses the remote code digest and a staged startup smok
   assert.match(source, /\$null -ne \$payload\.data/)
   assert.match(source, /Function code or environment changed after staged verification/)
   assert.match(source, /Function code changed while enabling administrators/)
+  assert.match(source, /function Invoke-ScfReadWithRetry/)
+  assert.match(source, /Test-TransientCloudReadFailure/)
 })
 
 function runSmokeFixture(fixture) {

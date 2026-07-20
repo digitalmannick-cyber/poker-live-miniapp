@@ -148,6 +148,23 @@ function Invoke-ScfApi {
   return Invoke-CloudApi 'scf' $Action '2018-04-16' $Body $EnvId $Region
 }
 
+function Test-TransientCloudReadFailure {
+  param([string]$Message)
+  return $Message -match 'ETIMEDOUT|connect ETIMEDOUT|请求超时|temporarily unavailable'
+}
+
+function Invoke-ScfReadWithRetry {
+  param([string]$Action, [object]$Body, [string]$EnvId, [string]$Region)
+  for ($attempt = 1; $attempt -le 3; $attempt += 1) {
+    try {
+      return Invoke-ScfApi $Action $Body $EnvId $Region
+    } catch {
+      if ($attempt -ge 3 -or -not (Test-TransientCloudReadFailure ([string]$_.Exception.Message))) { throw }
+      Start-Sleep -Seconds 2
+    }
+  }
+}
+
 function Get-Sha256Text {
   param([string]$Text)
   $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
@@ -219,7 +236,7 @@ function Invoke-IndexSmokeQuery {
 
 function Get-RemoteFunction {
   param([string]$EnvId, [string]$Region)
-  return (Invoke-ScfApi 'GetFunction' @{ FunctionName = 'poker_social'; Namespace = $EnvId } $EnvId $Region).data
+  return (Invoke-ScfReadWithRetry 'GetFunction' @{ FunctionName = 'poker_social'; Namespace = $EnvId } $EnvId $Region).data
 }
 
 function Try-GetRemoteFunction {
@@ -234,7 +251,7 @@ function Try-GetRemoteFunction {
 
 function Get-RemoteFunctionCodeSha256 {
   param([string]$EnvId, [string]$Region)
-  $result = Invoke-ScfApi 'GetFunctionAddress' @{
+  $result = Invoke-ScfReadWithRetry 'GetFunctionAddress' @{
     FunctionName = 'poker_social'
     Namespace = $EnvId
     Qualifier = '$LATEST'
