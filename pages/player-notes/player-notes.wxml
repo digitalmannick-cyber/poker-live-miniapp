@@ -3,13 +3,30 @@
   <view class="player-notes-head onboarding-target-player-notes">
     <view>
       <view class="player-notes-kicker">PLAYER NOTES</view>
-      <view class="player-notes-title">玩家库</view>
+      <view class="player-notes-title">玩家</view>
     </view>
-    <view class="player-notes-add" bindtap="openCreate">
-      <text class="player-notes-add-plus">+</text>
+    <view style="display: flex; align-items: center; gap: 12rpx;">
+      <view class="player-notes-message" bindtap="openMessages" aria-label="{{socialUnread.hasUnread ? '消息，' + socialUnread.label + ' 条未读' : '消息'}}">
+        <image class="player-notes-message-icon" src="/assets/review-icons/comment-bubble-v263.png" mode="aspectFit"></image>
+        <view wx:if="{{socialUnread.hasUnread}}" class="player-notes-message-badge">{{socialUnread.label}}</view>
+      </view>
+      <view class="player-notes-add" bindtap="openInvite">
+        <text class="player-notes-add-plus" style="margin-top: 0; font-size: 28rpx;">友</text>
+      </view>
+      <view class="player-notes-add" bindtap="openCreate">
+        <text class="player-notes-add-plus">+</text>
+      </view>
     </view>
   </view>
 
+  <view class="player-section-tabs">
+    <view class="player-section-tab {{playerSection === 'friends' ? 'active' : ''}}" data-section="friends" bindtap="selectPlayerSection">好友</view>
+    <view class="player-section-tab {{playerSection === 'library' ? 'active' : ''}}" data-section="library" bindtap="selectPlayerSection">玩家库</view>
+  </view>
+
+  <friend-hub wx:if="{{playerSection === 'friends'}}" id="friendHub" active-section="{{friendSection}}" account-key="{{socialAccountKey}}" social-user-id="{{socialUserId}}" bindsectionchange="selectFriendSection" bindopenfriend="openFriend" bindopenhand="openHand" bindopenmessages="openMessages" />
+
+  <block wx:if="{{playerSection === 'library'}}">
   <view class="player-search">
     <input class="player-search-input" placeholder="搜索名字、leak、note" value="{{query}}" bindinput="onSearchInput" />
     <view wx:if="{{query || selectedType}}" class="player-search-clear" bindtap="clearSearch">清空</view>
@@ -49,5 +66,6 @@
     <view class="player-empty-text">{{emptyStateText}}</view>
     <button wx:if="{{!isSearching}}" class="player-empty-action" bindtap="openCreate">新增玩家</button>
   </view>
+  </block>
 </view>
 <onboarding-guide visible="{{onboardingGuideVisible}}" step="{{onboardingGuideStep}}" bindnext="onOnboardingNext" bindskip="onOnboardingSkip" />

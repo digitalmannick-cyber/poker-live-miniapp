@@ -183,12 +183,39 @@ function listPlayerNotes(options) {
   })
 }
 
+function clearAllData(options) {
+  const config = options || {}
+  return callDataFunction('clear_all_data', {
+    playerId: normalizePlayerId(config.playerId),
+    clientMutationId: String(config.clientMutationId || '').trim()
+  })
+}
+
+function buildPlayerNotePayload(input) {
+  const source = input || {}
+  const payload = {}
+  const has = key => Object.prototype.hasOwnProperty.call(source, key)
+  const stringKeys = ['_id', 'linkedFriendUserId', 'name', 'avatarUrl', 'avatarFileId', 'avatarText', 'type', 'note', 'lastVenue', 'lastStake']
+  stringKeys.forEach(key => {
+    if (has(key)) payload[key] = String(source[key] || '').trim()
+  })
+  if (has('sourceKind')) payload.sourceKind = source.sourceKind === 'friend' ? 'friend' : 'library'
+  ;['alias', 'leakTags', 'battleHandIds'].forEach(key => {
+    if (has(key)) payload[key] = Array.isArray(source[key]) ? source[key] : []
+  })
+  ;['lastSeenAt', 'createdAt', 'updatedAt'].forEach(key => {
+    if (has(key)) payload[key] = Number(source[key]) || 0
+  })
+  if (has('archived')) payload.archived = source.archived === true
+  return payload
+}
+
 function createPlayerNote(options) {
   const config = options || {}
   return callDataFunction('create_player_note', {
     playerId: normalizePlayerId(config.playerId),
     clientMutationId: config.clientMutationId || '',
-    payload: config.payload || {}
+    payload: buildPlayerNotePayload(config.payload)
   })
 }
 
@@ -198,7 +225,7 @@ function updatePlayerNote(options) {
     playerId: normalizePlayerId(config.playerId),
     clientMutationId: config.clientMutationId || '',
     noteId: config.noteId || '',
-    patch: config.patch || {}
+    patch: buildPlayerNotePayload(config.patch)
   })
 }
 
@@ -228,6 +255,34 @@ function getPlayerNoteHandReplay(options) {
   })
 }
 
+function getPlayerCardImportReceipt(options) {
+  const config = options || {}
+  return callDataFunction('get_player_card_import_receipt', {
+    playerId: normalizePlayerId(config.playerId),
+    shareId: String(config.shareId || '').trim()
+  })
+}
+
+function beginPlayerCardImportReceipt(options) {
+  const config = options || {}
+  return callDataFunction('begin_player_card_import_receipt', {
+    playerId: normalizePlayerId(config.playerId),
+    clientMutationId: String(config.clientMutationId || '').trim(),
+    shareId: String(config.shareId || '').trim(),
+    mode: config.mode === 'overwrite' ? 'overwrite' : 'new',
+    targetPlayerNoteId: String(config.targetPlayerNoteId || '').trim()
+  })
+}
+
+function completePlayerCardImportReceipt(options) {
+  const config = options || {}
+  return callDataFunction('complete_player_card_import_receipt', {
+    playerId: normalizePlayerId(config.playerId),
+    clientMutationId: String(config.clientMutationId || '').trim(),
+    shareId: String(config.shareId || '').trim()
+  })
+}
+
 module.exports = {
   DATA_FUNCTION_NAME,
   syncAndGetStats,
@@ -240,12 +295,16 @@ module.exports = {
   upsertHand,
   deleteHand,
   deleteSession,
+  clearAllData,
   listPlayerNotes,
   createPlayerNote,
   updatePlayerNote,
   deletePlayerNote,
   listPlayerNoteHands,
   getPlayerNoteHandReplay,
+  getPlayerCardImportReceipt,
+  beginPlayerCardImportReceipt,
+  completePlayerCardImportReceipt,
   recoverBestBackup,
   loginAccount,
   exportBackupPage,
@@ -253,6 +312,7 @@ module.exports = {
   backfillSessionDurations,
   sendAiReminderSubscribeMessage,
   __test: {
-    normalizePlayerId
+    normalizePlayerId,
+    buildPlayerNotePayload
   }
 }

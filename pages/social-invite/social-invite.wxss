@@ -1,0 +1,32 @@
+@import '../../app.wxss';
+
+.social-invite-page { padding-top: 40rpx; }
+
+.invite-hero { position: relative; margin: 8rpx 0 30rpx; }
+.invite-kicker { color: #00d1ff; font-size: 22rpx; font-weight: 1000; letter-spacing: 5rpx; }
+.invite-title { margin-top: 12rpx; color: #fff; font-size: 58rpx; font-weight: 1000; line-height: 1; }
+.invite-slash { width: 166rpx; height: 10rpx; margin-top: 16rpx; background: #e60012; transform: skewX(-28deg); box-shadow: 20rpx 10rpx 0 rgba(0, 209, 255, 0.55); }
+
+.invite-card { position: relative; overflow: hidden; padding: 32rpx; border: 1rpx solid rgba(255,255,255,0.16); border-radius: 28rpx; background: linear-gradient(145deg, rgba(28,32,43,0.98), rgba(10,10,15,0.98)); box-shadow: inset 0 0 0 1rpx rgba(230,0,18,0.12); }
+.invite-card::after { content: ''; position: absolute; right: -90rpx; top: -70rpx; width: 250rpx; height: 170rpx; background: linear-gradient(135deg, rgba(230,0,18,0.30), transparent 70%); transform: rotate(-12deg); pointer-events: none; }
+.invite-card-kicker { position: relative; z-index: 1; color: rgba(255,255,255,0.48); font-size: 22rpx; font-weight: 1000; letter-spacing: 4rpx; }
+.invite-card-title, .invite-state-title { position: relative; z-index: 1; margin-top: 14rpx; color: #fff; font-size: 38rpx; font-weight: 1000; }
+.invite-card-text, .invite-state-text { position: relative; z-index: 1; margin-top: 18rpx; color: rgba(255,255,255,0.66); font-size: 26rpx; line-height: 1.65; }
+
+.invite-qr { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: 312rpx; height: 312rpx; margin: 30rpx auto 0; border-radius: 20rpx; background: #fff; }
+.invite-qr-empty { color: #171a22; font-size: 56rpx; font-weight: 1000; letter-spacing: 8rpx; background: repeating-linear-gradient(135deg, #fff 0 12rpx, #edf0f3 12rpx 24rpx); }
+.invite-qr-caption { position: relative; z-index: 1; margin-top: 16rpx; color: rgba(255,255,255,0.48); font-size: 22rpx; text-align: center; }
+
+.invite-profile { position: relative; z-index: 1; display: flex; align-items: center; gap: 18rpx; margin-top: 28rpx; }
+.invite-avatar { flex: none; width: 100rpx; height: 100rpx; border-radius: 22rpx; background: rgba(255,255,255,0.10); border: 2rpx solid rgba(0,209,255,0.54); overflow: hidden; }
+.invite-avatar-text { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 32rpx; font-weight: 1000; }
+.invite-name { color: #fff; font-size: 34rpx; font-weight: 1000; }
+.invite-title-text { margin-top: 8rpx; color: #00d1ff; font-size: 22rpx; font-weight: 800; }
+
+.invite-action { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; min-height: 88rpx; margin-top: 30rpx; padding: 0; border-radius: 16rpx; font-size: 28rpx; font-weight: 1000; line-height: 88rpx; }
+.invite-action::after { border: 0; }
+.invite-action-primary { color: #fff; background: linear-gradient(135deg, #e60012, #ff3947); box-shadow: 0 14rpx 28rpx rgba(230,0,18,0.28); }
+.invite-action-secondary { color: rgba(255,255,255,0.86); background: rgba(255,255,255,0.08); border: 1rpx solid rgba(255,255,255,0.16); }
+.invite-action.is-disabled { opacity: 0.56; }
+.invite-sent { position: relative; z-index: 1; margin-top: 28rpx; padding: 20rpx; color: #00d1ff; font-size: 26rpx; font-weight: 900; text-align: center; background: rgba(0,209,255,0.10); border: 1rpx solid rgba(0,209,255,0.25); border-radius: 16rpx; }
+.invite-state-card { min-height: 260rpx; box-sizing: border-box; }

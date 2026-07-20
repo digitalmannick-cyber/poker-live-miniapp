@@ -48,6 +48,13 @@
       </view>
     </view>
     <view class="muted small" style="margin-top: 16rpx;">{{hand.streetSummary}}</view>
+    <view class="hand-social-publish-entry" bindtap="openSocialHandPublish">
+      <view class="hand-social-publish-copy">
+        <view class="hand-social-publish-title">发布手牌</view>
+        <view class="hand-social-publish-desc">先查看匿名 BB 预览，再选择广场或好友范围</view>
+      </view>
+      <view class="hand-social-publish-arrow">›</view>
+    </view>
   </view>
 
   <view class="card hand-review-entry-card">

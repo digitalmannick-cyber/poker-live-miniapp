@@ -2,6 +2,18 @@ const dataService = require('../../services/data-service')
 const tabBar = require('../../utils/tab-bar')
 const avatarCache = require('../../utils/player-avatar-cache')
 const onboardingGuide = require('../../utils/onboarding-guide')
+const socialUnreadState = require('../../utils/social-unread-state')
+const socialCache = require('../../utils/social-cache')
+const socialProfileSync = require('../../utils/social-profile-sync')
+
+function getSocialAccountKey() {
+  try {
+    if (typeof dataService.isAccountLoggedOut === 'function' && dataService.isAccountLoggedOut()) return ''
+    return typeof dataService.getCurrentPlayerId === 'function' ? dataService.getCurrentPlayerId() : ''
+  } catch (error) {
+    return ''
+  }
+}
 
 function buildTypeFilters(settings, selectedType) {
   const types = ['全部'].concat(settings && settings.opponentTypes || [])
@@ -39,6 +51,11 @@ function buildListItem(note) {
 
 Page({
   data: {
+    playerSection: 'friends',
+    friendSection: 'feed',
+    friendsLoaded: false,
+    socialAccountKey: '',
+    socialUserId: '',
     query: '',
     selectedType: '',
     typeFilters: [],
@@ -47,18 +64,141 @@ Page({
     emptyStateTitle: '还没有玩家 note',
     emptyStateText: '记录线下常遇到的玩家、leak 和你们打过的关键手牌。',
     isSearching: false,
+    socialUnread: { count: 0, label: '', hasUnread: false },
     onboardingGuideVisible: false,
     onboardingGuideStep: null
   },
 
   async onLoad() {
-    await this.refresh()
+    this._socialProfileAttached = true
+    this.bindSocialUnread()
+    const socialAccountKey = getSocialAccountKey()
+    socialUnreadState.setAccountKey(socialAccountKey)
+    await this.ensureSocialProfile(socialAccountKey)
+    if (this.data.playerSection === 'library') await this.refresh()
+  },
+
+  async onReady() {
+    this.syncOnboardingGuide()
   },
 
   async onShow() {
+    this._socialProfileAttached = true
+    this.bindSocialUnread()
+    const socialAccountKey = getSocialAccountKey()
+    socialUnreadState.setAccountKey(socialAccountKey)
+    if (socialAccountKey) socialUnreadState.refresh().catch(() => {})
+    await this.ensureSocialProfile(socialAccountKey)
     tabBar.syncCustomTabBar('/pages/player-notes/player-notes')
-    await this.refresh()
+    if (this.data.playerSection === 'library') await this.refresh()
+    if (this.data.playerSection === 'friends' && this.data.friendSection === 'friends' && this.data.friendsLoaded) {
+      await this.ensureFriendsLoaded(true)
+    }
     this.syncOnboardingGuide()
+  },
+
+  onHide() {
+    this._socialProfileAttached = false
+    this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
+    this._socialProfileFlight = null
+    this.unbindSocialUnread()
+  },
+
+  onUnload() {
+    this._socialProfileAttached = false
+    this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
+    this._socialProfileFlight = null
+    this.unbindSocialUnread()
+  },
+
+  async onPullDownRefresh() {
+    try {
+      if (this.data.playerSection !== 'friends' || this.data.friendSection !== 'feed') return
+      const friendHub = this.selectComponent && this.selectComponent('#friendHub')
+      if (friendHub && typeof friendHub.refreshFeed === 'function') await friendHub.refreshFeed()
+    } finally {
+      if (typeof wx !== 'undefined' && typeof wx.stopPullDownRefresh === 'function') wx.stopPullDownRefresh()
+    }
+  },
+
+  ensureSocialProfile(accountKey) {
+    const currentAccountKey = String(accountKey === undefined ? getSocialAccountKey() : accountKey || '')
+    const previousAccountKey = String(this._socialProfileAccountKey || '')
+    if (previousAccountKey !== currentAccountKey) {
+      const previousSocialUserId = String(this.data.socialUserId || '')
+      if (previousAccountKey || previousSocialUserId) {
+        socialCache.clearAccountCaches({ accountId: previousAccountKey, socialUserId: previousSocialUserId })
+      }
+      this._socialProfileAccountKey = currentAccountKey
+      this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
+      this._socialProfileFlight = null
+      this.setData({ socialAccountKey: currentAccountKey, socialUserId: '' })
+    }
+    if (!currentAccountKey || this._socialProfileAttached !== true) return Promise.resolve('')
+    if (this.data.socialUserId) return Promise.resolve(this.data.socialUserId)
+    if (this._socialProfileFlight) return this._socialProfileFlight
+    const generation = Number(this._socialProfileGeneration) || 0
+    const promise = Promise.resolve()
+      .then(() => socialProfileSync.syncSocialProfile(
+        typeof dataService.getCurrentProfile === 'function' ? dataService.getCurrentProfile() : { playerId: currentAccountKey, name: '玩家' },
+        { isCurrent: () => getSocialAccountKey() === currentAccountKey }
+      ))
+      .then(profile => {
+        const socialUserId = profile && typeof profile.socialUserId === 'string' ? profile.socialUserId.trim() : ''
+        if (this._socialProfileAttached !== true || generation !== this._socialProfileGeneration || currentAccountKey !== this._socialProfileAccountKey) return ''
+        if (socialUserId) socialCache.registerAccountIdentity({ accountId: currentAccountKey, socialUserId })
+        this.setData({ socialUserId })
+        return socialUserId
+      })
+      .catch(() => {
+        if (this._socialProfileAttached === true && generation === this._socialProfileGeneration && currentAccountKey === this._socialProfileAccountKey) {
+          this.setData({ socialUserId: '' })
+        }
+        return ''
+      })
+    this._socialProfileFlight = promise
+    promise.finally(() => {
+      if (this._socialProfileFlight === promise) this._socialProfileFlight = null
+    })
+    return promise
+  },
+
+  bindSocialUnread() {
+    if (this._unsubscribeSocialUnread) return
+    this._unsubscribeSocialUnread = socialUnreadState.subscribe(snapshot => {
+      this.setData({ socialUnread: snapshot })
+    })
+  },
+
+  unbindSocialUnread() {
+    if (!this._unsubscribeSocialUnread) return
+    this._unsubscribeSocialUnread()
+    this._unsubscribeSocialUnread = null
+  },
+
+  async ensureFriendsLoaded(force) {
+    if (this.data.friendsLoaded && !force) return
+    const friendHub = this.selectComponent && this.selectComponent('#friendHub')
+    if (!friendHub || typeof friendHub.loadFriends !== 'function') return
+    await friendHub.loadFriends(!!force)
+    if (friendHub.data && friendHub.data.status === 'ready') this.setData({ friendsLoaded: true })
+  },
+
+  async selectPlayerSection(event) {
+    const section = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.section || 'friends')
+    if (section !== 'friends' && section !== 'library') return
+    this.setData({ playerSection: section })
+    if (section === 'friends') {
+      await this.ensureFriendsLoaded()
+      return
+    }
+    await this.refresh()
+  },
+
+  selectFriendSection(event) {
+    const section = String(event && event.detail && event.detail.section || 'friends')
+    this.setData({ friendSection: section })
+    if (section === 'friends') return this.ensureFriendsLoaded()
   },
 
   syncOnboardingGuide() {
@@ -88,7 +228,8 @@ Page({
     const settings = await dataService.getAppSettings()
     const notes = await dataService.getPlayerNotes({
       query: this.data.query,
-      type: this.data.selectedType
+      type: this.data.selectedType,
+      sourceKind: 'library'
     })
     const isSearching = !!(this.data.query || this.data.selectedType)
     this.setData({
@@ -123,9 +264,42 @@ Page({
     wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?mode=new' })
   },
 
+  openInvite() {
+    if (this.isSocialSurfaceReadOnly()) return
+    wx.navigateTo({ url: '/pages/social-invite/social-invite' })
+  },
+
   openDetail(event) {
     const id = event.currentTarget.dataset.id
     if (!id) return
     wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?id=' + encodeURIComponent(id) })
+  },
+
+  openFriend(event) {
+    if (this.isSocialSurfaceReadOnly()) return
+    const friendUserId = String(event && event.detail && event.detail.friendUserId || '')
+    if (!friendUserId) return
+    wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?friendUserId=' + encodeURIComponent(friendUserId) })
+  },
+
+  openHand(event) {
+    if (this.isSocialSurfaceReadOnly()) return
+    const shareId = String(event && event.detail && event.detail.shareId || '')
+    if (!shareId) return
+    wx.navigateTo({ url: '/pages/social-hand-detail/social-hand-detail?shareId=' + encodeURIComponent(shareId) })
+  },
+
+  openMessages() {
+    if (this.isSocialSurfaceReadOnly()) return
+    if (typeof wx !== 'undefined' && wx.navigateTo) wx.navigateTo({ url: '/pages/social-messages/social-messages' })
+  },
+
+  isSocialSurfaceReadOnly() {
+    if (this.data.playerSection !== 'friends') return false
+    const friendHub = this.selectComponent && this.selectComponent('#friendHub')
+    if (!friendHub || !friendHub.data) return false
+    if (this.data.friendSection === 'feed') return friendHub.data.feedReadOnly === true
+    if (this.data.friendSection === 'ranking') return friendHub.data.rankingReadOnly === true
+    return friendHub.data.friendsReadOnly === true
   }
 })

@@ -1,6 +1,7 @@
 const cloudUtils = require('../utils/cloud')
 const sessionRules = require('../utils/session-rules')
 const store = require('../utils/store')
+const cloudDataApi = require('./cloud-data-api')
 
 const COLLECTIONS = {
   sessions: 'sessions',
@@ -15,6 +16,31 @@ const PAGE_SIZE = 100
 
 function now() {
   return Date.now()
+}
+
+const HAND_REVISION_INTERNAL_FIELDS = new Set(['actionRevision', 'actionRevisionPending', 'actionCommittedAt', 'handVersion'])
+
+function handWriteEvidence(doc) {
+  const source = doc || {}
+  return JSON.stringify([
+    normalizePlayerId(source.playerId), String(source.sessionId || ''), Number(source.updatedAt) || 0,
+    String(source.actionRevision || ''), Math.max(0, Math.floor(Number(source.handVersion) || 0))
+  ])
+}
+
+function stripHandRevisionFields(value) {
+  if (Array.isArray(value)) return value.map(stripHandRevisionFields)
+  if (!value || typeof value !== 'object') return value
+  return Object.keys(value).reduce((next, key) => {
+    if (!HAND_REVISION_INTERNAL_FIELDS.has(key)) next[key] = stripHandRevisionFields(value[key])
+    return next
+  }, {})
+}
+
+function isDocumentNotFound(error) {
+  const code = String(error && (error.errCode || error.code) || '')
+  const message = String(error && (error.errMsg || error.message || error) || '')
+  return code === 'DATABASE_DOCUMENT_NOT_EXIST' || /document.*not.*exist|not found/i.test(message)
 }
 
 function clone(value) {
@@ -147,7 +173,8 @@ async function getDocById(collectionName, docId) {
     const result = await db.collection(collectionName).doc(docId).get()
     return result.data || null
   } catch (error) {
-    return null
+    if (isDocumentNotFound(error)) return null
+    throw error
   }
 }
 
@@ -206,7 +233,7 @@ function formatSession(doc) {
 }
 
 function formatHand(doc) {
-  return Object.assign(
+  return stripHandRevisionFields(Object.assign(
     {
       playedDate: '',
       stakeLevel: '',
@@ -247,7 +274,7 @@ function formatHand(doc) {
       updatedAt: 0
     },
     doc
-  )
+  ))
 }
 
 function parseDateTimeMs(value) {
@@ -326,8 +353,12 @@ function buildSessionDoc(base, patch) {
 }
 
 function buildHandDoc(base, patch) {
-  const merged = Object.assign({}, base || {}, patch || {})
-  return stripUndefined({
+  const safePatch = Object.assign({}, patch || {})
+  delete safePatch.actionRevision
+  delete safePatch.actionRevisionPending
+  delete safePatch.actionCommittedAt
+  const merged = Object.assign({}, base || {}, safePatch)
+  const next = stripUndefined({
     sessionId: merged.sessionId,
     playedDate: merged.playedDate || '',
     stakeLevel: merged.stakeLevel || '',
@@ -377,13 +408,12 @@ function buildHandDoc(base, patch) {
     aiReviewError: merged.aiReviewError || '',
     reviewStatus: ['idle', 'extracted', 'reviewed'].indexOf(merged.reviewStatus) > -1 ? merged.reviewStatus : 'idle',
     createdAt: merged.createdAt || now(),
-    updatedAt: now()
+    updatedAt: now(),
+    actionRevision: base && base.actionRevision || undefined,
+    actionRevisionPending: base && base.actionRevisionPending || undefined,
+    actionCommittedAt: base && base.actionCommittedAt || undefined
   })
-}
-
-function applySessionHandDefaults(payload, session) {
-  if (!session || !session.hasStraddle) return payload
-  return Object.assign({}, payload || {}, { hasStraddle: true })
+  return next
 }
 
 function buildProfileDoc(profile) {
@@ -511,67 +541,27 @@ async function saveSettings(playerId, settings) {
 
 async function seedBusinessData(backup) {
   const data = backup || {}
-  const playerId = normalizePlayerId(data.profile && data.profile.playerId) || requireCurrentPlayerId()
-  const hasCloudData = await Promise.all([
-    collectionHasAny(COLLECTIONS.sessions, playerId),
-    collectionHasAny(COLLECTIONS.hands, playerId),
-    collectionHasAny(COLLECTIONS.handActions, playerId),
-    collectionHasAny(COLLECTIONS.bankrollLogs, playerId)
-  ])
-
-  if (hasCloudData.some(Boolean)) {
-    return false
-  }
-
-  await upsertMany(COLLECTIONS.sessions, data.sessions, playerId)
-  await upsertMany(COLLECTIONS.hands, data.hands, playerId)
-  await upsertMany(COLLECTIONS.handActions, data.handActions, playerId)
-  await upsertMany(COLLECTIONS.bankrollLogs, data.bankrollLogs, playerId)
-  return true
+  const hasBusinessData = ['sessions', 'hands', 'handActions', 'bankrollLogs'].some(key => Array.isArray(data[key]) && data[key].length > 0)
+  if (!hasBusinessData) return false
+  throw new Error('server-authoritative poker_data write required')
 }
 
 async function mergeBusinessData(backup) {
-  const data = backup || {}
-  const playerId = normalizePlayerId(data.profile && data.profile.playerId) || requireCurrentPlayerId()
-  await upsertMany(COLLECTIONS.sessions, data.sessions, playerId)
-  await upsertMany(COLLECTIONS.hands, data.hands, playerId)
-  await upsertMany(COLLECTIONS.handActions, data.handActions, playerId)
-  await upsertMany(COLLECTIONS.bankrollLogs, data.bankrollLogs, playerId)
-  return true
+  void backup
+  throw new Error('server-authoritative poker_data write required')
 }
 
 async function replaceBusinessData(backup) {
-  const data = backup || {}
-  const playerId = normalizePlayerId(data.profile && data.profile.playerId) || requireCurrentPlayerId()
-  await clearCollection(COLLECTIONS.handActions, playerId)
-  await clearCollection(COLLECTIONS.hands, playerId)
-  await clearCollection(COLLECTIONS.bankrollLogs, playerId)
-  await clearCollection(COLLECTIONS.sessions, playerId)
-  await upsertMany(COLLECTIONS.sessions, data.sessions, playerId)
-  await upsertMany(COLLECTIONS.hands, data.hands, playerId)
-  await upsertMany(COLLECTIONS.handActions, data.handActions, playerId)
-  await upsertMany(COLLECTIONS.bankrollLogs, data.bankrollLogs, playerId)
-  return true
+  void backup
+  throw new Error('server-authoritative poker_data write required')
 }
 
-async function clearAllData(playerId) {
+async function clearAllData(playerId, clientMutationId) {
   const targetPlayerId = normalizePlayerId(playerId) || requireCurrentPlayerId()
-  await clearCollection(COLLECTIONS.handActions, targetPlayerId)
-  await clearCollection(COLLECTIONS.hands, targetPlayerId)
-  await clearCollection(COLLECTIONS.bankrollLogs, targetPlayerId)
-  await clearCollection(COLLECTIONS.sessions, targetPlayerId)
-
-  if (targetPlayerId) {
-    const db = getDbOrThrow()
-    try {
-      await db.collection(COLLECTIONS.profiles).doc(getProfileDocId(targetPlayerId)).remove()
-    } catch (error) {}
-    try {
-      await db.collection(COLLECTIONS.userSettings).doc(getSettingsDocId(targetPlayerId)).remove()
-    } catch (error) {}
-  }
-
-  return true
+  return cloudDataApi.clearAllData({
+    playerId: targetPlayerId,
+    clientMutationId: String(clientMutationId || '').trim()
+  })
 }
 
 async function getSessions() {
@@ -590,7 +580,8 @@ async function getSessionById(sessionId) {
     const result = await db.collection(COLLECTIONS.sessions).doc(sessionId).get()
     return result.data && isOwnedByCurrentPlayer(result.data, playerId) ? formatSession(result.data) : null
   } catch (error) {
-    return null
+    if (isDocumentNotFound(error)) return null
+    throw error
   }
 }
 
@@ -600,7 +591,7 @@ async function getHandsBySessionId(sessionId) {
   const list = await fetchAll(offset =>
     db.collection(COLLECTIONS.hands).where({ playerId, sessionId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
-  return list.map(formatHand).sort(compareHandBusinessDesc)
+  return list.filter(hand => !String(hand.actionRevisionPending || '')).map(formatHand).sort(compareHandBusinessDesc)
 }
 
 async function getRecentHands(limit) {
@@ -609,7 +600,7 @@ async function getRecentHands(limit) {
   const list = await fetchAll(offset =>
     db.collection(COLLECTIONS.hands).where({ playerId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
-  return list.map(formatHand).sort(compareHandBusinessDesc).slice(0, limit || 5)
+  return list.filter(hand => !String(hand.actionRevisionPending || '')).map(formatHand).sort(compareHandBusinessDesc).slice(0, limit || 5)
 }
 
 async function getHandById(handId) {
@@ -617,19 +608,40 @@ async function getHandById(handId) {
   const playerId = requireCurrentPlayerId()
   try {
     const result = await db.collection(COLLECTIONS.hands).doc(handId).get()
-    return result.data && isOwnedByCurrentPlayer(result.data, playerId) ? formatHand(result.data) : null
+    return result.data && isOwnedByCurrentPlayer(result.data, playerId) && !String(result.data.actionRevisionPending || '')
+      ? formatHand(result.data)
+      : null
   } catch (error) {
-    return null
+    if (isDocumentNotFound(error)) return null
+    throw error
   }
 }
 
-async function getActionsByHandId(handId) {
+async function getOwnedHandDocById(handId, playerIdOverride) {
+  const playerId = normalizePlayerId(playerIdOverride) || requireCurrentPlayerId()
+  const doc = await getDocById(COLLECTIONS.hands, handId)
+  return doc && isOwnedByCurrentPlayer(doc, playerId) ? doc : null
+}
+
+async function listOwnedActionDocs(handId, playerId) {
   const db = getDbOrThrow()
-  const playerId = requireCurrentPlayerId()
-  const list = await fetchAll(offset =>
+  return fetchAll(offset =>
     db.collection(COLLECTIONS.handActions).where({ playerId, handId }).orderBy('sequence', 'asc').skip(offset).limit(PAGE_SIZE)
   )
-  return list
+}
+
+async function getActionsByHandId(handId) {
+  const playerId = requireCurrentPlayerId()
+  const before = await getOwnedHandDocById(handId, playerId)
+  if (!before || String(before.actionRevisionPending || '')) return []
+  const list = await listOwnedActionDocs(handId, playerId)
+  const after = await getOwnedHandDocById(handId, playerId)
+  if (!after || String(after.actionRevisionPending || '') || handWriteEvidence(before) !== handWriteEvidence(after)) return []
+  const committed = String(after.actionRevision || '')
+  const consistent = committed
+    ? list.every(action => String(action.actionRevision || '') === committed)
+    : list.every(action => !String(action.actionRevision || ''))
+  return consistent ? list.map(stripHandRevisionFields) : []
 }
 
 async function createSession(payload) {
@@ -679,114 +691,25 @@ async function finishSession(sessionId, payload) {
   return updated
 }
 
-async function replaceActions(handId, sessionId, actions) {
-  const db = getDbOrThrow()
-  const playerId = requireCurrentPlayerId()
-  const existing = await getActionsByHandId(handId)
-  const removals = existing.map(item => db.collection(COLLECTIONS.handActions).doc(item._id).remove())
-  if (removals.length) {
-    await Promise.all(removals)
-  }
-  for (let index = 0; index < actions.length; index += 1) {
-    const action = actions[index]
-    await db.collection(COLLECTIONS.handActions).add({
-      data: withPlayerScope({
-        handId,
-        sessionId,
-        street: action.street,
-        actorSeat: Number(action.actorSeat) || 0,
-        actorLabel: action.actorLabel || '',
-        actionType: action.actionType || '',
-        amount: Number(action.amount) || 0,
-        potAfter: Number(action.potAfter) || 0,
-        sequence: index + 1,
-        createdAt: now(),
-        updatedAt: now()
-      }, playerId)
-    })
-  }
-}
-
 async function createHand(payload) {
-  const db = getDbOrThrow()
-  const playerId = requireCurrentPlayerId()
-  const session = await getSessionById(payload.sessionId)
-  const handPayload = applySessionHandDefaults(payload, session)
-  const handDoc = withPlayerScope(buildHandDoc(null, Object.assign({}, handPayload, { createdAt: now() })), playerId)
-  const handResult = await db.collection(COLLECTIONS.hands).add({ data: handDoc })
-  const handId = handResult._id
-  await replaceActions(handId, handPayload.sessionId, handPayload.actions || [])
-
-  if (session) {
-    await updateSession(handPayload.sessionId, {
-      handCount: (session.handCount || 0) + 1
-    })
-  }
-
-  return Object.assign({ _id: handId }, handDoc)
+  void payload
+  throw new Error('server-authoritative poker_data write required')
 }
 
 async function updateHand(handId, patch) {
-  const db = getDbOrThrow()
-  const current = await getHandById(handId)
-  if (!current) return null
-  const data = withPlayerScope(buildHandDoc(current, patch), current.playerId)
-  delete data.sessionId
-  await db.collection(COLLECTIONS.hands).doc(handId).update({ data })
-
-  if (patch.actions) {
-    await replaceActions(handId, current.sessionId, patch.actions)
-  }
-
-  return getHandById(handId)
+  void handId
+  void patch
+  throw new Error('server-authoritative poker_data write required')
 }
 
 async function deleteHand(handId) {
-  const db = getDbOrThrow()
-  const hand = await getHandById(handId)
-  if (!hand) return false
-
-  const existing = await getActionsByHandId(handId)
-  const removals = existing.map(item => db.collection(COLLECTIONS.handActions).doc(item._id).remove())
-  if (removals.length) {
-    await Promise.all(removals)
-  }
-  await db.collection(COLLECTIONS.hands).doc(handId).remove()
-
-  const session = await getSessionById(hand.sessionId)
-  if (session) {
-    await updateSession(hand.sessionId, {
-      handCount: Math.max(0, (session.handCount || 0) - 1)
-    })
-  }
-
-  return true
+  void handId
+  throw new Error('server-authoritative poker_data write required')
 }
 
 async function deleteSession(sessionId) {
-  const session = await getSessionById(sessionId)
-  if (!session) return false
-  const db = getDbOrThrow()
-  const playerId = requireCurrentPlayerId()
-  const hands = await getHandsBySessionId(sessionId)
-
-  for (let index = 0; index < hands.length; index += 1) {
-    const hand = hands[index]
-    const actions = await getActionsByHandId(hand._id)
-    if (actions.length) {
-      await Promise.all(actions.map(item => db.collection(COLLECTIONS.handActions).doc(item._id).remove()))
-    }
-    await db.collection(COLLECTIONS.hands).doc(hand._id).remove()
-  }
-
-  const bankrollLogs = await fetchAll(offset =>
-    db.collection(COLLECTIONS.bankrollLogs).where({ playerId, sessionId }).skip(offset).limit(PAGE_SIZE)
-  )
-  if (bankrollLogs.length) {
-    await Promise.all(bankrollLogs.map(item => db.collection(COLLECTIONS.bankrollLogs).doc(item._id).remove()))
-  }
-  await db.collection(COLLECTIONS.sessions).doc(sessionId).remove()
-  return true
+  void sessionId
+  throw new Error('server-authoritative poker_data write required')
 }
 
 async function getReviewHands(filters) {
@@ -796,12 +719,12 @@ async function getReviewHands(filters) {
     const list = await fetchAll(offset =>
       db.collection(COLLECTIONS.hands).where({ playerId, sessionId: filters.sessionId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
     )
-    return list.map(formatHand).sort(compareHandBusinessDesc)
+    return list.filter(hand => !String(hand.actionRevisionPending || '')).map(formatHand).sort(compareHandBusinessDesc)
   }
   const list = await fetchAll(offset =>
     db.collection(COLLECTIONS.hands).where({ playerId }).orderBy('updatedAt', 'desc').skip(offset).limit(PAGE_SIZE)
   )
-  return list.map(formatHand).sort(compareHandBusinessDesc)
+  return list.filter(hand => !String(hand.actionRevisionPending || '')).map(formatHand).sort(compareHandBusinessDesc)
 }
 
 async function getStatsSummary() {
@@ -847,6 +770,7 @@ module.exports = {
   getStatsSummary,
   __test: {
     buildHandDoc,
+    stripHandRevisionFields,
     normalizePlayerId,
     withPlayerScope,
     isOwnedByCurrentPlayer

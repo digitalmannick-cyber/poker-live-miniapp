@@ -2,11 +2,17 @@
 <view class="container player-detail-shell">
   <view class="player-detail-top">
     <view class="player-detail-back" bindtap="goBack">‹</view>
-    <view class="player-detail-title">{{editMode ? (mode === 'new' ? '新增玩家' : '编辑玩家') : note.name}}</view>
-    <view wx:if="{{!editMode}}" class="player-detail-edit" bindtap="startEdit">编辑</view>
+    <view class="player-detail-title">{{editMode ? (mode === 'new' ? '新增玩家' : '编辑玩家') : (note && note.name || (mode === 'friend' ? '好友资料' : '玩家详情'))}}</view>
+    <view wx:if="{{!editMode && detailState === 'ready' && note}}" class="player-detail-edit" bindtap="startEdit">编辑</view>
   </view>
 
-  <view wx:if="{{editMode}}" class="photo-editor">
+  <view wx:if="{{detailState === 'loading'}}" class="detail-state-card">好友资料加载中…</view>
+  <view wx:elif="{{detailState === 'unavailable' || detailState === 'error'}}" class="detail-state-card">
+    <view>{{loadError}}</view>
+    <view class="small-action detail-retry" bindtap="retryFriendLoad">重试</view>
+  </view>
+
+  <view wx:elif="{{editMode && detailState === 'ready' && (note || mode === 'new')}}" class="photo-editor">
     <view class="photo-pick" bindtap="choosePlayerPhoto">
       <image wx:if="{{form.avatarDisplayUrl || form.avatarUrl}}" class="photo-pick-img" src="{{form.avatarDisplayUrl || form.avatarUrl}}" mode="aspectFill"></image>
       <view wx:else class="photo-placeholder">
@@ -21,7 +27,7 @@
     <view class="photo-crop-hint">选择后可裁剪、缩放，确认头像预览区域</view>
   </view>
 
-  <view wx:if="{{editMode}}" class="detail-card form-card">
+  <view wx:if="{{editMode && detailState === 'ready' && (note || mode === 'new')}}" class="detail-card form-card">
     <view class="field-block">
       <view class="field-label">玩家名字</view>
       <input class="field-input" value="{{form.name}}" placeholder="例如 老张" bindinput="onNameInput" />
@@ -56,7 +62,7 @@
     </view>
   </view>
 
-  <view wx:elif="{{note}}" class="detail-card player-profile-card">
+  <view wx:elif="{{detailState === 'ready' && note}}" class="detail-card player-profile-card">
     <view class="profile-head">
       <view class="profile-avatar">
         <image wx:if="{{note.avatarDisplayUrl || note.avatarUrl}}" class="profile-avatar-img" src="{{note.avatarDisplayUrl || note.avatarUrl}}" mode="aspectFill"></image>
@@ -72,6 +78,65 @@
       <view wx:for="{{note.leakTags}}" wx:key="*this" class="detail-tag">{{item}}</view>
     </view>
     <view class="note-content">{{note.note || '暂无 note'}}</view>
+  </view>
+
+  <view wx:if="{{!editMode && mode === 'friend' && note && friend}}" class="detail-card friend-public-card">
+    <view class="section-head">
+      <view>
+        <view class="section-title-main">好友公开资料</view>
+        <view class="section-sub">以下资料由好友授权展示，无法在本地编辑</view>
+      </view>
+      <view class="friend-title-badge">称号 · {{friend.title || '未设称号'}}</view>
+    </view>
+    <view wx:if="{{friend.statsVisible}}" class="friend-stats-grid">
+      <view class="friend-stat-item">
+        <view class="friend-stat-label">累计时长</view>
+        <view class="friend-stat-value">{{friend.durationLabel}}</view>
+      </view>
+      <view class="friend-stat-item">
+        <view class="friend-stat-label">记录手牌</view>
+        <view class="friend-stat-value">{{friend.recordedHandCount || 0}} 手</view>
+      </view>
+    </view>
+    <view wx:else class="friend-stats-hidden">对方已隐藏统计数据</view>
+    <view wx:if="{{friend.friendshipDate}}" class="friend-since">成为好友：{{friend.friendshipDate}}</view>
+  </view>
+
+  <view wx:if="{{!editMode && mode === 'friend' && note && friend}}" class="detail-card friend-recent-section">
+    <view class="section-head">
+      <view>
+        <view class="section-title-main">最近发布的手牌</view>
+        <view class="section-sub">仅显示对方主动发布且你当前有权查看的内容</view>
+      </view>
+    </view>
+    <view wx:if="{{recentFriendShares.length}}" class="friend-recent-list">
+      <view wx:for="{{recentFriendShares}}" wx:key="shareId" class="friend-recent-card" data-share-id="{{item.shareId}}" bindtap="openRecentFriendShare">
+        <view class="friend-recent-head">
+          <view class="friend-recent-cards">{{item.heroCardsLabel}}</view>
+          <view class="friend-recent-scope scope-{{item.scope}}">{{item.scopeLabel}}</view>
+        </view>
+        <view class="friend-recent-board">{{item.boardLabel}}</view>
+        <view class="friend-recent-meta">
+          <text>{{item.potBbLabel}} 底池</text>
+          <text>{{item.actionCount}} 次行动</text>
+          <text>{{item.timeLabel}}</text>
+        </view>
+        <view class="friend-recent-social">
+          <text>♥ {{item.likeCount}}</text>
+          <text>评论 {{item.commentCount}}</text>
+          <text class="friend-recent-open">查看详情 ›</text>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="battle-empty">暂无你可以查看的已发布手牌</view>
+  </view>
+
+  <view wx:if="{{mode === 'view' && !editMode && detailState === 'ready' && id && note && note.sourceKind !== 'friend'}}" class="player-card-share-entry" bindtap="openPlayerCardShare">
+    <view>
+      <view class="player-card-share-entry-title">分享玩家名片</view>
+      <view class="player-card-share-entry-sub">预览后发送给一位好友</view>
+    </view>
+    <view class="player-card-share-entry-arrow">›</view>
   </view>
 
   <view wx:if="{{!editMode && note}}" class="detail-card battle-section">
@@ -128,7 +193,15 @@
     <view wx:else class="battle-empty">还没有关联对战手牌。</view>
   </view>
 
-  <view wx:if="{{!editMode && note}}" class="danger-zone" bindtap="deleteNote">删除玩家 note</view>
+  <view wx:if="{{!editMode && note && mode !== 'friend'}}" class="danger-zone" bindtap="deleteNote">删除玩家 note</view>
+  <view wx:if="{{!editMode && note && mode === 'friend' && !detachPending}}" class="danger-zone" bindtap="confirmRemoveFriend">{{removingFriend ? '解除中…' : '解除好友'}}</view>
+  <view wx:if="{{detachPending}}" class="detail-card detach-retry-card">
+    <view class="save-error">{{detachError}}</view>
+    <view class="primary-action" bindtap="retryDetachFriendNote">重试本地归档</view>
+  </view>
+  <view wx:if="{{removeError && !detachPending}}" class="detail-card detach-retry-card">
+    <view class="save-error">{{removeError}}</view>
+  </view>
 </view>
 
 <view wx:if="{{handPickerVisible}}" class="sheet">
@@ -161,5 +234,91 @@
   <view class="sheet-mask" bindtap="closeReplay"></view>
   <view class="replay-panel" catchtap="stopModalTap">
     <hand-replay-player replay="{{replayData}}" bindclose="closeReplay" />
+  </view>
+</view>
+
+<view wx:if="{{cardShareVisible}}" class="sheet player-card-share-sheet">
+  <view class="sheet-mask" bindtap="closePlayerCardShare"></view>
+  <view class="sheet-panel player-card-share-panel" catchtap="stopModalTap">
+    <view class="sheet-head">
+      <view>
+        <view class="sheet-title">分享玩家名片</view>
+        <view class="card-share-sheet-sub">先确认内容，再选择一位好友</view>
+      </view>
+      <view class="sheet-close {{cardShareStatus === 'sending' ? 'is-disabled' : ''}}" bindtap="closePlayerCardShare">关闭</view>
+    </view>
+
+    <scroll-view scroll-y="true" class="card-share-scroll">
+      <view class="card-share-preview">
+        <view class="card-share-preview-head">
+          <view class="card-preview-avatar">
+            <image wx:if="{{cardSharePreview.avatarUrl}}" class="card-preview-avatar-img" src="{{cardSharePreview.avatarUrl}}" mode="aspectFill"></image>
+            <text wx:else>{{cardSharePreview.avatarText}}</text>
+          </view>
+          <view class="card-share-preview-main">
+            <view class="card-preview-label">玩家名称</view>
+            <view class="card-preview-name">{{cardSharePreview.name}}</view>
+            <view class="card-preview-type-label">玩家类型 · {{cardSharePreview.type}}</view>
+          </view>
+        </view>
+        <view class="card-preview-section">
+          <view class="card-preview-label">Leak 标签</view>
+          <view wx:if="{{cardSharePreview.leakTags.length}}" class="card-preview-tags">
+            <view wx:for="{{cardSharePreview.leakTags}}" wx:key="*this" class="detail-tag">{{item}}</view>
+          </view>
+          <view wx:else class="card-preview-empty">暂无标签</view>
+        </view>
+        <view class="card-preview-section">
+          <view class="card-preview-label">完整 Note</view>
+          <view class="card-preview-note">{{cardSharePreview.note || '暂无 Note'}}</view>
+        </view>
+      </view>
+
+      <block wx:if="{{cardShareStatus !== 'success' && cardShareStatus !== 'withdrawn'}}">
+      <view class="card-friend-picker-title">选择接收好友</view>
+      <view wx:if="{{cardShareStatus === 'loading'}}" class="card-share-state">正在加载好友…</view>
+      <view wx:elif="{{cardShareStatus === 'error'}}" class="card-share-state is-error">
+        <view>{{cardShareError}}</view>
+        <view class="card-share-state-action" bindtap="refreshCardFriends">重试</view>
+      </view>
+      <view wx:elif="{{cardShareStatus === 'empty'}}" class="card-share-state">
+        <view>还没有可分享的好友</view>
+        <view class="card-share-state-action" bindtap="refreshCardFriends">刷新好友列表</view>
+      </view>
+      <view wx:else class="card-friend-list">
+        <view wx:for="{{cardFriends}}" wx:key="socialUserId" class="card-friend-row {{selectedCardFriendId === item.socialUserId ? 'is-selected' : ''}}" data-id="{{item.socialUserId}}" bindtap="selectCardFriend">
+          <view class="card-friend-avatar">
+            <image wx:if="{{item.avatarUrl}}" class="card-friend-avatar-img" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+            <text wx:else>{{item.avatarText}}</text>
+          </view>
+          <view class="card-friend-main">
+            <view class="card-friend-name">{{item.nickname}}</view>
+            <view wx:if="{{item.title}}" class="card-friend-title">{{item.title}}</view>
+          </view>
+          <view class="card-friend-radio"><view class="card-friend-radio-dot"></view></view>
+        </view>
+        <view wx:if="{{nextCardFriendOffset !== null}}" class="card-load-more {{cardFriendLoadingMore ? 'is-loading' : ''}}" bindtap="loadMoreCardFriends">{{cardFriendLoadingMore ? '加载中…' : '加载更多'}}</view>
+        <view wx:if="{{cardFriendLoadMoreError}}" class="card-load-more-error" bindtap="loadMoreCardFriends">{{cardFriendLoadMoreError}} · 点击重试</view>
+      </view>
+
+      <view wx:if="{{cardShareStatus === 'failure'}}" class="card-share-failure">
+        <view>{{cardShareError}}</view>
+        <view wx:if="{{cardShareNeedsFriendRefresh}}" class="card-share-state-action" bindtap="refreshCardFriends">刷新好友列表</view>
+      </view>
+      </block>
+      <view wx:if="{{cardShareStatus === 'success'}}" class="card-share-success">
+        <view>名片已发送给指定好友</view>
+        <view class="card-share-success-note">对方导入前，你可以撤回这次分享。</view>
+        <view class="card-share-withdraw {{cardShareWithdrawing ? 'is-disabled' : ''}}" bindtap="withdrawSharedPlayerCard">{{cardShareWithdrawing ? '撤回中…' : '撤回名片分享'}}</view>
+      </view>
+      <view wx:if="{{cardShareStatus === 'withdrawn'}}" class="card-share-success">
+        <view>名片分享已撤回</view>
+        <view class="card-share-success-note">好友将无法再预览或导入这张名片。</view>
+      </view>
+    </scroll-view>
+
+    <view wx:if="{{cardShareStatus !== 'success' && cardShareStatus !== 'withdrawn'}}" class="card-share-submit {{!selectedCardFriendId || cardShareStatus === 'sending' ? 'is-disabled' : ''}}" bindtap="confirmSharePlayerCard">
+      {{cardShareStatus === 'sending' ? '发送中…' : '确认分享'}}
+    </view>
   </view>
 </view>

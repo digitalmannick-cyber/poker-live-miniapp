@@ -3,9 +3,12 @@ const cardUi = require('../../utils/card-ui')
 const display = require('../../utils/display')
 const handReplay = require('../../utils/hand-replay')
 const avatarCache = require('../../utils/player-avatar-cache')
+const socialService = require('../../services/social-service')
+const socialMutation = require('../../utils/social-mutation')
 
 const AVATAR_UPLOAD_MAX_BYTES = 2 * 1024 * 1024
 const AVATAR_COMPRESS_QUALITIES = [82, 68, 54, 42]
+const CARD_SHARE_SUCCESS_VISIBLE_MS = 600
 
 function buildTypeOptions(settings, selectedType) {
   return (settings && settings.opponentTypes || []).map(type => ({
@@ -33,6 +36,106 @@ function buildForm(note) {
     leakTags: source.leakTags || [],
     note: source.note || '',
     battleHandIds: source.battleHandIds || []
+  }
+}
+
+function formatFriendDate(value) {
+  const timestamp = Number(value) || 0
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0')
+}
+
+function buildFriendView(remote) {
+  const source = remote || {}
+  const statsVisible = source.statsVisible !== false
+  const durationMinutes = Math.max(0, Number(source.durationMinutes) || 0)
+  return {
+    friendshipId: String(source.friendshipId || ''),
+    socialUserId: String(source.socialUserId || ''),
+    nickname: String(source.nickname || ''),
+    avatarUrl: String(source.avatarUrl || ''),
+    avatarText: String(source.avatarText || source.nickname || '').slice(0, 1),
+    title: String(source.title || ''),
+    statsVisible,
+    durationLabel: statsVisible ? (durationMinutes / 60).toFixed(1) + 'h' : '',
+    recordedHandCount: statsVisible ? Math.max(0, Math.floor(Number(source.recordedHandCount) || 0)) : 0,
+    friendshipDate: formatFriendDate(source.acceptedAt)
+  }
+}
+
+function formatSocialShareTime(value) {
+  const timestamp = Number(value)
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return ''
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = number => String(number).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function decorateRecentFriendShare(remote) {
+  const source = remote || {}
+  const summary = source.summary || {}
+  const board = summary.board || {}
+  const cards = value => Array.isArray(value) ? value.filter(card => typeof card === 'string').join(' ') : ''
+  return {
+    shareId: String(source.shareId || ''),
+    scope: String(source.scope || ''),
+    scopeLabel: String(source.scopeLabel || ''),
+    heroCardsLabel: cards(summary.heroCards) || '--',
+    boardLabel: [cards(board.flop), cards(board.turn), cards(board.river)].filter(Boolean).join(' · ') || '公共牌未记录',
+    potBbLabel: Number.isFinite(summary.potBb) ? summary.potBb + ' BB' : '--',
+    actionCount: Math.max(0, Math.floor(Number(summary.actionCount) || 0)),
+    likeCount: Math.max(0, Math.floor(Number(source.likeCount) || 0)),
+    commentCount: Math.max(0, Math.floor(Number(source.commentCount) || 0)),
+    timeLabel: formatSocialShareTime(source.createdAt)
+  }
+}
+
+function buildCardSharePreview(note) {
+  const source = note || {}
+  return {
+    avatarUrl: String(source.avatarDisplayUrl || ''),
+    avatarText: String(source.avatarText || source.name || '').slice(0, 1),
+    name: String(source.name || ''),
+    type: String(source.type || '未分类'),
+    leakTags: Array.isArray(source.leakTags) ? source.leakTags.slice() : [],
+    note: String(source.note || '')
+  }
+}
+
+function normalizeCardFriend(remote) {
+  const source = remote || {}
+  const socialUserId = String(source.socialUserId || '').trim()
+  if (!socialUserId || source.status && source.status !== 'accepted') return null
+  return {
+    socialUserId,
+    nickname: String(source.nickname || '未命名好友'),
+    avatarUrl: String(source.avatarUrl || ''),
+    avatarText: String(source.avatarText || source.nickname || '').slice(0, 1),
+    title: String(source.title || '')
+  }
+}
+
+function appendUniqueCardFriends(current, incoming) {
+  const result = []
+  const seen = Object.create(null)
+  ;[].concat(current || [], incoming || []).forEach(item => {
+    const friend = normalizeCardFriend(item)
+    if (!friend || seen[friend.socialUserId]) return
+    seen[friend.socialUserId] = true
+    result.push(friend)
+  })
+  return result
+}
+
+function safeDecodeQueryValue(value) {
+  const source = String(value || '')
+  try {
+    return decodeURIComponent(source).trim()
+  } catch (error) {
+    return source.trim()
   }
 }
 
@@ -214,6 +317,17 @@ Page({
   data: {
     id: '',
     mode: 'view',
+    friendUserId: '',
+    friend: null,
+    recentFriendShares: [],
+    detailState: 'ready',
+    loadError: '',
+    friendLoadedOnce: false,
+    friendShownOnce: false,
+    removingFriend: false,
+    removeError: '',
+    detachPending: false,
+    detachError: '',
     editMode: false,
     note: null,
     form: buildForm(),
@@ -226,12 +340,39 @@ Page({
     handCandidates: [],
     replayVisible: false,
     replayData: null,
+    cardShareVisible: false,
+    cardShareStatus: 'idle',
+    cardSharePreview: null,
+    cardFriends: [],
+    selectedCardFriendId: '',
+    nextCardFriendOffset: null,
+    cardFriendLoadingMore: false,
+    cardFriendLoadMoreError: '',
+    cardShareError: '',
+    cardShareNeedsFriendRefresh: false,
+    cardShareMutationId: '',
+    cardShareId: '',
+    cardShareWithdrawing: false,
     saving: false,
     saveError: ''
   },
 
   async onLoad(options) {
-    const id = decodeURIComponent(options && options.id || '')
+    this._friendPageAttached = true
+    const friendUserId = safeDecodeQueryValue(options && options.friendUserId)
+    if (friendUserId) {
+      this.setData({
+        id: '',
+        mode: 'friend',
+        friendUserId,
+        editMode: false,
+        detailState: 'loading',
+        loadError: ''
+      })
+      await this.loadFriendMode(friendUserId)
+      return
+    }
+    const id = safeDecodeQueryValue(options && options.id)
     const isNew = options && options.mode === 'new'
     this.setData({
       id,
@@ -241,7 +382,143 @@ Page({
     await this.refresh()
   },
 
+  async onShow() {
+    if (this.data.mode !== 'friend' || !this.data.friendUserId || !this.data.friendLoadedOnce || this.data.removingFriend) return
+    if (!this.data.friendShownOnce) {
+      this.setData({ friendShownOnce: true })
+      return
+    }
+    if (this.data.mode === 'friend') {
+      await this.loadFriendMode(this.data.friendUserId, { preserveEdit: true })
+    }
+  },
+
+  onUnload() {
+    this._friendPageAttached = false
+    this.invalidateFriendRequests()
+    this.invalidateCardShareRequests()
+  },
+
+  nextFriendRequest() {
+    this._friendRequestSequence = (Number(this._friendRequestSequence) || 0) + 1
+    return this._friendRequestSequence
+  },
+
+  invalidateFriendRequests() {
+    this._friendRequestSequence = (Number(this._friendRequestSequence) || 0) + 1
+  },
+
+  isFriendRequestCurrent(sequence) {
+    return this._friendPageAttached !== false && this._friendRequestSequence === sequence
+  },
+
+  nextCardFriendRequest() {
+    this._cardFriendRequestSequence = (Number(this._cardFriendRequestSequence) || 0) + 1
+    return this._cardFriendRequestSequence
+  },
+
+  nextCardShareSubmit() {
+    this._cardShareSubmitSequence = (Number(this._cardShareSubmitSequence) || 0) + 1
+    return this._cardShareSubmitSequence
+  },
+
+  invalidateCardShareRequests() {
+    this.cancelCardShareSuccessTimer()
+    this._cardFriendRequestSequence = (Number(this._cardFriendRequestSequence) || 0) + 1
+    this._cardShareSubmitSequence = (Number(this._cardShareSubmitSequence) || 0) + 1
+    this._cardShareSubmitPromise = null
+  },
+
+  setCardShareTimer(callback) {
+    return setTimeout(callback, CARD_SHARE_SUCCESS_VISIBLE_MS)
+  },
+
+  clearCardShareTimer(timerId) {
+    clearTimeout(timerId)
+  },
+
+  cancelCardShareSuccessTimer() {
+    if (this._cardShareSuccessTimer === null || this._cardShareSuccessTimer === undefined) return
+    this.clearCardShareTimer(this._cardShareSuccessTimer)
+    this._cardShareSuccessTimer = null
+  },
+
+  isCardFriendRequestCurrent(sequence) {
+    return this._friendPageAttached !== false && this.data.cardShareVisible && this._cardFriendRequestSequence === sequence
+  },
+
+  isCardShareSubmitCurrent(sequence) {
+    return this._friendPageAttached !== false && this.data.cardShareVisible && this._cardShareSubmitSequence === sequence
+  },
+
+  async loadFriendMode(friendUserId, options) {
+    const target = String(friendUserId || '').trim()
+    if (!target) return
+    const config = options || {}
+    const requestSequence = this.nextFriendRequest()
+    if (!this.isFriendRequestCurrent(requestSequence)) return
+    this.setData({ detailState: 'loading', loadError: '' })
+    try {
+      const [localNote, remote, recentResponse] = await Promise.all([
+        dataService.getFriendPlayerNote(target),
+        socialService.getFriendDetail(target),
+        socialService.listFriendRecentShares(target).catch(() => ({ items: [] }))
+      ])
+      if (!this.isFriendRequestCurrent(requestSequence)) return
+      const note = localNote || await dataService.ensureFriendPlayerNote(remote)
+      if (!this.isFriendRequestCurrent(requestSequence)) return
+      const friend = buildFriendView(remote)
+      const settings = await dataService.getAppSettings()
+      if (!this.isFriendRequestCurrent(requestSequence)) return
+      const viewNote = note ? Object.assign({}, note, {
+        avatarDisplayUrl: avatarCache.getAvatarDisplayUrl(note.avatarFileId, note.avatarUrl)
+      }) : null
+      const form = config.preserveEdit && this.data.editMode
+        ? this.data.form
+        : buildForm(viewNote)
+      const battleHands = note && note._id ? await dataService.getPlayerNoteBattleHands(note._id) : []
+      if (!this.isFriendRequestCurrent(requestSequence)) return
+      this.setData({
+        id: note && note._id || '',
+        note: viewNote,
+        friend,
+        recentFriendShares: (Array.isArray(recentResponse && recentResponse.items) ? recentResponse.items : []).map(decorateRecentFriendShare),
+        form,
+        settings,
+        typeOptions: buildTypeOptions(settings, form.type),
+        leakOptions: buildLeakOptions(settings, form.leakTags),
+        battleHands: battleHands.map(item => normalizeBattleHand(item, settings.chipUnit)),
+        detailState: 'ready',
+        loadError: '',
+        friendLoadedOnce: true
+      })
+    } catch (error) {
+      if (!this.isFriendRequestCurrent(requestSequence)) return
+      const code = String(error && error.code || '')
+      this.setData({
+        note: null,
+        friend: null,
+        recentFriendShares: [],
+        detailState: code === 'FORBIDDEN' || code === 'FRIENDSHIP_NOT_FOUND' ? 'unavailable' : 'error',
+        loadError: code === 'FORBIDDEN' || code === 'FRIENDSHIP_NOT_FOUND'
+          ? '好友关系已解除或不可访问'
+          : '好友资料加载失败，请检查网络后重试'
+      })
+    }
+  },
+
+  retryFriendLoad() {
+    return this.loadFriendMode(this.data.friendUserId)
+  },
+
+  openRecentFriendShare(event) {
+    const shareId = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.shareId || '').trim()
+    if (!shareId) return
+    wx.navigateTo({ url: '/pages/social-hand-detail/social-hand-detail?shareId=' + encodeURIComponent(shareId) })
+  },
+
   async refresh() {
+    if (this.data.mode === 'friend') return this.loadFriendMode(this.data.friendUserId, { preserveEdit: true })
     const settings = await dataService.getAppSettings()
     const note = this.data.id ? await dataService.getPlayerNoteById(this.data.id) : null
     const viewNote = note ? Object.assign({}, note, {
@@ -292,6 +569,7 @@ Page({
   },
 
   startEdit() {
+    if (this.data.detailState !== 'ready' || !this.data.note) return
     this.setData({ editMode: true, form: buildForm(this.data.note) })
     this.refresh()
   },
@@ -414,6 +692,8 @@ Page({
 
   async saveNote() {
     if (this.data.saving) return
+    const isNew = this.data.mode === 'new'
+    if (!isNew && (this.data.detailState !== 'ready' || !this.data.note || !this.data.id)) return
     const payload = Object.assign({}, this.data.form, {
       name: String(this.data.form.name || '').trim()
     })
@@ -431,7 +711,7 @@ Page({
         : await dataService.updatePlayerNote(this.data.id, payload)
       this.setData({
         id: saved._id,
-        mode: 'view',
+        mode: this.data.mode === 'friend' ? 'friend' : 'view',
         editMode: false,
         note: saved,
         saving: false
@@ -447,6 +727,7 @@ Page({
   },
 
   async deleteNote() {
+    if (this.data.mode === 'friend') return
     if (!this.data.id) return
     wx.showModal({
       title: '删除玩家',
@@ -458,6 +739,264 @@ Page({
         await dataService.deletePlayerNote(this.data.id)
         wx.navigateBack()
       }
+    })
+  },
+
+  confirmRemoveFriend() {
+    if (this.data.removingFriend || this.data.detachPending || !this.data.friend) return
+    wx.showModal({
+      title: '解除好友',
+      content: '解除后将立即失去好友资料、排行榜及好友范围分享的访问权限。本地玩家资料会保留在玩家库。',
+      confirmText: '解除好友',
+      confirmColor: '#e60012',
+      success: result => {
+        if (result && result.confirm) this.removeFriend()
+      }
+    })
+  },
+
+  async removeFriend() {
+    if (this.data.removingFriend || this.data.detachPending) return
+    const friend = this.data.friend || {}
+    const friendshipId = String(friend.friendshipId || '').trim()
+    const friendUserId = String(friend.socialUserId || this.data.friendUserId || '').trim()
+    if (!friendshipId || !friendUserId) {
+      this.setData({ detachError: '好友关系信息已失效，请返回列表刷新后重试' })
+      return
+    }
+    this.invalidateFriendRequests()
+    this.setData({ removingFriend: true, detachError: '', removeError: '' })
+    try {
+      await socialService.removeFriend({
+        friendshipId,
+        clientMutationId: socialMutation.createMutationId('remove_friend')
+      })
+    } catch (error) {
+      this.setData({
+        removingFriend: false,
+        removeError: '解除好友失败，请稍后重试'
+      })
+      wx.showToast({ title: '解除好友失败，请稍后重试', icon: 'none' })
+      return
+    }
+    this.invalidateFriendRequests()
+    this.setData({ removingFriend: false, detachPending: true })
+    await this.detachFriendNote(friendUserId)
+  },
+
+  async retryDetachFriendNote() {
+    if (!this.data.detachPending) return
+    await this.detachFriendNote(this.data.friendUserId)
+  },
+
+  async detachFriendNote(friendUserId) {
+    try {
+      await dataService.detachFriendPlayerNote(friendUserId)
+      this.setData({ detachPending: false, detachError: '' })
+      wx.switchTab({ url: '/pages/player-notes/player-notes' })
+    } catch (error) {
+      this.setData({
+        detachPending: true,
+        detachError: '好友关系已解除，但本地玩家资料暂未归档。请重试以保留资料。'
+      })
+    }
+  },
+
+  async openPlayerCardShare() {
+    const note = this.data.note
+    if (this.data.mode !== 'view' || this.data.editMode || this.data.detailState !== 'ready' || !this.data.id || !note || note.sourceKind === 'friend') return
+    this.cancelCardShareSuccessTimer()
+    const requestSequence = this.nextCardFriendRequest()
+    this.nextCardShareSubmit()
+    this._cardShareMutationUsed = false
+    this.setData({
+      cardShareVisible: true,
+      cardShareStatus: 'loading',
+      cardSharePreview: buildCardSharePreview(note),
+      cardFriends: [],
+      selectedCardFriendId: '',
+      nextCardFriendOffset: null,
+      cardFriendLoadingMore: false,
+      cardFriendLoadMoreError: '',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false,
+      cardShareMutationId: socialMutation.createMutationId('share_player_card'),
+      cardShareId: '',
+      cardShareWithdrawing: false
+    })
+    await this.loadCardFriendPage(0, requestSequence, false)
+  },
+
+  closePlayerCardShare() {
+    if (this.data.cardShareStatus === 'sending') return
+    this.invalidateCardShareRequests()
+    this._cardShareMutationUsed = false
+    this.setData({
+      cardShareVisible: false,
+      cardShareStatus: 'idle',
+      cardSharePreview: null,
+      cardFriends: [],
+      selectedCardFriendId: '',
+      nextCardFriendOffset: null,
+      cardFriendLoadingMore: false,
+      cardFriendLoadMoreError: '',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false,
+      cardShareMutationId: '',
+      cardShareId: '',
+      cardShareWithdrawing: false
+    })
+  },
+
+  async refreshCardFriends() {
+    if (!this.data.cardShareVisible || this.data.cardShareStatus === 'sending') return
+    const requestSequence = this.nextCardFriendRequest()
+    this.setData({
+      cardShareStatus: 'loading',
+      cardFriends: [],
+      selectedCardFriendId: '',
+      nextCardFriendOffset: null,
+      cardFriendLoadingMore: false,
+      cardFriendLoadMoreError: '',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false
+    })
+    await this.loadCardFriendPage(0, requestSequence, false)
+  },
+
+  async loadMoreCardFriends() {
+    const offset = this.data.nextCardFriendOffset
+    if (!this.data.cardShareVisible || this.data.cardShareStatus !== 'ready' || this.data.cardFriendLoadingMore || offset === null || offset === undefined) return
+    const requestSequence = this._cardFriendRequestSequence
+    this.setData({ cardFriendLoadingMore: true, cardFriendLoadMoreError: '' })
+    await this.loadCardFriendPage(offset, requestSequence, true)
+  },
+
+  async loadCardFriendPage(offset, requestSequence, append) {
+    try {
+      const result = await socialService.listFriends({ offset, limit: 20 })
+      if (!this.isCardFriendRequestCurrent(requestSequence)) return
+      const items = appendUniqueCardFriends(append ? this.data.cardFriends : [], result && result.items)
+      const nextOffset = result && result.nextOffset !== null && result.nextOffset !== undefined
+        ? Math.max(0, Number(result.nextOffset) || 0)
+        : null
+      this.setData({
+        cardFriends: items,
+        nextCardFriendOffset: nextOffset,
+        cardShareStatus: items.length ? 'ready' : 'empty',
+        cardFriendLoadingMore: false,
+        cardFriendLoadMoreError: '',
+        cardShareError: ''
+      })
+    } catch (error) {
+      if (!this.isCardFriendRequestCurrent(requestSequence)) return
+      if (append) {
+        this.setData({ cardFriendLoadingMore: false, cardFriendLoadMoreError: '好友加载失败，请重试' })
+        return
+      }
+      this.setData({
+        cardShareStatus: 'error',
+        cardFriendLoadingMore: false,
+        cardShareError: '好友列表加载失败，请检查网络后重试'
+      })
+    }
+  },
+
+  selectCardFriend(event) {
+    if (!this.data.cardShareVisible || this.data.cardShareStatus === 'sending') return
+    const targetUserId = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.id || '').trim()
+    if (!targetUserId || !this.data.cardFriends.some(item => item.socialUserId === targetUserId)) return
+    const previous = this.data.selectedCardFriendId
+    const selectedCardFriendId = previous === targetUserId ? '' : targetUserId
+    let mutationId = this.data.cardShareMutationId
+    if (this._cardShareMutationUsed && selectedCardFriendId && selectedCardFriendId !== previous) {
+      mutationId = socialMutation.createMutationId('share_player_card')
+      this._cardShareMutationUsed = false
+    }
+    this.setData({
+      selectedCardFriendId,
+      cardShareStatus: this.data.cardFriends.length ? 'ready' : 'empty',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false,
+      cardShareMutationId: mutationId
+    })
+  },
+
+  confirmSharePlayerCard() {
+    const targetUserId = String(this.data.selectedCardFriendId || '').trim()
+    if (!targetUserId) {
+      if (this._friendPageAttached !== false) wx.showToast({ title: '请选择一位好友', icon: 'none' })
+      return Promise.resolve()
+    }
+    if (this.data.cardShareStatus === 'sending' || this.data.cardShareStatus === 'success') return this._cardShareSubmitPromise || Promise.resolve()
+    const clientMutationId = this.data.cardShareMutationId || socialMutation.createMutationId('share_player_card')
+    const submitSequence = this.nextCardShareSubmit()
+    this._cardShareMutationUsed = true
+    this.setData({
+      cardShareStatus: 'sending',
+      cardShareError: '',
+      cardShareNeedsFriendRefresh: false,
+      cardShareMutationId: clientMutationId
+    })
+    const task = socialService.sharePlayerCard({
+      playerNoteId: this.data.id,
+      targetUserId,
+      clientMutationId
+    }).then(result => {
+      if (!this.isCardShareSubmitCurrent(submitSequence)) return result
+      this._cardShareMutationUsed = false
+      const shareId = String(result && result.shareId || '').trim()
+      if (!shareId) {
+        this.setData({ cardShareStatus: 'failure', cardShareError: '名片已发送，但无法取得撤回凭证，请刷新后确认。' })
+        return result
+      }
+      this.setData({ cardShareStatus: 'success', cardShareError: '', cardShareId: shareId })
+      wx.showToast({ title: '名片已分享', icon: 'success' })
+      return result
+    }).catch(error => {
+      if (!this.isCardShareSubmitCurrent(submitSequence)) return
+      const code = String(error && error.code || '')
+      const relationshipLost = code === 'FRIENDSHIP_REQUIRED' || code === 'FRIENDSHIP_NOT_FOUND' || code === 'FORBIDDEN'
+      this.setData({
+        cardShareStatus: 'failure',
+        cardShareError: relationshipLost ? '该用户已不是好友，请刷新好友列表后重新选择' : '名片分享失败，请稍后重试',
+        cardShareNeedsFriendRefresh: relationshipLost
+      })
+    }).finally(() => {
+      if (this._cardShareSubmitPromise === task) this._cardShareSubmitPromise = null
+    })
+    this._cardShareSubmitPromise = task
+    return task
+  },
+
+  withdrawSharedPlayerCard() {
+    if (!this.data.cardShareId || this.data.cardShareStatus !== 'success' || this.data.cardShareWithdrawing) return Promise.resolve()
+    const shareId = String(this.data.cardShareId)
+    const submitSequence = this._cardShareSubmitSequence
+    return new Promise(resolve => {
+      wx.showModal({
+        title: '撤回这张名片？',
+        content: '仅能阻止好友继续预览或导入；如果对方已经导入，保存到其玩家库的副本不会被删除。',
+        confirmText: '确认撤回',
+        confirmColor: '#e60012',
+        success: result => {
+          if (!result || !result.confirm) return resolve()
+          if (!this.isCardShareSubmitCurrent(submitSequence) || this.data.cardShareStatus !== 'success' || this.data.cardShareId !== shareId) return resolve()
+          this.setData({ cardShareWithdrawing: true, cardShareError: '' })
+          socialService.withdrawPlayerCardShare({
+            shareId,
+            clientMutationId: socialMutation.createMutationId('withdraw_player_card_share')
+          }).then(() => {
+            if (!this.isCardShareSubmitCurrent(submitSequence) || this.data.cardShareId !== shareId) return
+            this.setData({ cardShareWithdrawing: false, cardShareStatus: 'withdrawn' })
+            wx.showToast({ title: '名片分享已撤回', icon: 'success' })
+          }).catch(() => {
+            if (!this.isCardShareSubmitCurrent(submitSequence) || this.data.cardShareId !== shareId) return
+            this.setData({ cardShareWithdrawing: false, cardShareError: '撤回失败，请稍后重试' })
+          }).finally(resolve)
+        },
+        fail: resolve
+      })
     })
   },
 

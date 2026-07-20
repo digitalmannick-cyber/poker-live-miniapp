@@ -1,0 +1,186 @@
+<view class="container hand-share-page">
+  <view wx:if="{{status === 'loading'}}" class="state-card loading-state">
+    <view class="state-mark">P5</view>
+    <view class="state-title">正在读取分享</view>
+    <view class="state-copy">正在重新确认分享状态与阅读权限。</view>
+  </view>
+
+  <view wx:elif="{{status === 'unavailable'}}" class="state-card unavailable-state">
+    <view class="state-mark">×</view>
+    <view class="state-title">内容已不可访问</view>
+    <view class="state-copy">分享可能已撤回、范围已变化，或你已不在可见范围内。</view>
+  </view>
+
+  <view wx:elif="{{status === 'error'}}" class="state-card error-state">
+    <view class="state-mark">!</view>
+    <view class="state-title">读取失败</view>
+    <view class="state-copy">{{errorMessage}}</view>
+    <view class="state-action" bindtap="retry">重新加载</view>
+  </view>
+
+  <view wx:elif="{{status === 'ready' && detail}}" class="ready-state">
+    <view class="share-head-card">
+      <view class="head-slash"></view>
+      <view class="publisher-avatar">
+        <image wx:if="{{detail.publisher.avatarUrl}}" src="{{detail.publisher.avatarUrl}}" mode="aspectFill"></image>
+        <text wx:else>{{detail.publisher.avatarText}}</text>
+      </view>
+      <view class="publisher-main">
+        <view class="publisher-name">{{detail.publisher.nickname}}</view>
+        <view class="share-meta">{{detail.scopeLabel}} · BB 匿名手牌</view>
+      </view>
+      <view class="scope-stamp">{{detail.scopeLabel}}</view>
+    </view>
+
+    <view wx:if="{{detail.isMine}}" class="share-owner-tools" bindtap="openShareManagement">
+      <view><view class="owner-tools-title">管理这条分享</view><view class="owner-tools-copy">修改可见范围或撤回整条分享</view></view>
+      <view class="owner-tools-arrow">›</view>
+    </view>
+
+    <view class="hand-card">
+      <view class="section-kicker">HAND SNAPSHOT</view>
+      <view class="hero-row">
+        <view>
+          <view class="hero-title">Hero · {{detail.handSnapshot.hero.position}}</view>
+          <view class="hero-stack" wx:if="{{detail.handSnapshot.hero.stackBb !== undefined}}">{{detail.handSnapshot.hero.stackBb}} BB</view>
+        </view>
+        <view class="card-row">
+          <view wx:for="{{detail.handSnapshot.hero.cards}}" wx:key="*this" class="poker-card">{{item}}</view>
+        </view>
+      </view>
+
+      <view class="metric-grid">
+        <view class="metric-item"><view class="metric-value">{{detail.handSnapshot.potBb === undefined ? '--' : detail.handSnapshot.potBb}}</view><view class="metric-label">底池 BB</view></view>
+        <view class="metric-item"><view class="metric-value">{{detail.handSnapshot.effectiveStackBb === undefined ? '--' : detail.handSnapshot.effectiveStackBb}}</view><view class="metric-label">有效筹码 BB</view></view>
+        <view class="metric-item"><view class="metric-value">{{detail.handSnapshot.players.length + 1}}</view><view class="metric-label">玩家数</view></view>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-label">公共牌</view>
+        <view class="board-row">
+          <view wx:for="{{detail.handSnapshot.board.flop}}" wx:key="*this" class="board-card">{{item}}</view>
+          <view wx:for="{{detail.handSnapshot.board.turn}}" wx:key="*this" class="board-card turn-card">{{item}}</view>
+          <view wx:for="{{detail.handSnapshot.board.river}}" wx:key="*this" class="board-card river-card">{{item}}</view>
+          <text wx:if="{{!detail.handSnapshot.board.flop.length}}" class="empty-board">暂无公共牌</text>
+        </view>
+      </view>
+
+      <view class="detail-section" wx:if="{{detail.handSnapshot.players.length}}">
+        <view class="detail-label">匿名玩家</view>
+        <view class="player-row">
+          <view wx:for="{{detail.handSnapshot.players}}" wx:key="seat" class="player-chip">{{item.label}} · {{item.position}}<text wx:if="{{item.stackBb !== undefined}}"> · {{item.stackBb}} BB</text></view>
+        </view>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-label">行动线</view>
+        <view class="action-list">
+          <view wx:for="{{detail.handSnapshot.actions}}" wx:key="index" class="action-item">
+            <text class="action-street">{{item.street}}</text>
+            <text class="action-actor">{{item.actor}}</text>
+            <text class="action-type">{{item.type}}</text>
+            <text wx:if="{{item.amountBb !== undefined}}" class="action-amount">{{item.amountBb}} BB</text>
+          </view>
+          <view wx:if="{{!detail.handSnapshot.actions.length}}" class="empty-actions">暂无行动记录</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="engagement-card">
+      <view class="engagement-item like-button {{detail.likedByMe ? 'liked' : ''}} {{likeSubmitting ? 'submitting' : ''}} {{commentsStatus !== 'ready' ? 'interaction-disabled' : ''}}" bindtap="toggleLike">
+        <text class="engagement-icon">♥</text><text>{{detail.likeCount}}</text>
+      </view>
+      <view class="engagement-item"><text class="engagement-icon">◌</text><text>{{detail.commentCount}}</text></view>
+      <view class="engagement-hint">评论 · 牌局观点</view>
+    </view>
+
+    <view class="comments-card">
+      <view class="comments-head">
+        <view>
+          <view class="section-kicker">TABLE TALK</view>
+          <view class="comments-title">牌桌讨论</view>
+        </view>
+        <view class="comments-count">{{detail.commentCount}}</view>
+      </view>
+
+      <view wx:if="{{commentsStatus === 'loading'}}" class="comments-state">正在加载评论…</view>
+      <view wx:elif="{{commentsStatus === 'error'}}" class="comments-state comments-error">评论暂时无法读取，重新进入页面后可重试</view>
+      <view wx:elif="{{commentsStatus === 'ready'}}" class="comment-list">
+        <view wx:if="{{!comments.length}}" class="comments-state">还没有评论，来说说你的判断</view>
+        <view wx:for="{{comments}}" wx:key="commentId" class="{{item.parentCommentId ? 'comment-row reply-row' : 'comment-row'}}">
+          <view class="comment-avatar">
+            <image wx:if="{{item.author.avatarUrl}}" src="{{item.author.avatarUrl}}" mode="aspectFill"></image>
+            <text wx:else>{{item.author.avatarText}}</text>
+          </view>
+          <view class="comment-main">
+            <view class="comment-meta">
+              <text class="comment-author">{{item.author.nickname}}</text>
+              <text wx:if="{{item.parentCommentId}}" class="reply-mark">回复</text>
+            </view>
+            <view wx:if="{{item.kind === 'sticker' && item.sticker}}" class="poker-sticker-display">
+              <text class="sticker-emoji">{{item.sticker.emoji}}</text>
+              <text class="sticker-label">{{item.sticker.label}}</text>
+            </view>
+            <view wx:else class="comment-text {{item.deleted ? 'deleted-comment' : ''}}">{{item.text}}</view>
+            <view wx:if="{{!item.deleted}}" class="comment-actions">
+              <view wx:if="{{!item.parentCommentId}}" class="comment-action" data-comment-id="{{item.commentId}}" bindtap="replyToComment">↩</view>
+              <view wx:if="{{item.canDelete}}" class="comment-action delete-action" data-comment-id="{{item.commentId}}" bindtap="deleteComment">删除</view>
+              <view wx:if="{{item.canModerate}}" class="comment-action moderate-action" data-comment-id="{{item.commentId}}" bindtap="moderateComment">移除</view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{commentsNextCursor}}" class="load-more {{commentsLoadingMore ? 'loading-more' : ''}}" bindtap="loadMoreComments">
+          {{commentsLoadingMore ? '正在加载…' : '加载更多评论'}}
+        </view>
+      </view>
+
+      <view class="composer-shell {{commentsStatus !== 'ready' ? 'interaction-disabled' : ''}}">
+        <view wx:if="{{replyTo}}" class="reply-target">
+          <text>回复 {{replyTo.nickname}}</text>
+          <text class="reply-cancel" bindtap="cancelReply">×</text>
+        </view>
+        <textarea class="comment-input" value="{{commentDraft}}" maxlength="300" auto-height placeholder="写下你的牌局观点…" bindinput="onCommentInput"></textarea>
+        <view class="composer-actions">
+          <view class="composer-tool" bindtap="toggleEmojiPanel">☺</view>
+          <view class="composer-tool" bindtap="toggleStickerPanel">♠</view>
+          <view class="send-comment {{commentSubmitting ? 'submitting' : ''}}" bindtap="submitComment">发送</view>
+        </view>
+        <view wx:if="{{emojiPanelVisible}}" class="emoji-panel">
+          <view wx:for="{{emojis}}" wx:key="*this" class="emoji-choice" data-emoji="{{item}}" bindtap="appendEmoji">{{item}}</view>
+        </view>
+        <view wx:if="{{stickerPanelVisible}}" class="sticker-panel">
+          <view wx:for="{{stickers}}" wx:key="id" class="sticker-choice" data-sticker-id="{{item.id}}" bindtap="chooseSticker">
+            <text class="sticker-choice-emoji">{{item.emoji}}</text>
+            <text class="sticker-choice-label">{{item.label}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{manageVisible}}" class="manage-overlay">
+  <view class="manage-mask" bindtap="closeShareManagement"></view>
+  <view class="manage-sheet" catchtap="stopModalTap">
+    <view class="manage-head"><view><view class="manage-title">管理分享</view><view class="manage-subtitle">范围变化会立即影响所有人的访问权限</view></view><view class="manage-close" bindtap="closeShareManagement">关闭</view></view>
+    <view class="manage-scope-grid">
+      <view class="manage-scope {{manageScope === 'square' ? 'is-active' : ''}}" data-scope="square" bindtap="changeManageScope"><view>广场</view><text>所有用户</text></view>
+      <view class="manage-scope {{manageScope === 'friends' ? 'is-active' : ''}}" data-scope="friends" bindtap="changeManageScope"><view>全部好友</view><text>当前好友</text></view>
+      <view class="manage-scope {{manageScope === 'selected' ? 'is-active' : ''}}" data-scope="selected" bindtap="changeManageScope"><view>指定好友</view><text>1–50 位</text></view>
+    </view>
+    <scroll-view wx:if="{{manageScope === 'selected'}}" scroll-y="true" class="manage-friend-list">
+      <view wx:if="{{manageFriendLoading}}" class="manage-state">正在加载好友…</view>
+      <view wx:elif="{{!manageFriends.length}}" class="manage-state">暂无可选好友</view>
+      <view wx:for="{{manageFriends}}" wx:key="socialUserId" class="manage-friend {{item.selected ? 'is-selected' : ''}}" data-id="{{item.socialUserId}}" bindtap="toggleManageTarget">
+        <view class="manage-friend-avatar">{{item.avatarText || '友'}}</view>
+        <view class="manage-friend-name">{{item.nickname || '好友'}}</view>
+        <view class="manage-friend-check">{{item.selected ? '✓' : ''}}</view>
+      </view>
+    </scroll-view>
+    <view wx:if="{{manageError}}" class="manage-error">{{manageError}}</view>
+    <view class="manage-actions">
+      <view class="manage-withdraw {{manageSubmitting ? 'is-disabled' : ''}}" bindtap="withdrawShare">撤回分享</view>
+      <view class="manage-save {{manageSubmitting ? 'is-disabled' : ''}}" bindtap="saveShareScope">{{manageSubmitting ? '处理中…' : '保存范围'}}</view>
+    </view>
+  </view>
+</view>

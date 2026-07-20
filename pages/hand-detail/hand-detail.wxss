@@ -70,6 +70,61 @@
   color: #ffd52a;
 }
 
+.hand-social-publish-entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  min-height: 92rpx;
+  margin-top: 24rpx;
+  padding: 18rpx 20rpx 18rpx 24rpx;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(230, 0, 18, 0.46);
+  background: linear-gradient(105deg, rgba(230, 0, 18, 0.24), rgba(230, 0, 18, 0.06) 62%, rgba(0, 209, 255, 0.08));
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.hand-social-publish-entry::before {
+  content: '';
+  position: absolute;
+  left: -42rpx;
+  top: -26rpx;
+  width: 160rpx;
+  height: 18rpx;
+  background: #e60012;
+  transform: rotate(-14deg);
+  box-shadow: 70rpx 0 0 rgba(0, 209, 255, 0.72);
+}
+
+.hand-social-publish-copy {
+  position: relative;
+  min-width: 0;
+}
+
+.hand-social-publish-title {
+  color: #ffffff;
+  font-size: 29rpx;
+  font-weight: 1000;
+}
+
+.hand-social-publish-desc {
+  margin-top: 7rpx;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 21rpx;
+  line-height: 1.45;
+}
+
+.hand-social-publish-arrow {
+  position: relative;
+  flex: none;
+  color: #00d1ff;
+  font-size: 48rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .hand-export-layer {
   position: fixed;
   inset: 0;

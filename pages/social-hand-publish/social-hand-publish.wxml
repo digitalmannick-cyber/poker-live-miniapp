@@ -1,0 +1,116 @@
+<view class="app-bg"></view>
+<view class="container publish-page">
+  <view wx:if="{{status === 'loading'}}" class="publish-state-card">
+    <view class="state-slash"></view>
+    <view class="state-title">正在生成安全预览</view>
+    <view class="state-copy">服务端正在核对手牌、行动与场次。页面不会读取本地手牌数据。</view>
+  </view>
+
+  <view wx:elif="{{status === 'error' || status === 'unavailable'}}" class="publish-state-card">
+    <view class="state-slash"></view>
+    <view class="state-title">{{status === 'unavailable' ? '这手牌暂时不可发布' : '预览未完成'}}</view>
+    <view class="state-copy">{{errorMessage}}</view>
+    <view wx:if="{{previewHash}}" class="state-action" bindtap="submitPublish">重试发布</view>
+    <view wx:else class="state-action" bindtap="retryPreview">重新预览</view>
+  </view>
+
+  <view wx:elif="{{status === 'success'}}" class="publish-state-card success-card">
+    <view class="success-mark">✓</view>
+    <view class="state-title">手牌已发布</view>
+    <view class="state-copy">分享 ID</view>
+    <view class="success-id">{{shareId}}</view>
+    <view class="state-action secondary" bindtap="goBack">返回手牌</view>
+  </view>
+
+  <block wx:else>
+    <view class="publish-preview-card">
+      <view class="preview-accent"></view>
+      <view class="preview-head">
+        <view>
+          <view class="preview-title">发布预览</view>
+          <view class="preview-subtitle">数值统一按 BB 展示 · 玩家已匿名</view>
+        </view>
+        <view class="bb-stamp">BB</view>
+      </view>
+
+      <view class="hero-line">
+        <view>
+          <view class="hero-label">{{snapshot.hero.label || 'Hero'}} · {{snapshot.hero.position}}</view>
+          <view class="hero-stack">{{snapshot.hero.stackBb}} BB</view>
+        </view>
+        <view class="card-line">
+          <view wx:for="{{snapshot.hero.cards}}" wx:key="*this" class="poker-card">{{item}}</view>
+        </view>
+      </view>
+
+      <view class="metric-strip">
+        <view class="metric"><view class="metric-value">{{snapshot.effectiveStackBb || '-'}}</view><view class="metric-label">有效筹码 BB</view></view>
+        <view class="metric"><view class="metric-value">{{snapshot.potBb || '-'}}</view><view class="metric-label">底池 BB</view></view>
+        <view class="metric"><view class="metric-value">{{snapshot.players.length}}</view><view class="metric-label">玩家</view></view>
+      </view>
+
+      <view class="preview-section">
+        <view class="preview-section-label">公共牌</view>
+        <view class="board-row">
+          <view wx:for="{{snapshot.board.flop}}" wx:key="*this" class="board-card">{{item}}</view>
+          <view wx:for="{{snapshot.board.turn}}" wx:key="*this" class="board-card">{{item}}</view>
+          <view wx:for="{{snapshot.board.river}}" wx:key="*this" class="board-card">{{item}}</view>
+          <view wx:if="{{!snapshot.board.flop.length && !snapshot.board.turn.length && !snapshot.board.river.length}}" class="empty-inline">暂无公共牌</view>
+        </view>
+      </view>
+
+      <view class="preview-section">
+        <view class="preview-section-label">匿名玩家</view>
+        <view class="player-chip-row">
+          <view wx:for="{{snapshot.players}}" wx:key="seat" class="player-chip">{{item.label}} · {{item.position}} · {{item.stackBb}} BB</view>
+        </view>
+      </view>
+
+      <view class="preview-section">
+        <view class="preview-section-label">行动线</view>
+        <view wx:if="{{snapshot.actions.length}}" class="action-list">
+          <view wx:for="{{snapshot.actions}}" wx:key="index" class="action-row">
+            <text>{{item.street}} · {{item.actor}} · {{item.type}}</text>
+            <text wx:if="{{item.amountBb !== undefined}}" class="action-amount">{{item.amountBb}} BB</text>
+          </view>
+        </view>
+        <view wx:else class="empty-inline">暂无行动</view>
+      </view>
+    </view>
+
+    <view class="scope-card">
+      <view class="scope-title">谁可以看到</view>
+      <view class="scope-subtitle">三种范围互斥；切换后以当前选择为准</view>
+      <view class="scope-grid">
+        <view class="scope-option {{scope === 'square' ? 'is-active' : ''}}" data-scope="square" bindtap="changeScope">
+          <view class="scope-name">广场</view><view class="scope-desc">所有用户可见</view>
+        </view>
+        <view class="scope-option {{scope === 'friends' ? 'is-active' : ''}}" data-scope="friends" bindtap="changeScope">
+          <view class="scope-name">全部好友</view><view class="scope-desc">当前好友可见</view>
+        </view>
+        <view class="scope-option {{scope === 'selected' ? 'is-active' : ''}}" data-scope="selected" bindtap="changeScope">
+          <view class="scope-name">指定好友</view><view class="scope-desc">选择 1–50 位</view>
+        </view>
+      </view>
+
+      <view wx:if="{{scope === 'square'}}" class="public-warning">广场为公开分享。发布前会再次确认，取消不会保存授权。</view>
+
+      <view wx:if="{{scope === 'selected'}}" class="friend-picker">
+        <view class="friend-picker-head"><text>已选 {{selectedTargetUserIds.length}} / 50</text><text wx:if="{{friendLoading}}">加载中…</text></view>
+        <view wx:if="{{friends.length}}" class="friend-list">
+          <view wx:for="{{friends}}" wx:key="socialUserId" class="friend-row {{item.selected ? 'is-selected' : ''}}" data-id="{{item.socialUserId}}" bindtap="toggleTarget">
+            <view class="friend-avatar">{{item.avatarText || '友'}}</view>
+            <view class="friend-main"><view class="friend-name">{{item.nickname || '好友'}}</view><view class="friend-title">{{item.title || '已接受好友'}}</view></view>
+            <view class="friend-check">{{item.selected ? '✓' : ''}}</view>
+          </view>
+        </view>
+        <view wx:elif="{{!friendLoading}}" class="friend-empty">暂无可选好友</view>
+        <view wx:if="{{friendLoadMoreError}}" class="friend-error">{{friendLoadMoreError}}</view>
+        <view wx:if="{{nextFriendOffset !== null}}" class="load-more {{friendLoadingMore ? 'is-disabled' : ''}}" bindtap="loadMoreFriends">{{friendLoadingMore ? '加载中…' : '加载更多好友'}}</view>
+      </view>
+
+      <view wx:if="{{errorCode && status === 'ready'}}" class="inline-error">{{errorMessage}}</view>
+      <button class="publish-cta" loading="{{publishLoading}}" disabled="{{publishLoading}}" bindtap="submitPublish">{{publishLoading ? '正在发布' : '确认发布'}}</button>
+    </view>
+  </block>
+</view>

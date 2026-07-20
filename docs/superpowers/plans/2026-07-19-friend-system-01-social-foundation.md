@@ -39,7 +39,7 @@
 - Test helper: `createMemorySocialRepository(seed)`，提供 `get(collection, id)`、`set(collection, id, value)`、`where(collection, predicate)`、`runTransaction(callback)`。
 - Response: `{ code: 0, data, requestId }` or `{ code: string, message: string, requestId }`。
 
-- [ ] **Step 1: 写客户端调用失败测试**
+- [x] **Step 1: 写客户端调用失败测试**
 
 ```js
 test('callSocialFunction sends action to poker_social and maps cloud errors', async () => {
@@ -51,13 +51,13 @@ test('callSocialFunction sends action to poker_social and maps cloud errors', as
 })
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-api.test.js`
 
 Expected: FAIL with `Cannot find module '../services/social-api'`。
 
-- [ ] **Step 3: 实现最小 API 和可注入路由**
+- [x] **Step 3: 实现最小 API 和可注入路由**
 
 ```js
 // services/social-api.js
@@ -121,13 +121,13 @@ function createMemorySocialRepository(seed) {
 module.exports = { createMemorySocialRepository }
 ```
 
-- [ ] **Step 4: 验证路由和 API**
+- [x] **Step 4: 验证路由和 API**
 
 Run: `node --test tests/social-api.test.js tests/social-cloud-routing.test.js`
 
 Expected: PASS；测试同时断言返回对象不包含 `ownerOpenId` 和 `_openid`。
 
-- [ ] **Step 5: 提交任务文件**
+- [x] **Step 5: 提交任务文件**
 
 ```powershell
 git add cloudfunctions/poker_social services/social-api.js utils/social-mutation.js tests/helpers/social-fixture.js tests/social-api.test.js tests/social-cloud-routing.test.js
@@ -138,6 +138,8 @@ git commit -m "feat: scaffold isolated social service"
 
 **Files:**
 - Create: `cloudfunctions/poker_social/lib/profile.js`
+- Modify: `cloudfunctions/poker_social/lib/repository.js`
+- Modify: `cloudfunctions/poker_social/index.js`
 - Modify: `cloudfunctions/poker_social/app.js`
 - Create: `services/social-service.js`
 - Test: `tests/social-profile.test.js`
@@ -147,7 +149,7 @@ git commit -m "feat: scaffold isolated social service"
 - Produces: `initializeSocialProfile({ playerId, nickname, avatarMode, avatarFileId, statsVisible, defaultShareScope })`、`getMySocialProfile()`。
 - DTO: `{ socialUserId, nickname, avatarUrl, avatarText, title, statsVisible, defaultShareScope }`。
 
-- [ ] **Step 1: 写资料白名单失败测试**
+- [x] **Step 1: 写资料白名单失败测试**
 
 ```js
 test('profile DTO never exposes owner identity or avatar file id', () => {
@@ -161,13 +163,13 @@ test('profile DTO never exposes owner identity or avatar file id', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-profile.test.js`
 
 Expected: FAIL because `lib/profile.js` does not exist。
 
-- [ ] **Step 3: 实现随机身份与白名单映射**
+- [x] **Step 3: 实现随机身份与白名单映射**
 
 ```js
 function normalizeProfileInput(input) {
@@ -185,16 +187,16 @@ function normalizeProfileInput(input) {
 
 创建资料时使用 `crypto.randomBytes(16).toString('hex')` 生成 `su_` ID。`privatePlayerId` 只保存在服务端，用于后续读取当前账号自己的源数据，不进入 DTO。`avatarMode` 只接受 `wechat` 或 `custom`；微信头像昵称必须由用户明确选择后提交，不能静默读取。
 
-- [ ] **Step 4: 运行资料与 API 测试**
+- [x] **Step 4: 运行资料与 API 测试**
 
 Run: `node --test tests/social-profile.test.js tests/social-api.test.js tests/social-cloud-routing.test.js`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交资料能力**
+- [x] **Step 5: 提交资料能力**
 
 ```powershell
-git add cloudfunctions/poker_social/lib/profile.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-profile.test.js
+git add cloudfunctions/poker_social/lib/profile.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/index.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-profile.test.js
 git commit -m "feat: add private social identity profile"
 ```
 
@@ -204,6 +206,8 @@ git commit -m "feat: add private social identity profile"
 - Create: `cloudfunctions/poker_social/lib/invite.js`
 - Create: `cloudfunctions/poker_social/lib/friendship.js`
 - Create: `cloudfunctions/poker_social/lib/idempotency.js`
+- Modify: `cloudfunctions/poker_social/lib/repository.js`
+- Modify: `cloudfunctions/poker_social/index.js`
 - Modify: `cloudfunctions/poker_social/app.js`
 - Modify: `services/social-service.js`
 - Test: `tests/social-friendship.test.js`
@@ -212,7 +216,7 @@ git commit -m "feat: add private social identity profile"
 - Produces cloud actions: `create_invite`、`create_invite_qr`、`inspect_invite`、`send_friend_request`、`accept_friend_request`、`reject_friend_request`、`remove_friend`、`list_friends`。
 - Produces service methods with the same camelCase names and required `clientMutationId` for writes。
 
-- [ ] **Step 1: 写状态机和冷却失败测试**
+- [x] **Step 1: 写状态机和冷却失败测试**
 
 ```js
 test('friend pair is canonical and rejected pairs cool down for seven days', () => {
@@ -224,13 +228,13 @@ test('friend pair is canonical and rejected pairs cool down for seven days', () 
 })
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-friendship.test.js`
 
 Expected: FAIL because friendship module is missing。
 
-- [ ] **Step 3: 实现确定性关系、令牌摘要与幂等**
+- [x] **Step 3: 实现确定性关系、令牌摘要与幂等**
 
 ```js
 function transition(current, operation, nowMs) {
@@ -253,20 +257,20 @@ function buildFriendshipRecord(leftUserId, rightUserId, requesterId, nowMs) {
 }
 ```
 
-好友邀请码使用 `crypto.randomBytes(16).toString('base64url')` 生成 22 字符代码，集合只保存 `sha256(code)`；有效期固定 7 天。`create_invite_qr` 调用注入的 `qrCode.getUnlimited({ scene: code, page: 'pages/social-invite/social-invite' })`，将返回图片上传到临时云文件并只向客户端返回展示 URL。事务通过 repository 的 `runTransaction(callback)` 完成。同一 `clientMutationId` 返回第一次保存的结果。
+好友邀请码使用最少 32 随机字节的云函数环境变量 `SOCIAL_INVITE_TOKEN_SECRET`，以 HMAC-SHA256 由邀请人、动作和 `clientMutationId` 派生 22 字符代码，集合只保存 `sha256(code)`；有效期固定 7 天，密钥缺失或不足 32 字节时失败关闭。`create_invite_qr` 调用注入的 `qrCode.getUnlimited({ scene: code, page: 'pages/social-invite/social-invite' })`；事务只保存稳定邀请摘要/云路径，提交后才上传图片并返回每次可重新签发的临时展示 URL。事务通过 repository 的 `runTransaction(callback)` 完成。
 
-`list_friends` 分别查询 `userA=current` 和 `userB=current` 的 accepted 记录后合并分页，不对 `userIds` 数组做全表扫描。
+`list_friends` 分别查询 `userA=current` 和 `userB=current` 的 accepted 记录后按 `acceptedAt DESC, _id ASC` 合并分页，不对 `userIds` 数组做全表扫描；offset 最大 1000，超过时公开返回 `INVALID_PAGINATION`，不得静默截断。两侧查询需要索引 `(userA ASC, status ASC, acceptedAt DESC, _id ASC)` 与 `(userB ASC, status ASC, acceptedAt DESC, _id ASC)`。
 
-- [ ] **Step 4: 运行好友关系测试**
+- [x] **Step 4: 运行好友关系测试**
 
 Run: `node --test tests/social-friendship.test.js tests/social-profile.test.js tests/social-cloud-routing.test.js`
 
 Expected: PASS；覆盖双方同时申请、重复接受、拒绝冷却、解除冷却和转发邀请不会自动建立关系。
 
-- [ ] **Step 5: 提交关系状态机**
+- [x] **Step 5: 提交关系状态机**
 
 ```powershell
-git add cloudfunctions/poker_social/lib/invite.js cloudfunctions/poker_social/lib/friendship.js cloudfunctions/poker_social/lib/idempotency.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-friendship.test.js
+git add cloudfunctions/poker_social/lib/invite.js cloudfunctions/poker_social/lib/friendship.js cloudfunctions/poker_social/lib/idempotency.js cloudfunctions/poker_social/lib/repository.js cloudfunctions/poker_social/index.js cloudfunctions/poker_social/app.js services/social-service.js tests/social-friendship.test.js
 git commit -m "feat: implement social friendship lifecycle"
 ```
 
@@ -277,16 +281,18 @@ git commit -m "feat: implement social friendship lifecycle"
 - Create: `pages/social-invite/social-invite.wxml`
 - Create: `pages/social-invite/social-invite.wxss`
 - Create: `pages/social-invite/social-invite.json`
+- Modify: `cloudfunctions/poker_social/lib/friendship.js`
 - Modify: `app.json`
 - Modify: `pages/player-notes/player-notes.js`
 - Modify: `pages/player-notes/player-notes.wxml`
 - Test: `tests/social-invite-page.test.js`
+- Test: `tests/social-friendship.test.js`
 
 **Interfaces:**
 - Consumes: `socialService.createInvite()`、`createInviteQr(code)`、`inspectInvite(code)`、`sendFriendRequest(code, clientMutationId)`。
 - Route: 微信卡片使用 `/pages/social-invite/social-invite?token=<encodedCode>`；小程序码通过 `options.scene` 传入同一邀请码。
 
-- [ ] **Step 1: 写页面注册和交互失败测试**
+- [x] **Step 1: 写页面注册和交互失败测试**
 
 ```js
 assert.ok(appConfig.pages.includes('pages/social-invite/social-invite'))
@@ -296,13 +302,13 @@ assert.match(inviteWxml, /发送好友申请/)
 assert.doesNotMatch(inviteJs, /ownerOpenId|_openid/)
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node --test tests/social-invite-page.test.js`
 
 Expected: FAIL because invite page is not registered。
 
-- [ ] **Step 3: 实现邀请创建、微信卡片和二维码页面**
+- [x] **Step 3: 实现邀请创建、微信卡片和二维码页面**
 
 ```js
 const socialMutation = require('../../utils/social-mutation')
@@ -334,7 +340,7 @@ async sendRequest() {
 
 二维码只编码同一路径，不编码 OpenID。页面明确写“发送申请后需对方确认”，不存在“一键自动成为好友”文案。
 
-- [ ] **Step 4: 运行页面和基础回归测试**
+- [x] **Step 4: 运行页面和基础回归测试**
 
 Run:
 
@@ -346,10 +352,10 @@ node tests/player-notes-navigation.test.js
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交页面**
+- [x] **Step 5: 提交页面**
 
 ```powershell
-git add pages/social-invite app.json pages/player-notes/player-notes.js pages/player-notes/player-notes.wxml tests/social-invite-page.test.js
+git add pages/social-invite cloudfunctions/poker_social/lib/friendship.js app.json pages/player-notes/player-notes.js pages/player-notes/player-notes.wxml tests/social-invite-page.test.js tests/social-friendship.test.js
 git commit -m "feat: add in-app friend invitation flow"
 ```
 
@@ -357,12 +363,13 @@ git commit -m "feat: add in-app friend invitation flow"
 
 **Files:**
 - Create: `tests/social-foundation-security.test.js`
+- Modify: `cloudfunctions/poker_social/app.js` only if the security test exposes a response-boundary leak.
 - Modify: `docs/superpowers/specs/2026-07-19-friend-system-design.md` only if implementation reveals a confirmed design correction。
 
 **Interfaces:**
 - Verifies all interfaces produced by Tasks 1-4。
 
-- [ ] **Step 1: 写跨账号安全测试**
+- [x] **Step 1: 写跨账号安全测试**
 
 ```js
 test('social responses exclude server identity fields', async () => {
@@ -377,7 +384,7 @@ test('social responses exclude server identity fields', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行全部第一计划测试**
+- [x] **Step 2: 运行全部第一计划测试**
 
 Run: `Get-ChildItem tests\social-*.test.js | Where-Object Name -Match 'api|cloud-routing|profile|friendship|invite|foundation' | ForEach-Object { node --test $_.FullName; if ($LASTEXITCODE) { exit $LASTEXITCODE } }`
 
@@ -389,15 +396,15 @@ Expected: every test exits `0`。
 部署 cloudfunctions/poker_social 到测试环境；将 social_users、social_invites、social_friendships、social_mutations 的客户端权限设为禁止读写。使用两个真实微信账号完成邀请、申请、接受、解除和 7 天冷却显示。
 ```
 
-- [ ] **Step 4: 运行真实工作区 auto-preview**
+- [x] **Step 4: 运行真实工作区 auto-preview**
 
 Run: 使用仓库既有 `skills/wechat-miniapp-auto-preview/SKILL.md` 流程，对 `D:\TRAE\xuan\poker-live-miniapp` 执行预览。
 
 Expected: 编译与预览成功；不上传开发版。
 
-- [ ] **Step 5: 提交验收测试**
+- [x] **Step 5: 提交验收测试**
 
 ```powershell
-git add tests/social-foundation-security.test.js
+git add tests/social-foundation-security.test.js cloudfunctions/poker_social/app.js
 git commit -m "test: verify social foundation security"
 ```

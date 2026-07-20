@@ -40,6 +40,72 @@
   box-shadow: inset 0 0 0 1rpx rgba(230,0,18,0.22);
 }
 
+.player-notes-message {
+  position: relative;
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18rpx;
+  color: #ffffff;
+  font-size: 42rpx;
+  font-weight: 1000;
+  background: rgba(255,255,255,0.075);
+  border: 1rpx solid rgba(255,255,255,0.18);
+}
+
+.player-notes-message-icon {
+  width: 38rpx;
+  height: 38rpx;
+}
+
+.player-notes-message-badge {
+  position: absolute;
+  top: -10rpx;
+  right: -12rpx;
+  min-width: 30rpx;
+  height: 30rpx;
+  padding: 0 7rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18rpx;
+  color: #ffffff;
+  font-size: 18rpx;
+  line-height: 1;
+  font-weight: 1000;
+  background: #e60012;
+  border: 3rpx solid #0b0b0f;
+}
+
+.player-section-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14rpx;
+  margin: 0 0 22rpx;
+}
+
+.player-section-tab {
+  height: 68rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16rpx;
+  color: rgba(255,255,255,0.60);
+  font-size: 27rpx;
+  font-weight: 1000;
+  background: rgba(255,255,255,0.06);
+  border: 1rpx solid rgba(255,255,255,0.12);
+}
+
+.player-section-tab.active {
+  color: #ffffff;
+  background: rgba(230,0,18,0.78);
+  border-color: rgba(255,255,255,0.24);
+}
+
 .player-notes-add-plus {
   display: block;
   margin-top: -4rpx;

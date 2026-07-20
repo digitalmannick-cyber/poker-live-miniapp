@@ -17,6 +17,7 @@
 }
 
 .tab-item {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -28,6 +29,18 @@
   border-radius: 22rpx;
   color: rgba(255,255,255,0.44);
   transition: transform 120ms ease, background 120ms ease;
+}
+
+.tab-social-dot {
+  position: absolute;
+  top: 10rpx;
+  right: calc(50% - 35rpx);
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #e60012;
+  border: 3rpx solid #121722;
+  box-shadow: 0 0 12rpx rgba(230,0,18,.55);
 }
 
 .tab-item.active {

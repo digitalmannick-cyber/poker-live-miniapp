@@ -390,6 +390,13 @@ Page({
       }
     })
   },
+  openSocialHandPublish() {
+    const handId = String(this.data.handId || '').trim()
+    if (!handId) return
+    wx.navigateTo({
+      url: '/pages/social-hand-publish/social-hand-publish?handId=' + encodeURIComponent(handId)
+    })
+  },
   openExport() {
     if (!this.data.exportText) {
       wx.showToast({ title: '没有可导出的手牌', icon: 'none' })

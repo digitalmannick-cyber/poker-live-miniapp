@@ -5,6 +5,8 @@ const appVersion = require('../../config/app-version')
 const { AI_REMINDER_SUBSCRIBE_TEMPLATE_ID } = require('../../config/cloud')
 const onboardingGuide = require('../../utils/onboarding-guide')
 const releaseNotes = require('../../utils/release-notes')
+const socialService = require('../../services/social-service')
+const socialProfileSync = require('../../utils/social-profile-sync')
 
 const WECHAT_PROFILE_PROMPT_SEEN_KEY = 'pokerLiveWechatProfilePromptSeen'
 const OPEN_AI_REMINDER_EDITOR_KEY = 'pokerLiveOpenAiReminderEditor'
@@ -330,14 +332,24 @@ Page({
       { label: '¥', value: 'CNY' },
       { label: 'HK$', value: 'HKD' },
       { label: '$', value: 'USD' }
-    ]
+    ],
+    socialSettings: { statsVisible: true, defaultShareScope: 'friends' },
+    socialSettingsStatus: 'idle',
+    socialSettingsSaving: false
   },
 
   async onShow() {
+    this._socialSettingsAttached = true
     tabBar.syncCustomTabBar('/pages/profile/profile')
     await this.refresh()
+    await this.syncOwnSocialProfile(this.data.profile).catch(() => null)
+    this.loadSocialSettings()
     this.consumeOpenAiReminderEditorRequest()
     this.maybeShowReleaseNotes()
+  },
+  onUnload() {
+    this._socialSettingsAttached = false
+    this._socialSettingsSequence = (Number(this._socialSettingsSequence) || 0) + 1
   },
   onReady() {
     setTimeout(() => {
@@ -357,6 +369,101 @@ Page({
       .catch(error => {
         console.warn('refresh profile stats failed', error)
       })
+  },
+
+  async syncOwnSocialProfile(profile, force) {
+    if (this.data.accountLoggedOut) return null
+    const source = profile || this.data.profile
+    const playerId = String(source && source.playerId || '').trim().toUpperCase()
+    try {
+      return await socialProfileSync.syncSocialProfile(source, {
+        force: !!force,
+        isCurrent: () => String(dataService.getCurrentPlayerId()).trim().toUpperCase() === playerId
+      })
+    } catch (error) {
+      console.warn('sync social profile failed', error)
+      return null
+    }
+  },
+
+  async updateOwnPublicProfile(patch) {
+    const profile = await dataService.updateProfile(patch)
+    const synced = await this.syncOwnSocialProfile(profile, true)
+    return { profile, synced }
+  },
+
+  async loadSocialSettings() {
+    if (this._socialSettingsAttached === false || this.data.socialSettingsSaving) return null
+    const sequence = (Number(this._socialSettingsSequence) || 0) + 1
+    this._socialSettingsSequence = sequence
+    this.setData({ socialSettingsStatus: 'loading' })
+    try {
+      const profile = await socialService.getMySocialProfile()
+      if (this._socialSettingsAttached === false || sequence !== this._socialSettingsSequence) return null
+      this.setData({
+        socialSettings: {
+          statsVisible: profile.statsVisible !== false,
+          defaultShareScope: ['square', 'friends', 'selected'].includes(profile.defaultShareScope) ? profile.defaultShareScope : 'friends'
+        },
+        socialSettingsStatus: 'ready'
+      })
+      return this.data.socialSettings
+    } catch (error) {
+      if (this._socialSettingsAttached === false || sequence !== this._socialSettingsSequence) return null
+      this.setData({ socialSettingsStatus: 'error' })
+      return null
+    }
+  },
+
+  createSocialSettingsMutationId() {
+    return 'social_settings_' + Date.now() + '_' + Math.floor(Math.random() * 1000000)
+  },
+
+  canEditSocialSettings() {
+    return this._socialSettingsAttached !== false && this.data.socialSettingsStatus === 'ready' && !this.data.socialSettingsSaving
+  },
+
+  async saveSocialSettings(nextSettings) {
+    if (!this.canEditSocialSettings()) return null
+    const current = this.data.socialSettings || { statsVisible: true, defaultShareScope: 'friends' }
+    const next = Object.assign({}, current, nextSettings || {})
+    const sequence = (Number(this._socialSettingsSequence) || 0) + 1
+    this._socialSettingsSequence = sequence
+    this.setData({ socialSettingsSaving: true })
+    try {
+      const saved = await socialService.updateSocialSettings({
+        statsVisible: next.statsVisible !== false,
+        defaultShareScope: ['square', 'friends', 'selected'].includes(next.defaultShareScope) ? next.defaultShareScope : 'friends',
+        clientMutationId: this.createSocialSettingsMutationId()
+      })
+      if (this._socialSettingsAttached === false) return null
+      this._socialSettingsSequence = Math.max(sequence, Number(this._socialSettingsSequence) || 0) + 1
+      this.setData({
+        socialSettings: {
+          statsVisible: saved.statsVisible !== false,
+          defaultShareScope: ['square', 'friends', 'selected'].includes(saved.defaultShareScope) ? saved.defaultShareScope : 'friends'
+        },
+        socialSettingsStatus: 'ready'
+      })
+      wx.showToast({ title: '社交设置已保存', icon: 'success' })
+      return saved
+    } catch (error) {
+      if (this._socialSettingsAttached !== false) wx.showToast({ title: '保存失败，请重试', icon: 'none' })
+      return null
+    } finally {
+      if (this._socialSettingsAttached !== false) this.setData({ socialSettingsSaving: false })
+    }
+  },
+
+  toggleSocialStatsVisible() {
+    if (!this.canEditSocialSettings()) return null
+    return this.saveSocialSettings({ statsVisible: this.data.socialSettings.statsVisible === false })
+  },
+
+  selectDefaultShareScope(event) {
+    const scope = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.scope || '')
+    if (!['square', 'friends', 'selected'].includes(scope) || !this.canEditSocialSettings()) return null
+    return this.saveSocialSettings({ defaultShareScope: scope })
   },
 
   consumeOpenAiReminderEditorRequest() {
@@ -436,10 +543,14 @@ Page({
       confirmColor: '#e60012',
       success: async res => {
         if (!res.confirm) return
-        await dataService.logoutAccount()
-        wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
-        wx.showToast({ title: '已退出', icon: 'success' })
-        this.refresh()
+        try {
+          await dataService.logoutAccount()
+          wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
+          wx.showToast({ title: '已退出', icon: 'success' })
+          this.refresh()
+        } catch (error) {
+          wx.showToast({ title: '未完全退出，请重试', icon: 'none' })
+        }
       }
     })
   },
@@ -485,7 +596,7 @@ Page({
       content: this.data.profile.name || ''
     })
     if (!res.confirm || !res.content) return
-    await dataService.updateProfile({
+    await this.updateOwnPublicProfile({
       name: res.content.trim(),
       avatarText: res.content.trim().slice(0, 2)
     })
@@ -531,12 +642,12 @@ Page({
       wx.showToast({ title: '昵称不能为空', icon: 'none' })
       return
     }
-    await dataService.updateProfile({
+    const saved = await this.updateOwnPublicProfile({
       name,
       avatarText: getAvatarText(name)
     })
     this.closeProfileEditor()
-    wx.showToast({ title: '资料已保存', icon: 'success' })
+    wx.showToast({ title: saved.synced ? '资料已保存' : '已保存，好友资料稍后同步', icon: saved.synced ? 'success' : 'none' })
     this.refresh()
   },
 
@@ -592,7 +703,7 @@ Page({
       wx.showToast({ title: '请选择头像或填写昵称', icon: 'none' })
       return
     }
-    await dataService.updateProfile({
+    const saved = await this.updateOwnPublicProfile({
       name: name || this.data.profile.name,
       avatarText: getAvatarText(name || this.data.profile.name),
       avatarUrl: avatarUrl || this.data.profile.avatarUrl
@@ -604,7 +715,7 @@ Page({
       wechatDraftNickname: '',
       wechatDraftAvatarUrl: ''
     })
-    wx.showToast({ title: '微信资料已同步', icon: 'success' })
+    wx.showToast({ title: saved.synced ? '微信资料已同步' : '已保存，好友资料稍后同步', icon: saved.synced ? 'success' : 'none' })
     this.refresh()
     this.maybeShowReleaseNotes()
   },
@@ -658,7 +769,8 @@ Page({
             const tempFilePath = imageRes.tempFilePaths && imageRes.tempFilePaths[0]
             const avatarUrl = await saveAvatarFile(tempFilePath)
             if (!avatarUrl) return
-            await dataService.updateProfile({ avatarUrl })
+            const saved = await this.updateOwnPublicProfile({ avatarUrl })
+            if (!saved.synced) wx.showToast({ title: '头像已保存，好友资料稍后同步', icon: 'none' })
             this.refresh()
           }
         })
@@ -1217,10 +1329,14 @@ Page({
       confirmColor: '#e60012',
       success: async res => {
         if (!res.confirm) return
-        await dataService.clearAllData()
-        wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
-        wx.showToast({ title: '已重置', icon: 'success' })
-        this.refresh()
+        try {
+          await dataService.clearAllData()
+          wx.removeStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY)
+          wx.showToast({ title: '已重置', icon: 'success' })
+          this.refresh()
+        } catch (error) {
+          wx.showToast({ title: '未全部清除，可重试', icon: 'none' })
+        }
       }
     })
   },

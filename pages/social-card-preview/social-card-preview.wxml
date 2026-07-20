@@ -1,0 +1,79 @@
+<view class="app-bg"></view>
+<view class="container card-preview-page">
+  <view class="card-preview-top">
+    <view class="card-preview-back" bindtap="goBack">‹</view>
+    <view class="card-preview-title">玩家名片</view>
+    <view></view>
+  </view>
+
+  <view wx:if="{{status === 'loading'}}" class="state-card">
+    <view class="state-title">正在核验名片</view>
+    <view class="state-text">请稍候，正在重新检查好友关系与有效期。</view>
+  </view>
+
+  <view wx:elif="{{status === 'error' || status === 'unavailable'}}" class="state-card">
+    <view class="state-kicker">{{status === 'unavailable' ? 'UNAVAILABLE' : 'RETRY'}}</view>
+    <view class="state-title">{{status === 'unavailable' ? '名片不可访问' : '导入未完成'}}</view>
+    <view class="state-text">{{errorMessage}}</view>
+    <view wx:if="{{status === 'error' && (receiptCheckFailed || !serverConfirmed)}}" class="secondary-action" bindtap="retryLoad">重新读取</view>
+    <view wx:elif="{{status === 'error' && serverConfirmed && importMode === 'overwrite'}}" class="primary-action" bindtap="overwriteExisting">重试导入</view>
+    <view wx:elif="{{status === 'error' && serverConfirmed}}" class="primary-action" bindtap="importAsNew">重试导入</view>
+  </view>
+
+  <view wx:elif="{{status === 'imported'}}" class="state-card imported-card">
+    <view class="imported-mark">✓</view>
+    <view class="state-title">已导入玩家库</view>
+    <view class="state-text">这张名片已经保存，不会再生成第二份副本。</view>
+    <view wx:if="{{importedPlayerId || createdPlayerNoteId}}" class="primary-action" bindtap="openImportedPlayer">查看玩家详情</view>
+  </view>
+
+  <block wx:elif="{{status === 'ready' || status === 'confirming' || status === 'importing'}}">
+    <view class="sender-line">
+      <image wx:if="{{share.sender.avatarUrl}}" class="sender-avatar" src="{{share.sender.avatarUrl}}" mode="aspectFill"></image>
+      <view wx:else class="sender-avatar sender-avatar-text">{{share.sender.avatarText || '好'}}</view>
+      <view>
+        <view class="sender-name">{{share.sender.nickname || '好友'}}</view>
+        <view class="sender-label">分享给你的玩家名片</view>
+      </view>
+    </view>
+
+    <view class="player-card">
+      <view class="card-accent"></view>
+      <view class="player-head">
+        <image wx:if="{{share.card.avatarUrl}}" class="player-avatar" src="{{share.card.avatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="player-avatar player-avatar-text">{{share.card.name.slice(0, 1) || 'P5'}}</view>
+        <view class="player-main">
+          <view class="player-name">{{share.card.name}}</view>
+          <view class="player-type">{{share.card.type || '未分类'}}</view>
+        </view>
+      </view>
+      <view class="field-label">LEAK 标签</view>
+      <view wx:if="{{share.card.leakTags.length}}" class="tag-row">
+        <view wx:for="{{share.card.leakTags}}" wx:key="*this" class="leak-tag">{{item}}</view>
+      </view>
+      <view wx:else class="empty-value">暂无 Leak 标签</view>
+      <view class="field-label note-label">NOTE</view>
+      <view class="note-content">{{share.card.note || '暂无 Note'}}</view>
+    </view>
+
+    <view wx:if="{{duplicate}}" class="duplicate-card">
+      <view class="duplicate-kicker">POSSIBLE DUPLICATE</view>
+      <view class="duplicate-title">疑似已存在同名玩家</view>
+      <view class="duplicate-text">“{{duplicate.name}}”已在你的玩家库。不会自动覆盖，请明确选择。</view>
+      <view wx:if="{{overwriteTargetMissing}}" class="overwrite-summary">上次选择覆盖的玩家已不存在，请重新明确选择当前玩家。</view>
+      <view class="overwrite-summary">整体覆盖将替换头像、名称、玩家类型、Leak 标签和 Note；保留玩家 ID 和对战手牌。</view>
+      <view class="primary-action danger-action {{importing ? 'is-disabled' : ''}}" bindtap="requestOverwrite">整体覆盖已有玩家</view>
+      <view class="secondary-action {{importing ? 'is-disabled' : ''}}" bindtap="importAsNew">仍然新建</view>
+    </view>
+    <view wx:else class="import-actions">
+      <view class="primary-action {{importing ? 'is-disabled' : ''}}" bindtap="importAsNew">新建玩家</view>
+    </view>
+
+    <view wx:if="{{status === 'confirming'}}" class="progress-mask">
+      <view class="progress-card"><view class="progress-title">正在确认权限</view><view class="progress-text">名片确认成功后才会写入玩家库。</view></view>
+    </view>
+    <view wx:if="{{status === 'importing'}}" class="progress-mask">
+      <view class="progress-card"><view class="progress-title">正在导入</view><view class="progress-text">复制头像并保存五类名片内容…</view></view>
+    </view>
+  </block>
+</view>

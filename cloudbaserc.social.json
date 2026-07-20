@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "envId": "cloud1-d3ggy9aq3be912e34",
+  "functionRoot": "./cloudfunctions",
+  "functions": [
+    {
+      "name": "poker_social",
+      "type": "Event",
+      "handler": "index.main",
+      "timeout": 60,
+      "runtime": "Nodejs20.19",
+      "memorySize": 256,
+      "installDependency": true
+    }
+  ]
+}

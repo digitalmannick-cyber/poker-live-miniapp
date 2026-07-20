@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "collections": {
+    "social_users": { "read": false, "write": false },
+    "social_user_owners": { "read": false, "write": false },
+    "social_friendships": { "read": false, "write": false },
+    "social_invites": { "read": false, "write": false },
+    "social_mutations": { "read": false, "write": false },
+    "social_daily_stats": { "read": false, "write": false },
+    "social_player_card_shares": { "read": false, "write": false },
+    "social_notifications": { "read": false, "write": false },
+    "social_notification_state": { "read": false, "write": false },
+    "social_notification_heads": { "read": false, "write": false },
+    "social_notification_actors": { "read": false, "write": false },
+    "social_hand_shares": { "read": false, "write": false },
+    "social_hand_share_slots": { "read": false, "write": false },
+    "social_rate_limits": { "read": false, "write": false },
+    "social_notification_outbox": { "read": false, "write": false },
+    "social_likes": { "read": false, "write": false },
+    "social_comments": { "read": false, "write": false },
+    "social_moderation_audits": { "read": false, "write": false },
+    "player_card_import_receipts": { "read": false, "write": false },
+    "poker_data_account_lifecycle": { "read": false, "write": false }
+  }
+}

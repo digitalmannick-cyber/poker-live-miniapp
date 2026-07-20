@@ -1,27 +1,59 @@
 const tabState = require('../utils/tab-state')
+const socialUnreadState = require('../utils/social-unread-state')
+const dataService = require('../services/data-service')
+
+function getSocialAccountKey() {
+  try {
+    if (typeof dataService.isAccountLoggedOut === 'function' && dataService.isAccountLoggedOut()) return ''
+    return typeof dataService.getCurrentPlayerId === 'function' ? dataService.getCurrentPlayerId() : ''
+  } catch (error) {
+    return ''
+  }
+}
 
 Component({
   data: {
     selected: '',
-    list: tabState.buildTabItems('')
+    list: tabState.buildTabItems(''),
+    socialUnread: false
   },
   lifetimes: {
     attached() {
+      this.syncSocialAccount()
+      this.subscribeSocialUnread()
       this.startRoutePolling()
     },
     detached() {
+      this.unsubscribeSocialUnread()
       this.stopRoutePolling()
     }
   },
   pageLifetimes: {
     show() {
+      this.syncSocialAccount()
+      this.subscribeSocialUnread()
       this.startRoutePolling()
     },
     hide() {
+      this.unsubscribeSocialUnread()
       this.stopRoutePolling()
     }
   },
   methods: {
+    syncSocialAccount() {
+      socialUnreadState.setAccountKey(getSocialAccountKey())
+    },
+    subscribeSocialUnread() {
+      if (this._unsubscribeSocialUnread) return
+      this._unsubscribeSocialUnread = socialUnreadState.subscribe(snapshot => {
+        this.setData({ socialUnread: snapshot.hasUnread })
+      })
+    },
+    unsubscribeSocialUnread() {
+      if (!this._unsubscribeSocialUnread) return
+      this._unsubscribeSocialUnread()
+      this._unsubscribeSocialUnread = null
+    },
     normalizePagePath(value) {
       return tabState.normalizePagePath(value)
     },
