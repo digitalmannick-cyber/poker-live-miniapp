@@ -584,6 +584,7 @@ $permissionDrift = @($plan.managedCollections | Where-Object {
 })
 $missingIndexes = @()
 $indexesByCollection = $plan.indexes | Group-Object collection
+$resolvedIndexNameByCanonical = @{}
 $plannedIndexSmokeCommands = @($plan.indexes | ForEach-Object { New-IndexSmokeCommand $_ $null })
 $plannedIndexNamesVerified = $false
 if ($missingCollections.Count -eq 0) {
@@ -610,6 +611,8 @@ if (-not $plannedIndexNamesVerified) {
         $sameName = @($remoteIndexes | Where-Object { $_.Name -eq $index.name })
         if ($sameName.Count -gt 0) { throw "Index name collision with a different shape: $($index.name)" }
         $missingIndexes += $index
+      } else {
+        $resolvedIndexNameByCanonical[[string]$index.canonical] = [string]$compatible[0].Name
       }
     }
   }
@@ -790,6 +793,10 @@ try {
   # DescribeTable has no ready flag. A hinted read proves that each exact index can be selected by the database.
   if ($plannedIndexNamesVerified -and $missingIndexes.Count -eq 0) {
     $indexSmokeCommands = $plannedIndexSmokeCommands
+  } elseif ($missingIndexes.Count -eq 0 -and $resolvedIndexNameByCanonical.Count -eq $plan.indexes.Count) {
+    $indexSmokeCommands = @($plan.indexes | ForEach-Object {
+      New-IndexSmokeCommand $_ ([string]$resolvedIndexNameByCanonical[[string]$_.canonical])
+    })
   } else {
     $indexSmokeCommands = @()
     foreach ($group in $indexesByCollection) {

@@ -178,6 +178,8 @@ test('every planned index is verified with a hinted read before function staging
   assert.match(source, /\$batchSize = 10/)
   assert.match(source, /\$plannedIndexNamesVerified = \$true/)
   assert.match(source, /if \(-not \$plannedIndexNamesVerified\)/)
+  assert.match(source, /\$resolvedIndexNameByCanonical/)
+  assert.match(source, /\$resolvedIndexNameByCanonical\.Count -eq \$plan\.indexes\.Count/)
 })
 
 test('function convergence uses the remote code digest and a staged startup smoke', () => {
