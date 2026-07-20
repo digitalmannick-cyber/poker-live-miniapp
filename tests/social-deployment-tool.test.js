@@ -164,11 +164,12 @@ test('single administrator validation keeps the unique result array-shaped under
 
 test('every planned index is verified with a hinted read before function staging', () => {
   const source = fs.readFileSync(path.join(root, 'tools', 'social-deploy.ps1'), 'utf8')
-  const smoke = source.indexOf('Invoke-IndexSmokeQuery $index')
+  const smoke = source.indexOf('Invoke-IndexSmokeBatches $indexSmokeCommands')
   const stage = source.indexOf('$stagedCheck = Deploy-AndWaitFunctionEnvironment', smoke)
   assert(smoke > 0 && stage > smoke)
   assert.match(source, /CommandType = 'QUERY'/)
   assert.match(source, /hint = \$RemoteIndexName/)
+  assert.match(source, /\$batchSize = 10/)
 })
 
 test('function convergence uses the remote code digest and a staged startup smoke', () => {

@@ -228,8 +228,8 @@ function Test-RemoteIndexCompatible {
   return $true
 }
 
-function Invoke-IndexSmokeQuery {
-  param([object]$PlannedIndex, [string]$RemoteIndexName, [string]$Tag, [string]$EnvId, [string]$Region)
+function New-IndexSmokeCommand {
+  param([object]$PlannedIndex, [string]$RemoteIndexName)
   $command = [ordered]@{
     find = $PlannedIndex.collection
     filter = @{}
@@ -237,15 +237,25 @@ function Invoke-IndexSmokeQuery {
     hint = $RemoteIndexName
     limit = 1
   } | ConvertTo-Json -Depth 10 -Compress
-  $null = Invoke-TcbApi 'RunCommands' @{
-    Tag = $Tag
-    EnvId = $EnvId
-    MgoCommands = @(@{
-      TableName = $PlannedIndex.collection
-      CommandType = 'QUERY'
-      Command = $command
-    })
-  } $EnvId $Region
+  return @{
+    TableName = $PlannedIndex.collection
+    CommandType = 'QUERY'
+    Command = $command
+  }
+}
+
+function Invoke-IndexSmokeBatches {
+  param([object[]]$Commands, [string]$Tag, [string]$EnvId, [string]$Region)
+  $batchSize = 10
+  for ($offset = 0; $offset -lt $Commands.Count; $offset += $batchSize) {
+    $last = [Math]::Min($offset + $batchSize - 1, $Commands.Count - 1)
+    $batch = @($Commands[$offset..$last])
+    $null = Invoke-TcbApi 'RunCommands' @{
+      Tag = $Tag
+      EnvId = $EnvId
+      MgoCommands = $batch
+    } $EnvId $Region
+  }
 }
 
 function Get-RemoteFunction {
@@ -719,6 +729,7 @@ try {
   }
 
   # DescribeTable has no ready flag. A hinted read proves that each exact index can be selected by the database.
+  $indexSmokeCommands = @()
   foreach ($group in $indexesByCollection) {
     $description = Invoke-TcbApi 'DescribeTable' @{
       EnvId = $plan.envId; Tag = $tag; TableName = $group.Name
@@ -727,9 +738,10 @@ try {
     foreach ($index in $group.Group) {
       $compatible = @($remoteIndexes | Where-Object { Test-RemoteIndexCompatible $_ $index })
       if ($compatible.Count -eq 0) { throw "Index disappeared before smoke query: $($index.canonical)" }
-      Invoke-IndexSmokeQuery $index ([string]$compatible[0].Name) $tag $plan.envId $region
+      $indexSmokeCommands += New-IndexSmokeCommand $index ([string]$compatible[0].Name)
     }
   }
+  Invoke-IndexSmokeBatches $indexSmokeCommands $tag $plan.envId $region
 
   # Only after database postconditions pass, deploy code and stage it without the admin key.
   if ($codeConverged) {
