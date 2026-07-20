@@ -170,10 +170,10 @@ INVALID_MODERATION_REASON
 
 部署需要同步完成：
 
-1. 为 `poker_social` 配置 `SOCIAL_ADMIN_OPENIDS`，初始值只包含确认过的管理员微信 OpenID。
-2. 在数据库安全规则中显式拒绝客户端访问 `social_moderation_audits`。
-3. 在数据库索引清单中登记审计集合部署范围，并增加账号清除所需的 `targetAuthorId` 与 `moderatorId` 查询索引；不增加其他未使用索引。
-4. 将审计集合纳入账号清除阶段，对目标作者和管理员身份分别执行上述脱敏；清除失败时整条账号清除流程必须失败关闭并允许同一 mutation 重试。
+1. 先部署数据库安全规则，显式拒绝客户端访问 `social_moderation_audits`。
+2. 再部署审计集合索引：账号清除只使用 `targetAuthorId` 与 `moderatorId` 两种查询索引，不增加其他未使用索引。
+3. 随后部署包含审计写入与账号清除新阶段的 `poker_social` 云函数；清除失败时整条账号清除流程必须失败关闭并允许同一 mutation 重试。
+4. 最后为 `poker_social` 配置 `SOCIAL_ADMIN_OPENIDS`，初始值只包含确认过的管理员微信 OpenID。未配置期间管理员能力保持失败关闭。
 5. 云函数发布后使用一个管理员账号和一个普通账号完成真实权限验证。
 
 管理员名单变化属于云端配置变更，不需要发布小程序前端，但需要重新部署或更新云函数环境变量。不得把管理员 OpenID 写进代码仓库、测试夹具、日志、客户端缓存或 DTO。
