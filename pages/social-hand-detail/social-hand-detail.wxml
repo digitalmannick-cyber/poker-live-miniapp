@@ -1,11 +1,5 @@
 <view class="container hand-share-page">
-  <view wx:if="{{status === 'loading'}}" class="state-card loading-state">
-    <view class="state-mark">P5</view>
-    <view class="state-title">正在读取分享</view>
-    <view class="state-copy">正在重新确认分享状态与阅读权限。</view>
-  </view>
-
-  <view wx:elif="{{status === 'unavailable'}}" class="state-card unavailable-state">
+  <view wx:if="{{status === 'unavailable'}}" class="state-card unavailable-state">
     <view class="state-mark">×</view>
     <view class="state-title">内容已不可访问</view>
     <view class="state-copy">分享可能已撤回、范围已变化，或你已不在可见范围内。</view>
@@ -39,13 +33,19 @@
 
     <view class="hand-card">
       <view class="section-kicker">HAND SNAPSHOT</view>
+      <view class="hand-replay-entry" bindtap="openReplay">
+        <view><view class="hand-replay-title">播放牌局</view><view class="hand-replay-copy">桌面 Replay · 按行动逐步回放</view></view>
+        <view class="hand-replay-cta">PLAY</view>
+      </view>
       <view class="hero-row">
         <view>
           <view class="hero-title">Hero · {{detail.handSnapshot.hero.position}}</view>
           <view class="hero-stack" wx:if="{{detail.handSnapshot.hero.stackBb !== undefined}}">{{detail.handSnapshot.hero.stackBb}} BB</view>
         </view>
         <view class="card-row">
-          <view wx:for="{{detail.handSnapshot.hero.cards}}" wx:key="*this" class="poker-card">{{item}}</view>
+          <view wx:for="{{heroCardsVisual}}" wx:for-item="card" wx:key="token" class="mini-card detail-poker-card mini-card-{{card.suitClass}}">
+            <text class="mini-card-rank">{{card.rank}}</text><text class="mini-card-suit">{{card.suitSymbol}}</text>
+          </view>
         </view>
       </view>
 
@@ -58,10 +58,10 @@
       <view class="detail-section">
         <view class="detail-label">公共牌</view>
         <view class="board-row">
-          <view wx:for="{{detail.handSnapshot.board.flop}}" wx:key="*this" class="board-card">{{item}}</view>
-          <view wx:for="{{detail.handSnapshot.board.turn}}" wx:key="*this" class="board-card turn-card">{{item}}</view>
-          <view wx:for="{{detail.handSnapshot.board.river}}" wx:key="*this" class="board-card river-card">{{item}}</view>
-          <text wx:if="{{!detail.handSnapshot.board.flop.length}}" class="empty-board">暂无公共牌</text>
+          <view wx:for="{{boardCardsVisual}}" wx:for-item="card" wx:key="token" class="mini-card detail-board-card detail-board-card-{{card.street}} mini-card-{{card.suitClass}}">
+            <text class="mini-card-rank">{{card.rank}}</text><text class="mini-card-suit">{{card.suitSymbol}}</text>
+          </view>
+          <text wx:if="{{!boardCardsVisual.length}}" class="empty-board">暂无公共牌</text>
         </view>
       </view>
 
@@ -156,6 +156,13 @@
         </view>
       </view>
     </view>
+  </view>
+</view>
+
+<view wx:if="{{replayVisible}}" class="social-replay-overlay">
+  <view class="social-replay-mask" bindtap="closeReplay"></view>
+  <view class="social-replay-panel" catchtap="stopModalTap">
+    <hand-replay-player replay="{{replayData}}" bindclose="closeReplay" />
   </view>
 </view>
 

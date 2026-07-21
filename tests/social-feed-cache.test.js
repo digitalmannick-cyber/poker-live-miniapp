@@ -206,6 +206,10 @@ test('friend hub renders one unified feed panel with scope labels and compact ic
   assert.doesNotMatch(wxml, /<button[^>]*feed-(?:like|comment)/i, 'like/comment affordances are not large text buttons')
   assert.match(wxss, /\.feed-action\s*\{[^}]*min-width:\s*72rpx[^}]*min-height:\s*72rpx/s, 'icon hit areas must be at least 72rpx square')
   assert.match(wxss, /\.feed-action-icon\s*\{[^}]*width:\s*32rpx[^}]*height:\s*32rpx/s, 'visible icons stay at 32rpx')
+  assert.match(wxml, /item\.heroCardsVisual/)
+  assert.match(wxml, /item\.boardCardsVisual/)
+  assert.match(wxml, /feed-mini-card-rank/)
+  assert.doesNotMatch(wxml, /feed-hole-cards|class="feed-board"/, 'feed must use the built-in card faces instead of raw card tokens')
 })
 
 test('feed first page and load-more are separate singleflights fixed at 20 items', async t => {
@@ -250,7 +254,8 @@ test('live feed response copier rejects unknown keys and invalid recursive leave
   assert.equal(firstHub.data.feedStatus, 'error')
   assert.deepEqual(firstHub.data.feedItems, [])
   assert.deepEqual(firstInvalid.calls.cacheWrite, [])
-  assert.deepEqual(firstInvalid.calls.cacheRead, [], 'contract errors must not fall back to cache')
+  assert.deepEqual(firstInvalid.calls.cacheRead, ['su_viewer'], 'cache-first rendering may read before the live contract is checked')
+  assert.deepEqual(firstHub.data.feedItems, [], 'a contract error must still clear cached content instead of granting fallback access')
 
   const pageInvalid = loadFriendHub({ responses: [valid, invalidLeaf] })
   t.after(() => pageInvalid.restore())
@@ -287,6 +292,25 @@ test('live and cached feed DTOs accept only empty or parseable HTTPS publisher a
       })
       assert.equal(cache.readFeedFirstPage('su_viewer', 1000), null, `cache read must reject ${avatarUrl}`)
     })
+  }
+})
+
+test('feed avatar validation works in WeChat runtimes without the browser URL constructor', () => {
+  const cache = requireFeedCache()
+  const originalUrl = global.URL
+  const response = { items: [feedItem('sh_wechat_avatar', {
+    publisher: {
+      socialUserId: 'su_publisher',
+      nickname: '牌友',
+      avatarUrl: 'https://636c.example.tcb.qcloud.la/avatar.jpeg?sign=abc&t=123',
+      avatarText: '牌'
+    }
+  })], nextCursor: null }
+  try {
+    global.URL = undefined
+    assert.deepEqual(cache.copyFeedResponse(response), response)
+  } finally {
+    global.URL = originalUrl
   }
 })
 

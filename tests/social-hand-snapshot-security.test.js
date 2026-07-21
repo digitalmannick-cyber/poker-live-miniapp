@@ -106,6 +106,15 @@ test('requires complete unique full-ledger slots and matching Hero seat position
   const unsupported = fullLedgerFixture(6)
   unsupported.hand.playerCount = 7
   expectCode(() => buildHandSnapshot(unsupported), 'INVALID_HAND_SNAPSHOT')
+
+  const unknownInactive = fullLedgerFixture(8)
+  unknownInactive.hand.playerSnapshots.push({ slot: 'UNKNOWN', position: 'LJ', stack: 40000 })
+  expectCode(() => buildHandSnapshot(unknownInactive), 'INVALID_HAND_SNAPSHOT')
+
+  const duplicateInactive = fullLedgerFixture(8)
+  duplicateInactive.hand.playerSnapshots.push({ slot: 'LJ', position: 'LJ', stack: 40000 })
+  duplicateInactive.hand.playerSnapshots.push({ slot: 'LJ', position: 'LJ', stack: 40000 })
+  expectCode(() => buildHandSnapshot(duplicateInactive), 'INVALID_HAND_SNAPSHOT')
 })
 
 test('rejects malformed persisted board and playerSnapshots containers', () => {

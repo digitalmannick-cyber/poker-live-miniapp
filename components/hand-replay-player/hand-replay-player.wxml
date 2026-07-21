@@ -1,22 +1,30 @@
-<view class="replay-shell" catchtap="noop">
+<view class="replay-shell {{compact ? 'is-compact' : ''}} {{motionClass}} {{streetMotionClass}} {{tableAssetReady ? 'table-asset-ready' : ''}}" catchtap="noop">
   <view class="replay-head">
     <view>
       <view class="replay-title">HAND REPLAY</view>
-      <view class="replay-sub">{{currentStep ? currentStep.actionText : 'No action'}}</view>
+      <view class="replay-sub">{{privacyLabel || replay.title || '牌局回放'}}</view>
     </view>
-    <view class="replay-close" bindtap="close" aria-label="close">X</view>
+    <view class="replay-head-meta">
+      <view class="replay-street-badge">{{currentStreetLabel}}</view>
+      <view wx:if="{{closable}}" class="replay-close" bindtap="close" aria-label="关闭回放">×</view>
+    </view>
   </view>
 
   <view class="replay-table">
+    <image class="replay-table-art" src="/assets/replay/replay-table-2_5d-v1.jpg" mode="scaleToFill" bindload="onTableAssetLoad" binderror="onTableAssetError"></image>
+    <view class="replay-table-shadow"></view>
+    <view class="replay-rail"></view>
     <view class="replay-felt"></view>
-    <view class="replay-action">
-      <view class="replay-action-main">{{currentStep ? currentStep.displayActionText : 'Ready'}}</view>
+    <view class="replay-street-wipe"></view>
+    <view wx:if="{{currentStep && currentStep.betText && currentStep.actorPositionClass}}" class="replay-chip-flight flight-{{currentStep.actorPositionClass}}">
+      <image class="replay-flying-chip" src="/assets/replay/replay-chip-stack-v1.png" mode="aspectFit"></image>
     </view>
 
     <view class="replay-center">
-      <view class="replay-pot">Pot {{currentStep && currentStep.potText ? currentStep.potText : '-'}}</view>
+      <view class="replay-pot-label">底池</view>
+      <view class="replay-pot">{{currentStep && currentStep.potText ? currentStep.potText : '-- BB'}}</view>
       <view class="replay-board">
-        <view wx:for="{{currentStep ? currentStep.boardCards : []}}" wx:key="index" class="replay-card replay-card-{{item.suitClass}}">
+        <view wx:for="{{currentStep ? currentStep.boardCards : []}}" wx:key="index" class="replay-card replay-board-card replay-card-{{item.suitClass}}">
           <text class="replay-card-rank">{{item.rank}}</text>
           <text class="replay-card-suit">{{item.suitSymbol}}</text>
         </view>
@@ -24,51 +32,57 @@
       </view>
     </view>
 
-    <view wx:for="{{displayPlayers}}" wx:key="id" class="replay-seat {{item.seatClass}} {{item.isHero ? 'hero' : ''}} {{item.activeClass}}">
-      <view wx:if="{{item.actionChipText}}" class="replay-action-chip action-{{item.actionType}}">{{item.actionChipText}}</view>
-      <view wx:if="{{item.hasAvatar}}" class="replay-seat-avatar">
-        <image class="replay-seat-avatar-img" src="{{item.avatarDisplayUrl || item.avatarUrl}}" mode="aspectFill"></image>
-        <view class="replay-seat-position-badge">{{item.position}}</view>
-      </view>
-      <view wx:else class="replay-seat-row">
-        <text class="replay-seat-pos">{{item.position}}</text>
-      </view>
-      <view class="replay-seat-stack">{{item.stackText || '-'}}</view>
-      <view class="replay-seat-name">{{item.name}}</view>
-      <view wx:if="{{item.isHero}}" class="replay-hero-cards">
-        <view wx:for="{{replay.heroCards}}" wx:key="index" class="replay-card replay-hero-card replay-card-{{item.suitClass}}">
-          <text class="replay-card-rank">{{item.rank}}</text>
-          <text class="replay-card-suit">{{item.suitSymbol}}</text>
+    <view wx:for="{{displayPlayers}}" wx:key="id" class="replay-seat {{item.seatClass}} {{item.isHero ? 'hero' : ''}} {{item.activeClass}} {{item.foldedClass}}">
+      <view class="replay-hole-cards {{item.isHero ? 'is-hero' : 'is-hidden'}}">
+        <view wx:for="{{item.holeCards}}" wx:for-item="card" wx:key="id" class="replay-hole-card {{card.hidden ? 'card-back' : 'replay-card replay-card-' + card.suitClass}}">
+          <block wx:if="{{!card.hidden}}">
+            <text class="replay-card-rank">{{card.rank}}</text>
+            <text class="replay-card-suit">{{card.suitSymbol}}</text>
+          </block>
+          <view wx:else class="card-back-mark">P5</view>
         </view>
       </view>
-      <view wx:if="{{item.isDealer}}" class="replay-dealer">D</view>
+      <view wx:if="{{item.actionChipText}}" class="replay-action-chip action-{{item.actionType}}">
+        <view class="chip-dot"></view><text>{{item.actionChipText}}</text>
+      </view>
+      <view class="replay-seat-panel">
+        <view wx:if="{{item.hasAvatar}}" class="replay-seat-avatar">
+          <image class="replay-seat-avatar-img" src="{{item.avatarDisplayUrl || item.avatarUrl}}" mode="aspectFill"></image>
+          <view class="replay-seat-position-badge">{{item.position}}</view>
+        </view>
+        <view wx:else class="replay-seat-row"><text class="replay-seat-pos">{{item.position}}</text><text wx:if="{{item.isDealer}}" class="replay-dealer">D</text></view>
+        <view class="replay-seat-name">{{item.name}}</view>
+        <view class="replay-seat-stack">{{item.stackText || '-'}}</view>
+      </view>
     </view>
   </view>
 
-  <view class="replay-controls">
-    <view class="replay-progress">
-      <view class="replay-progress-fill" style="width: {{progressPercent}}%;"></view>
-    </view>
-    <view class="replay-buttons">
-      <view class="replay-control side prev" bindtap="prevStep" aria-label="prev">
-        <view class="control-glyph glyph-prev">
-          <view></view>
-          <view></view>
-        </view>
+  <view class="replay-now">
+    <text class="replay-now-actor">{{currentStep ? currentStep.actorPosition : ''}}</text>
+    <text class="replay-now-action">{{currentStep ? currentStep.actionChipText : 'READY'}}</text>
+    <text class="replay-now-count">{{currentStep ? currentStep.progressText : ''}}</text>
+  </view>
+
+  <scroll-view class="replay-timeline" scroll-x="true" enhanced="true" show-scrollbar="false">
+    <view class="replay-timeline-track">
+      <view wx:for="{{timelineItems}}" wx:key="key" class="timeline-node {{item.timelineClass}}" data-index="{{item.timelineIndex}}" bindtap="jumpToStep">
+        <view class="timeline-dot"></view>
+        <view class="timeline-street">{{item.streetLabel}}</view>
+        <view class="timeline-action">{{item.actionLabel}}</view>
+        <view class="timeline-amount">{{item.actionAmount || ''}}</view>
       </view>
-      <view class="replay-control primary icon" bindtap="togglePlay" aria-label="play">
-        <view wx:if="{{playing}}" class="control-glyph glyph-pause">
-          <view></view>
-          <view></view>
-        </view>
+    </view>
+  </scroll-view>
+
+  <view class="replay-controls">
+    <view class="replay-progress"><view class="replay-progress-fill" style="width: {{progressPercent}}%;"></view></view>
+    <view class="replay-buttons">
+      <view class="replay-control side prev" bindtap="prevStep" aria-label="上一步"><view class="control-glyph glyph-prev"><view></view><view></view></view></view>
+      <view class="replay-control primary icon" bindtap="togglePlay" aria-label="播放或暂停">
+        <view wx:if="{{playing}}" class="control-glyph glyph-pause"><view></view><view></view></view>
         <view wx:else class="control-glyph glyph-play"></view>
       </view>
-      <view class="replay-control side next" bindtap="nextStep" aria-label="next">
-        <view class="control-glyph glyph-next">
-          <view></view>
-          <view></view>
-        </view>
-      </view>
+      <view class="replay-control side next" bindtap="nextStep" aria-label="下一步"><view class="control-glyph glyph-next"><view></view><view></view></view></view>
     </view>
   </view>
 </view>

@@ -97,9 +97,12 @@ test('public profile edits preserve existing privacy settings', async () => {
   assert.equal(loaded.calls.initialize[0].nickname, '新昵称')
 })
 
-test('failed avatar sync remains retryable and reuses the uploaded avatar after recovery', async () => {
+test('a failed first-time avatar upload does not block social identity creation and remains retryable', async () => {
   const loaded = loadSync({
-    getProfile() { return missingProfile() },
+    getProfile(attempt) {
+      if (attempt === 1) return missingProfile()
+      return Promise.resolve({ socialUserId: 'su-me', nickname: '银狼', statsVisible: true, defaultShareScope: 'friends' })
+    },
     upload(input, attempt) {
       if (attempt === 1) return Promise.reject(new Error('offline'))
       return Promise.resolve({ fileID: 'cloud://social/recovered.jpg' })
@@ -107,15 +110,83 @@ test('failed avatar sync remains retryable and reuses the uploaded avatar after 
   })
   const local = { playerId: 'WX-P59', name: '银狼', avatarUrl: 'wxfile://avatar.jpg' }
 
-  await assert.rejects(loaded.api.syncSocialProfile(local), /offline/)
+  const created = await loaded.api.syncSocialProfile(local)
+  assert.equal(created.socialUserId, 'su-me')
+  assert.equal(loaded.calls.initialize[0].avatarFileId, '')
   const recovered = await loaded.api.syncSocialProfile(local)
   assert.equal(recovered.socialUserId, 'su-me')
   assert.equal(loaded.calls.get, 2)
   assert.equal(loaded.calls.upload.length, 2)
-  assert.equal(loaded.calls.initialize.length, 1)
+  assert.equal(loaded.calls.initialize.length, 2)
+  assert.equal(loaded.calls.initialize[1].avatarFileId, 'cloud://social/recovered.jpg')
 
   await loaded.api.syncSocialProfile(local, { force: true })
   assert.equal(loaded.calls.upload.length, 2, 'a successful upload mapping avoids duplicate cloud files')
+})
+
+test('a later avatar retry failure returns the existing social identity instead of blocking friends', async () => {
+  const remote = { socialUserId: 'su-existing', nickname: '银狼', statsVisible: true, defaultShareScope: 'friends' }
+  const loaded = loadSync({
+    getProfile() { return Promise.resolve(remote) },
+    upload() { return Promise.reject(new Error('expired avatar path')) }
+  })
+  loaded.storage.set('pokerSocialProfilePending:WX-P59B', { fingerprint: 'pending' })
+
+  const result = await loaded.api.syncSocialProfile({ playerId: 'WX-P59B', name: '银狼', avatarUrl: 'wxfile://expired.jpg' }, { force: true })
+  assert.deepEqual(result, remote)
+  assert.equal(loaded.calls.initialize.length, 0)
+})
+
+test('a cache-reset placeholder profile restores the existing cloud identity instead of overwriting it', async () => {
+  const remote = {
+    socialUserId: 'su-existing',
+    nickname: 'HIDE1900',
+    avatarUrl: 'https://example.test/avatar.jpg',
+    statsVisible: true,
+    defaultShareScope: 'friends'
+  }
+  const loaded = loadSync({ getProfile() { return Promise.resolve(remote) } })
+  loaded.storage.set('pokerSocialProfilePending:WX-P59C', {
+    fingerprint: 'WX-P59C|\u73a9\u5bb6|',
+    updatedAt: Date.now()
+  })
+
+  const result = await loaded.api.syncSocialProfile({
+    playerId: 'WX-P59C',
+    name: '\u73a9\u5bb6',
+    avatarUrl: ''
+  }, { force: true })
+
+  assert.deepEqual(result, remote)
+  assert.equal(loaded.calls.upload.length, 0)
+  assert.equal(loaded.calls.initialize.length, 0)
+  assert.equal(loaded.storage.has('pokerSocialProfilePending:WX-P59C'), false)
+})
+
+test('automatic login keeps an existing cloud identity when the restored local nickname differs', async () => {
+  const remote = {
+    socialUserId: 'su-existing',
+    nickname: '\ue035HIDE\ue0351900',
+    avatarUrl: 'https://example.test/avatar.jpg',
+    statsVisible: true,
+    defaultShareScope: 'selected'
+  }
+  const loaded = loadSync({ getProfile() { return Promise.resolve(remote) } })
+  loaded.storage.set('pokerSocialProfilePending:WX-P59D', {
+    fingerprint: 'WX-P59D|HIDE1900|',
+    updatedAt: Date.now()
+  })
+
+  const result = await loaded.api.syncSocialProfile({
+    playerId: 'WX-P59D',
+    name: 'HIDE1900',
+    avatarUrl: ''
+  })
+
+  assert.deepEqual(result, remote)
+  assert.equal(loaded.calls.upload.length, 0)
+  assert.equal(loaded.calls.initialize.length, 0)
+  assert.equal(loaded.storage.has('pokerSocialProfilePending:WX-P59D'), false)
 })
 
 test('anonymous and local test accounts never initialize a social identity', async () => {

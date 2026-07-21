@@ -28,6 +28,13 @@ test('publish route and privacy-first template expose only the approved BB scope
   assert.doesNotMatch(js + wxml, /ownerOpenId|_openid|privatePlayerId|avatarFileId|services\/data-service|services\/cloud-repo|resolveBigBlind|buildHandSnapshot|anonym/i)
 })
 
+test('preview errors explain fixable blind, action and legacy snapshot failures', () => {
+  const js = fs.readFileSync(pageJsPath, 'utf8')
+  assert.match(js, /BLIND_REQUIRED[^\n]+大盲/)
+  assert.match(js, /HAND_ACTIONS_REQUIRED[^\n]+行动记录/)
+  assert.match(js, /INVALID_HAND_SNAPSHOT[^\n]+座位/)
+})
+
 test('onLoad consumes only handId and renders the exact server snapshot and hash', async () => {
   const serverSnapshot = snapshot('server-only')
   const loaded = loadPublishPage({ previews: [{ previewHash: 'hash-server', snapshot: serverSnapshot, defaultShareScope: 'friends' }] })

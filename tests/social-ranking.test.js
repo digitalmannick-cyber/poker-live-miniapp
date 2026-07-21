@@ -64,6 +64,30 @@ test('zero-duration users do not qualify through hand count and a zero viewer ha
   assert.deepEqual(ranking.rankRows([{ socialUserId: 'su_zero', durationMinutes: 0, recordedHandCount: 10 }], 'su_zero'), { top10: [], myRank: null })
 })
 
+test('social duration uses the authoritative effective session minutes instead of wall-clock span', () => {
+  const rows = ranking.buildDailyBuckets({
+    sessions: [{ status: 'finished', startTime: '2026-07-20 10:00', endTime: '2026-07-21 10:00', durationMinutes: 360 }],
+    hands: []
+  })
+  assert.equal(rows.reduce((sum, row) => sum + row.durationMinutes, 0), 360)
+})
+
+test('history import placeholders use the canonical 360-hour baseline instead of full-day wall spans', () => {
+  const rows = ranking.buildDailyBuckets({
+    sessions: [
+      { status: 'finished', startTime: '2026-03-13 00:00:00', endTime: '2026-03-13 23:59:00', durationMinutes: 0, source: { type: 'feishu_base_history_import' } },
+      { status: 'finished', startTime: '2026-03-14 00:00:00', endTime: '2026-03-14 23:59:00', durationMinutes: 0, source: { type: 'feishu_base_history_import' } },
+      { status: 'finished', startTime: '2026-07-20 10:00', endTime: '2026-07-20 11:00', durationMinutes: 60 }
+    ],
+    hands: [
+      { source: 'feishu_base_history_import', playedDate: '2026-03-13' },
+      { source: 'feishu_base_history_import', playedDate: '2026-03-14' }
+    ]
+  })
+  assert.equal(rows.reduce((sum, row) => sum + row.durationMinutes, 0), 360 * 60 + 60)
+  assert.equal(rows.reduce((sum, row) => sum + row.recordedHandCount, 0), 2)
+})
+
 test('ranking action is authenticated, friend-scoped, privacy filtered and never leaks records', async () => {
   const records = {
     social_users: [

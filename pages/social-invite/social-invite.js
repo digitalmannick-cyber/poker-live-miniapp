@@ -51,7 +51,11 @@ Page({
     submitting: false,
     loginRequired: false,
     loginError: '',
-    errorMessage: ''
+    errorMessage: '',
+    searchQuery: '',
+    searchStatus: 'idle',
+    searchResults: [],
+    searchError: ''
   },
 
   async onLoad(options) {
@@ -132,6 +136,60 @@ Page({
     return this.inspectInvite()
   },
 
+  onSearchInput(event) {
+    const searchQuery = String(event && event.detail && event.detail.value || '')
+    const patch = { searchQuery, searchError: '' }
+    if (Array.from(searchQuery.trim()).length < 2) Object.assign(patch, { searchStatus: 'idle', searchResults: [] })
+    this.setData(patch)
+  },
+
+  async searchUsers() {
+    const keyword = String(this.data.searchQuery || '').trim()
+    if (Array.from(keyword).length < 2) {
+      this.setData({ searchError: '请输入至少 2 个字进行搜索' })
+      return
+    }
+    if (this.data.searchStatus === 'loading') return
+    this.setData({ searchStatus: 'loading', searchError: '' })
+    try {
+      const result = await socialService.searchSocialUsers(keyword)
+      const items = Array.isArray(result && result.items) ? result.items : []
+      this.setData({
+        searchStatus: 'ready',
+        searchResults: items.map(item => Object.assign({}, item, {
+          requesting: false,
+          actionLabel: item.relationshipStatus === 'accepted' ? '已是好友' : item.relationshipStatus === 'pending' ? '已申请' : '添加'
+        }))
+      })
+    } catch (error) {
+      this.setData({ searchStatus: 'error', searchResults: [], searchError: '搜索失败，请稍后重试' })
+    }
+  },
+
+  async addSearchedUser(event) {
+    const targetUserId = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.id || '')
+    const target = this.data.searchResults.find(item => item.socialUserId === targetUserId)
+    if (!target || !target.canRequest || target.requesting) return
+    this.setData({ searchResults: this.data.searchResults.map(item => item.socialUserId === targetUserId ? Object.assign({}, item, { requesting: true }) : item) })
+    try {
+      const result = await socialService.sendFriendRequestByUser({
+        targetUserId,
+        clientMutationId: socialMutation.createMutationId('friend_request_search')
+      })
+      const pending = String(result && result.status || '') === 'pending'
+      this.setData({ searchResults: this.data.searchResults.map(item => item.socialUserId === targetUserId ? Object.assign({}, item, {
+        requesting: false,
+        canRequest: !pending,
+        relationshipStatus: pending ? 'pending' : item.relationshipStatus,
+        actionLabel: pending ? '已申请' : item.actionLabel
+      }) : item) })
+      showToast(pending ? '好友申请已发送' : '好友状态已更新')
+    } catch (error) {
+      this.setData({ searchResults: this.data.searchResults.map(item => item.socialUserId === targetUserId ? Object.assign({}, item, { requesting: false }) : item) })
+      showToast('发送失败，请稍后重试')
+    }
+  },
+
   async sendFriendRequest() {
     if (this.data.submitting || !this.data.inviteToken) return
     this.setData({ submitting: true, loginError: '', errorMessage: '' })
@@ -168,8 +226,13 @@ Page({
       if (error && error.code === 'SOCIAL_PROFILE_REQUIRED') {
         this.setData({ status: 'ready', loginRequired: true, loginError: '请先使用微信登录，再发送好友申请。' })
       } else {
-        this.setData(inviteErrorState(error))
-        hideShareMenu()
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[social-invite] friend request failed', {
+            code: String(error && error.code || ''),
+            requestId: String(error && error.requestId || '')
+          })
+        }
+        this.setData({ status: 'ready', loginError: '好友申请未发送成功，请稍后重试。' })
       }
     } finally {
       this.setData({ submitting: false })

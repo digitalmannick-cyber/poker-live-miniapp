@@ -265,6 +265,12 @@ function getWechatDraftNickname(profile) {
   return isDefaultWechatName(name) ? '' : name
 }
 
+function getSafeWechatNickname(value) {
+  return String(value || '')
+    .replace(/[^\u3400-\u9fffA-Za-z0-9 _-]/g, '')
+    .trim()
+}
+
 function isWechatProfileIncomplete(profile) {
   const name = String(profile && profile.name || '').trim()
   const avatarUrl = String(profile && profile.avatarUrl || '').trim()
@@ -340,11 +346,13 @@ Page({
 
   async onShow() {
     this._socialSettingsAttached = true
+    this._socialProfileResolved = false
     tabBar.syncCustomTabBar('/pages/profile/profile')
     await this.refresh().catch(error => {
       console.warn('refresh profile page failed', error)
     })
-    await this.syncOwnSocialProfile(this.data.profile).catch(() => null)
+    const socialProfile = await this.syncOwnSocialProfile(this.data.profile).catch(() => null)
+    await this.restoreProfileFromSocial(socialProfile)
     this.loadSocialSettings()
     this.consumeOpenAiReminderEditorRequest()
     this.maybeShowReleaseNotes()
@@ -386,6 +394,38 @@ Page({
       console.warn('sync social profile failed', error)
       return null
     }
+  },
+
+  async restoreProfileFromSocial(remote) {
+    if (this.data.accountLoggedOut || !remote || !remote.socialUserId) {
+      this._socialProfileResolved = true
+      return this.data.profile
+    }
+    const current = this.data.profile || {}
+    const remoteNickname = String(remote.nickname || '').trim()
+    const remoteAvatarUrl = String(remote.avatarUrl || '').trim()
+    const patch = {}
+    if (isDefaultWechatName(current.name) && !isDefaultWechatName(remoteNickname)) {
+      patch.name = remoteNickname
+      patch.avatarText = String(remote.avatarText || '').trim() || getAvatarText(remoteNickname)
+    }
+    let saved = current
+    if (Object.keys(patch).length) saved = await dataService.updateProfile(patch)
+    const profile = Object.assign({}, saved)
+    if (!String(profile.avatarUrl || '').trim() && remoteAvatarUrl) profile.avatarUrl = remoteAvatarUrl
+    this._socialProfileOverlay = {
+      playerId: String(profile.playerId || '').trim().toUpperCase(),
+      nickname: remoteNickname,
+      avatarUrl: remoteAvatarUrl,
+      avatarText: String(remote.avatarText || '').trim()
+    }
+    this._socialProfileResolved = true
+    this.setData({
+      profile,
+      wechatProfilePromptVisible: shouldShowWechatProfilePrompt(profile),
+      wechatProfileDialogVisible: false
+    })
+    return profile
   },
 
   async updateOwnPublicProfile(patch) {
@@ -502,8 +542,17 @@ Page({
   },
 
   applyProfilePageData(data) {
+    const sourceProfile = data.profile || {}
+    const overlay = this._socialProfileOverlay
+    const sameAccount = overlay && overlay.playerId === String(sourceProfile.playerId || '').trim().toUpperCase()
+    const profile = Object.assign({}, sourceProfile)
+    if (sameAccount && isDefaultWechatName(profile.name) && !isDefaultWechatName(overlay.nickname)) {
+      profile.name = overlay.nickname
+      profile.avatarText = overlay.avatarText || getAvatarText(overlay.nickname)
+    }
+    if (sameAccount && !String(profile.avatarUrl || '').trim() && overlay.avatarUrl) profile.avatarUrl = overlay.avatarUrl
     const nextView = {
-      profile: data.profile,
+      profile,
       settings: data.settings,
       stats: data.stats,
       titleProgress: playerTitle.resolvePlayerTitle(data.stats.totalHours),
@@ -511,7 +560,7 @@ Page({
       titleStatsUnavailable: !!data.stats.statsUnavailable,
       accountLoggedOut: !!data.accountLoggedOut,
       testAccountActive: !!data.testAccountActive,
-      wechatProfilePromptVisible: !data.accountLoggedOut && shouldShowWechatProfilePrompt(data.profile),
+      wechatProfilePromptVisible: !data.accountLoggedOut && this._socialProfileResolved === true && shouldShowWechatProfilePrompt(profile),
       totalProfitDisplay: formatProfit(data.stats.totalProfit, data.settings.chipUnit),
       unitLabel: getUnitLabel(data.settings.chipUnit)
     }
@@ -539,9 +588,11 @@ Page({
       return
     }
     await this.refresh()
+    const socialProfile = await this.syncOwnSocialProfile(this.data.profile).catch(() => null)
+    await this.restoreProfileFromSocial(socialProfile)
     wx.showToast({ title: '登录成功', icon: 'success' })
     const profile = this.data.profile || {}
-    if (isWechatProfileIncomplete(profile)) {
+    if (socialProfile && isWechatProfileIncomplete(profile)) {
       this.setData({
         wechatProfileDialogVisible: true,
         wechatProfilePromptVisible: false,
@@ -688,6 +739,7 @@ Page({
   },
 
   openWechatProfilePrompt() {
+    this._wechatNicknameCandidate = String(this.data.wechatDraftNickname || '')
     this.setData({
       wechatProfileDialogVisible: true
     })
@@ -701,6 +753,7 @@ Page({
       wechatDraftNickname: '',
       wechatDraftAvatarUrl: ''
     })
+    this._wechatNicknameCandidate = ''
     this.maybeShowReleaseNotes()
   },
 
@@ -711,11 +764,63 @@ Page({
   },
 
   onWechatNicknameInput(e) {
-    this.setData({ wechatDraftNickname: e && e.detail && e.detail.value || '' })
+    const detail = e && e.detail || {}
+    const value = String(detail.value || '')
+    if (value) {
+      this._wechatNicknameCandidate = value
+      if (value !== this.data.wechatDraftNickname) {
+        this.setData({ wechatDraftNickname: value })
+      }
+      return
+    }
+
+    // DevTools may emit an extra empty event after the native nickname value.
+    // Keep the last valid candidate unless a keyboard edit explicitly clears it.
+    if (Number(detail.keyCode) > 0) {
+      this._wechatNicknameCandidate = ''
+      this.setData({ wechatDraftNickname: '' })
+    }
   },
 
-  async saveWechatProfileFromOfficialControls() {
-    const name = String(this.data.wechatDraftNickname || '').trim()
+  onWechatNicknameBlur(e) {
+    const detail = e && e.detail || {}
+    const value = String(detail.value || this._wechatNicknameCandidate || '').trim()
+    if (!value) return
+    this._wechatNicknameCandidate = value
+    if (value !== this.data.wechatDraftNickname) {
+      this.setData({ wechatDraftNickname: value })
+    }
+  },
+
+  onWechatNicknameReview(e) {
+    const detail = e && e.detail || {}
+    if (detail.pass === false && !detail.timeout) {
+      const candidate = String(this._wechatNicknameCandidate || this.data.wechatDraftNickname || '').trim()
+      const safeNickname = getSafeWechatNickname(candidate)
+      this._wechatNicknameCandidate = safeNickname
+      this.setData({ wechatDraftNickname: safeNickname })
+      wx.showModal({
+        title: '昵称含不支持字符',
+        content: safeNickname
+          ? `微信未通过原昵称，已带入“${safeNickname}”。请确认后保存。`
+          : '微信未通过该昵称，请手动填写后保存。',
+        showCancel: false,
+        confirmText: '知道了'
+      })
+      return
+    }
+    if (detail.pass === true) {
+      const candidate = String(this._wechatNicknameCandidate || '').trim()
+      if (candidate && candidate !== this.data.wechatDraftNickname) {
+        this.setData({ wechatDraftNickname: candidate })
+      }
+    }
+  },
+
+  async saveWechatProfileFromOfficialControls(e) {
+    const formValues = e && e.detail && e.detail.value || {}
+    const submittedNickname = typeof formValues.nickname === 'string' ? formValues.nickname : ''
+    const name = String(submittedNickname || this._wechatNicknameCandidate || this.data.wechatDraftNickname || '').trim()
     const avatarUrl = String(this.data.wechatDraftAvatarUrl || '').trim()
     if (!name && !avatarUrl) {
       wx.showToast({ title: '请选择头像或填写昵称', icon: 'none' })
@@ -733,6 +838,7 @@ Page({
       wechatDraftNickname: '',
       wechatDraftAvatarUrl: ''
     })
+    this._wechatNicknameCandidate = ''
     wx.showToast({ title: saved.synced ? '微信资料已同步' : '已保存，好友资料稍后同步', icon: saved.synced ? 'success' : 'none' })
     this.refresh()
     this.maybeShowReleaseNotes()

@@ -3240,6 +3240,16 @@ Page({
       detailExportText: exportText
     })
   },
+  openDetailSocialHandPublish() {
+    const handId = String(this.data.detailHand && this.data.detailHand._id || '').trim()
+    if (!handId) {
+      wx.showToast({ title: '没有可发布的手牌', icon: 'none' })
+      return
+    }
+    wx.navigateTo({
+      url: '/pages/social-hand-publish/social-hand-publish?handId=' + encodeURIComponent(handId)
+    })
+  },
   closeDetailExport() {
     this.setData({ detailExportVisible: false })
   },

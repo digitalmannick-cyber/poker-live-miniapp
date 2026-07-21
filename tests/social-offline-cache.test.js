@@ -32,6 +32,24 @@ test('scoped cache uses unique keys and an exact five-minute account envelope', 
   } finally { storage.restore() }
 })
 
+test('social cache can serve an explicitly bounded stale snapshot for instant rendering', () => {
+  const storage = installStorage()
+  try {
+    const cache = freshCache()
+    const savedAt = 1000
+    const cachedFriends = {
+      items: [{ socialUserId: 'su-cache', nickname: 'su-cache', avatarUrl: '', avatarText: '友', title: '', statsVisible: true, durationMinutes: 60, recordedHandCount: 2 }],
+      nextOffset: null
+    }
+    cache.writeScopedFirstPage({ namespace: 'friends', accountKey: 'WX-A', schemaVersion: 1, data: cachedFriends }, savedAt)
+    assert.equal(cache.readScopedFirstPage({ namespace: 'friends', accountKey: 'WX-A', schemaVersion: 1 }, savedAt + 300001), null)
+    assert.deepEqual(
+      cache.readScopedFirstPage({ namespace: 'friends', accountKey: 'WX-A', schemaVersion: 1, maxAgeMs: 86400000 }, savedAt + 300001),
+      cachedFriends
+    )
+  } finally { storage.restore() }
+})
+
 test('scoped cache fails closed for future time, bad structures, private fields and storage errors', () => {
   const storage = installStorage()
   try {

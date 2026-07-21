@@ -1,48 +1,52 @@
-# Friend Ranking Prototype Design QA
+# Replay 原生组件 + 立体素材方案验收
 
-- Source visual truth: `C:/Users/11075/AppData/Local/Temp/codex-clipboard-4bdc5858-292b-434b-853e-410ef942ba0a.png`
-- Rendered implementation: `D:/TRAE/xuan/poker-live-miniapp/web-preview/design-qa/friend-ranking-v4-settled.jpg`
-- Combined comparison: `D:/TRAE/xuan/poker-live-miniapp/web-preview/design-qa/friend-ranking-v3-v4-comparison.png`
-- Viewport: 500 x 900
-- State: ranking page, weekly filter, podium entrance completed
+## 对象
 
-## Full-view comparison evidence
+- 视觉基准：`C:\Users\11075\.codex\generated_images\019f750c-1a4b-73d1-aa43-dac405aa140c\exec-ad08b3a5-7abc-46e1-bc9e-e343051567c2.png`
+- 小程序截图：`D:\TRAE\xuan\poker-live-miniapp\logs\replay-hybrid-turn-final.png`
+- 并排对比：`D:\TRAE\xuan\poker-live-miniapp\logs\replay-hybrid-design-qa.png`
+- 状态：Turn，SB Raise 8 BB，8 人桌，Hero As Ks。
 
-The rejected version used large blurred wings, multiple rotating halos, bright floating nodes, and overlapping glow behind text. The revised rendering removes those layers and restores a clear hierarchy: avatar, medal, name, time, podium, then rank rows. The rank list remains readable while preserving restrained gold, silver, bronze, and cool rank accents.
+## 本轮调整
 
-## Focused region comparison evidence
+- 撤销全桌 Canvas 绘制，座位、文字、底牌、公共牌、底池和时间轴恢复为原生小程序组件。
+- 保留高质量立体牌桌素材，仅作为底层视觉，不影响上层文字与点击。
+- 当前行动位置继续使用青色边框、外发光和轻微呼吸位移动效。
+- 筹码飞行动效改用项目内真实筹码图片与 CSS 路径，不再使用 Canvas。
+- 每位玩家严格显示两张底牌。
+- 自动播放单节点间隔从 1,000 ms 调整为 1,400 ms，并保留后续通过属性微调的能力。
+- 素材加载失败时仍显示原有 CSS 牌桌回退层。
 
-The combined comparison directly places the rejected podium/list crop beside the revised browser rendering. A separate focused crop was not needed because the source itself is already a close crop of the podium and ranks 4-7, and the revised 500 px capture keeps those same elements legible.
+## 验证
 
-## Required fidelity surfaces
+- 最终模拟器截图中 8 个座位、四张 Turn 公共牌、38.5 BB 底池和 SB 高亮均完整可见。
+- 原生文字与牌面清晰度恢复，高亮层级未被图片遮挡。
+- 相关回归测试：97 passed，0 failed。
+- 两项运行素材合计约 87 KB。
+- 最终干净包自动预览成功，总包体 1,967,910 bytes。
 
-- Fonts and typography: existing system Chinese font stack, weights, hierarchy, and compact labels remain consistent with the current miniapp prototype. No text is obscured by effects in the completed state.
-- Spacing and layout rhythm: podium text no longer collides with effects or stands. Rank rows use consistent height and the content region scrolls to expose ranks 8-10 and the pinned self row.
-- Colors and visual tokens: existing dark surface, cyan navigation accent, red product accent, and restrained medal colors are preserved. Excess saturation and competing glows were removed.
-- Image quality and asset fidelity: this concept uses text avatar placeholders because no real user avatar assets are part of the selected source. Production must render actual user avatars in the same masks.
-- Copy and content: ranking period, effective-hours rule, hand-count labels, Top 10, and pinned self ranking remain intact.
+## P3 差异
 
-## Findings
+- 效果图的筹码堆和环境光更电影化；当前版本优先保证真实牌局数据、清晰文字和多机型稳定性。
+- 技术截图使用单节点 Turn 状态方便稳定对比，正式回放会显示完整行动时间轴。
 
-No actionable P0, P1, or P2 visual issues remain in the reviewed state.
+## 结论
 
-## Interaction and runtime checks
+final result: passed
 
-- Podium entrance animation verified for all three positions.
-- Deprecated wing, orbit, and particle layers verified hidden.
-- Ranking content area verified vertically scrollable.
-- Eight rendered rows verified: ranks 4-10 plus pinned self rank.
-- Reduced-motion media rule verified present.
-- Browser console errors: none.
+---
 
-## Comparison history
+# 好友动态卡片视觉验收
 
-1. Earlier P1: fantasy wing and halo effects looked low-quality and competed with names and scores. Fixed by removing the effects and using restrained metal sheen plus one-time podium rise.
-2. Earlier P2: floating progress nodes looked like unfinished controls. Fixed by removing nodes and retaining a thin progress line.
-3. Earlier P2: lower Top 10 rows were hidden behind the persistent tab bar. Fixed by making the ranking content region independently scrollable; ranks 8-10 and pinned self were visually verified.
+## 对照与结果
 
-## Follow-up polish
+- 对照：用户提供的 2026-07-21 手机截图。
+- 模拟器：OPPO Find N5 尺寸，`pages/player-notes/player-notes` 的「动态」页。
+- 卡片采用现有 P5 红/青视觉体系；发布者、可见范围、手牌区、公共牌区、三项关键数据、Replay 和互动入口层级清晰。
+- 手牌和公共牌使用项目内置四色牌面组件，不再输出 `Qc Qd`、`Td Th` 一类原始字符。
+- 点赞与评论保持为 32rpx 图标，点击热区为 72rpx，不扩展为大按钮。
+- 模拟器预览为只读演示数据，无法在该环境完成云端点赞/评论写入；详情读取链路已由无浏览器 `URL` 构造器的微信运行时回归测试覆盖。
 
-- P3: replace text avatar placeholders with representative photo assets when real account data is available.
+## 结论
 
 final result: passed

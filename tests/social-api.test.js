@@ -38,3 +38,23 @@ test('callSocialFunction reports an unavailable cloud function as a network erro
     error => error.code === 'NETWORK_ERROR' && error.message === 'social function unavailable'
   )
 })
+
+test('callSocialFunction works in the DevTools runtime when wx exists without global.wx', async () => {
+  const root = globalThis
+  const originalGlobalAlias = root.global
+  const originalWx = root.wx
+  root.wx = {
+    cloud: {
+      callFunction: async input => ({ result: { code: 0, data: input.data } })
+    }
+  }
+  root.global = {}
+  try {
+    const api = require('../services/social-api')
+    const result = await api.callSocialFunction('get_my_social_profile')
+    assert.equal(result.action, 'get_my_social_profile')
+  } finally {
+    root.global = originalGlobalAlias
+    root.wx = originalWx
+  }
+})

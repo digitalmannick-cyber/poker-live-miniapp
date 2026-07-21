@@ -50,7 +50,11 @@ test('invitation route and the minimal player-library entry are registered witho
   assert.ok(appConfig.pages.includes('pages/social-invite/social-invite'))
   assert.match(inviteJs, /onShareAppMessage/)
   assert.match(inviteJs, /sendFriendRequest/)
+  assert.match(inviteJs, /searchUsers/)
+  assert.match(inviteJs, /sendFriendRequestByUser/)
   assert.match(inviteWxml, /发送好友申请/)
+  assert.match(inviteWxml, /个人邀请小程序码/)
+  assert.match(inviteWxml, /小程序码暂不可用/)
   assert.match(inviteWxml, /<button[^>]+open-type="share"/, '微信分享入口应使用原生分享按钮')
   assert.doesNotMatch(inviteJs, /ownerOpenId|_openid|privatePlayerId|avatarFileId/)
   assert.match(playerNotesJs, /openInvite\(\)/)
@@ -129,7 +133,7 @@ test('native share menu stays hidden until a valid invite is ready', async () =>
   }
 })
 
-test('failed friend request returns the landing page to a hidden-share error state', async () => {
+test('failed friend request stays retryable on the landing card', async () => {
   const socialService = require('../services/social-service')
   const original = { inspectInvite: socialService.inspectInvite, sendFriendRequest: socialService.sendFriendRequest }
   const menuCalls = []
@@ -149,9 +153,9 @@ test('failed friend request returns the landing page to a hidden-share error sta
     const page = loadInvitePage()
     await page.onLoad({ token: 'token_A-B' })
     await page.sendFriendRequest()
-    assert.equal(page.data.status, 'error')
-    assert.equal(menuCalls.at(-1), 'hide')
-    assert.equal(page.onShareAppMessage(), undefined)
+    assert.equal(page.data.status, 'ready')
+    assert.match(page.data.loginError, /未发送成功/)
+    assert.notEqual(menuCalls.at(-1), 'hide')
   } finally {
     Object.assign(socialService, original)
     delete global.Page
@@ -198,6 +202,47 @@ test('landing links decode safely, inspect before applying, and prevent duplicat
   } finally {
     Object.assign(socialService, original)
     delete global.Page
+  }
+})
+
+test('my invite searches public nicknames and sends a direct friend request once', async () => {
+  const socialService = require('../services/social-service')
+  const original = {
+    createInvite: socialService.createInvite,
+    createInviteQr: socialService.createInviteQr,
+    searchSocialUsers: socialService.searchSocialUsers,
+    sendFriendRequestByUser: socialService.sendFriendRequestByUser
+  }
+  const calls = []
+  global.wx = { showToast(input) { calls.push({ action: 'toast', input }) }, hideShareMenu() {}, showShareMenu() {} }
+  socialService.createInvite = async () => ({ token: 'search-token' })
+  socialService.createInviteQr = async () => ({ qrCodeUrl: 'https://temp/qr.png' })
+  socialService.searchSocialUsers = async keyword => {
+    calls.push({ action: 'search', keyword })
+    return { items: [{ socialUserId: 'su-b', nickname: '银狼玩家', avatarText: '银', title: '牌桌常客', relationshipStatus: 'none', canRequest: true }] }
+  }
+  socialService.sendFriendRequestByUser = async input => {
+    calls.push({ action: 'add', input })
+    return { friendshipId: 'fr-ab', status: 'pending' }
+  }
+
+  try {
+    const page = loadInvitePage()
+    await page.onLoad({})
+    page.onSearchInput({ detail: { value: '银狼' } })
+    await page.searchUsers()
+    assert.equal(page.data.searchResults[0].actionLabel, '添加')
+    await page.addSearchedUser({ currentTarget: { dataset: { id: 'su-b' } } })
+    assert.equal(page.data.searchResults[0].actionLabel, '已申请')
+    assert.equal(page.data.searchResults[0].canRequest, false)
+    assert.equal(calls.find(call => call.action === 'search').keyword, '银狼')
+    assert.equal(calls.filter(call => call.action === 'add').length, 1)
+    assert.equal(calls.find(call => call.action === 'add').input.targetUserId, 'su-b')
+    assert.match(calls.find(call => call.action === 'add').input.clientMutationId, /^friend_request_search_/)
+  } finally {
+    Object.assign(socialService, original)
+    delete global.Page
+    delete global.wx
   }
 })
 
@@ -272,7 +317,7 @@ test('a QR display failure keeps the invite shareable and explains the fallback'
     assert.equal(page.data.status, 'ready')
     assert.equal(page.data.qrUnavailable, true)
     assert.match(page.onShareAppMessage().path, /token=share_still_ready/)
-    assert.match(fs.readFileSync(inviteWxmlPath, 'utf8'), /二维码暂不可用/)
+    assert.match(fs.readFileSync(inviteWxmlPath, 'utf8'), /小程序码暂不可用/)
   } finally {
     Object.assign(socialService, original)
     delete global.Page

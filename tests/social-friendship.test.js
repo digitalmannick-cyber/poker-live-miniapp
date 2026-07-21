@@ -196,6 +196,7 @@ test('create invite QR encodes the existing share token and persists no plaintex
   assert.equal(calls[1].scene, share.token)
   assert.equal(calls[0].page, 'pages/social-invite/social-invite')
   assert.equal(calls[0].checkPath, false)
+  assert.equal(calls[0].envVersion, 'trial')
   assert.equal(uploads[0].cloudPath, uploads[1].cloudPath)
   const mutation = repository.where('social_mutations', row => row.action === 'create_invite_qr')[0]
   assert.deepEqual(mutation.result, { inviteId: getInviteId(share.token), expiresAt: share.expiresAt })
@@ -230,6 +231,44 @@ test('invite inspection tells a first-time visitor to initialize a profile witho
 
   assert.equal(inspected.requesterProfileReady, false)
   assert.deepEqual(repository.where('social_friendships', () => true), [])
+})
+
+test('nickname search returns public matches and direct add creates the same pending notification flow', async () => {
+  const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
+  const repository = createMemorySocialRepository({
+    social_users: [
+      { _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: '搜索者' } },
+      { _id: 'su_b', ownerOpenId: 'openid-b', profile: { nickname: '银狼玩家', avatarFileId: 'avatar-b' }, title: '牌桌常客' },
+      { _id: 'su_c', ownerOpenId: 'openid-c', profile: { nickname: '其他玩家' } }
+    ]
+  })
+  const handlers = createFriendshipHandlers(repository, { now: () => 2_000, avatarUrl: async id => 'https://temp/' + id })
+  const search = await handlers.search_social_users({ keyword: '银狼' }, { ownerOpenId: 'openid-a' })
+  assert.deepEqual(search.items, [{
+    socialUserId: 'su_b', nickname: '银狼玩家', avatarUrl: 'https://temp/avatar-b', avatarText: '银', title: '牌桌常客',
+    relationshipStatus: 'none', canRequest: true
+  }])
+  assert.doesNotMatch(JSON.stringify(search), /ownerOpenId|avatarFileId|privatePlayerId/)
+
+  const requested = await handlers.send_friend_request_by_user({ targetUserId: 'su_b', clientMutationId: 'search-add-1' }, { ownerOpenId: 'openid-a' })
+  assert.equal(requested.status, 'pending')
+  const notification = repository.where('social_notifications', row => row.kind === 'friend_request')[0]
+  assert.equal(notification.recipientId, 'su_b')
+  assert.equal(notification.actorSnapshot.socialUserId, 'su_a')
+  const after = await handlers.search_social_users({ keyword: '银狼' }, { ownerOpenId: 'openid-a' })
+  assert.equal(after.items[0].relationshipStatus, 'pending')
+  assert.equal(after.items[0].canRequest, false)
+})
+
+test('nickname search requires two characters and direct add rejects self', async () => {
+  const { createFriendshipHandlers } = require('../cloudfunctions/poker_social/lib/friendship')
+  const repository = createMemorySocialRepository({ social_users: [{ _id: 'su_a', ownerOpenId: 'openid-a', profile: { nickname: '玩家甲' } }] })
+  const handlers = createFriendshipHandlers(repository, { now: () => 2_000 })
+  await assert.rejects(handlers.search_social_users({ keyword: '甲' }, { ownerOpenId: 'openid-a' }), error => error.code === 'INVALID_USER_SEARCH')
+  await assert.rejects(
+    handlers.send_friend_request_by_user({ targetUserId: 'su_a', clientMutationId: 'self-add' }, { ownerOpenId: 'openid-a' }),
+    error => error.code === 'INVALID_FRIENDSHIP'
+  )
 })
 
 test('social app routes friendship actions and social service requires client mutation identifiers for writes', async () => {

@@ -90,6 +90,20 @@ test('temporary HTTPS avatar is downloaded and reuploaded under receiver cloud s
   assert.equal(calls[1][2], 'wxfile://tmp/card.png')
 })
 
+test('player-card avatar copy accepts HTTPS in WeChat runtimes without URL', async () => {
+  const originalUrl = global.URL
+  try {
+    global.URL = undefined
+    const copied = await importer.copyCardAvatar('https://temp.example/a.png?sign=abc', 'wechat-runtime', {
+      downloadFile(input) { input.success({ statusCode: 200, tempFilePath: 'wxfile://tmp/card.png' }) },
+      uploadFile(input) { input.success({ fileID: 'cloud://receiver-env/player-card/wechat-runtime.png' }) }
+    })
+    assert.equal(copied.avatarFileId, 'cloud://receiver-env/player-card/wechat-runtime.png')
+  } finally {
+    global.URL = originalUrl
+  }
+})
+
 test('unsafe avatar sources and failed copies never become stored avatar values', async () => {
   for (const url of ['cloud://source/private', 'data:image/png;base64,a', 'wxfile://tmp/a.png', 'http://a.test/a.png']) {
     await assert.rejects(importer.copyCardAvatar(url, 'm', {}), error => error.code === 'INVALID_CARD_AVATAR')

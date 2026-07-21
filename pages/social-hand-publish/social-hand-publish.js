@@ -1,5 +1,6 @@
 const socialService = require('../../services/social-service')
 const socialMutation = require('../../utils/social-mutation')
+const handReplay = require('../../utils/hand-replay')
 
 const SCOPES = ['square', 'friends', 'selected']
 const FRIEND_PAGE_SIZE = 20
@@ -64,6 +65,9 @@ function errorCode(error) {
 function previewErrorMessage(code) {
   if (code === 'NETWORK_ERROR' || code === 'SOCIAL_UNAVAILABLE' || code === 'SOCIAL_ERROR') return '网络暂时不可用，请稍后重试。'
   if (code === 'HAND_SOURCE_UPDATING') return '手牌正在同步，请稍后重新预览。'
+  if (code === 'BLIND_REQUIRED') return '这手牌缺少有效的大盲金额，请先编辑手牌或场次盲注。'
+  if (code === 'HAND_ACTIONS_REQUIRED') return '这手牌缺少完整行动记录，补充完整录入后即可发布。'
+  if (code === 'INVALID_HAND_SNAPSHOT') return '这手牌的座位、牌面或行动数据不完整，请编辑保存后重试。'
   return '这手牌暂时无法发布。'
 }
 
@@ -84,6 +88,7 @@ Page({
     handId: '',
     status: 'loading',
     snapshot: null,
+    replayData: null,
     previewHash: '',
     scope: '',
     friends: [],
@@ -166,6 +171,7 @@ Page({
     this.setData({
       status: 'loading',
       snapshot: null,
+      replayData: null,
       previewHash: '',
       scope: '',
       friends: [],
@@ -197,6 +203,7 @@ Page({
       this.setData({
         status: 'ready',
         snapshot,
+        replayData: handReplay.buildSocialReplayView(snapshot, 'publish-' + handId),
         previewHash,
         scope: '',
         errorCode: '',

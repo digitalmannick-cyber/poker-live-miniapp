@@ -114,6 +114,20 @@ for (const size of [6, 8, 9]) {
   })
 }
 
+test('accepts the real persisted 8-max shape with a string count and one inactive LJ snapshot', () => {
+  const source = fullLedgerFixture(8)
+  source.hand.playerCount = '8'
+  source.hand.playerSnapshots.splice(6, 0, {
+    slot: 'LJ', position: 'LJ', stack: 40000, initialStack: 40000, cards: '',
+    playerName: 'must-not-reach-public-snapshot'
+  })
+
+  const snapshot = buildHandSnapshot(source)
+  assert.equal(snapshot.players.length, 7)
+  assert.equal(snapshot.players.some(player => player.position === 'LJ'), false)
+  assert.equal(JSON.stringify(snapshot).includes('must-not-reach-public-snapshot'), false)
+})
+
 test('uses same-seat snapshot cards as structured multi-show evidence', () => {
   const source = fullLedgerFixture(6)
   source.hand.board = { flop: '2s3h4d', turn: '5c', river: '9s' }

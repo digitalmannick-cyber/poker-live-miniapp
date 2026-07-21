@@ -1,4 +1,7 @@
 {
   "navigationBarTitleText": "分享手牌",
-  "enablePullDownRefresh": false
+  "enablePullDownRefresh": false,
+  "usingComponents": {
+    "hand-replay-player": "/components/hand-replay-player/hand-replay-player"
+  }
 }

@@ -67,13 +67,14 @@ test('subscribe returns an unsubscribe function and account changes reset state'
   assert.equal(state.getSnapshot().count, 0)
 })
 
-test('player header uses a real image badge and navigates to message center', () => {
+test('player header uses the flag badge and navigates to message center', () => {
   const js = fs.readFileSync(path.join(root, 'pages/player-notes/player-notes.js'), 'utf8')
   const wxml = fs.readFileSync(path.join(root, 'pages/player-notes/player-notes.wxml'), 'utf8')
   assert.match(js, /socialUnread/)
   assert.match(js, /pages\/social-messages\/social-messages/)
   assert.doesNotMatch(js, /消息中心即将开放/)
-  assert.match(wxml, /<image[^>]+comment-bubble-v263\.png/)
+  assert.match(wxml, /player-notes-flag-icon/)
+  assert.doesNotMatch(wxml, /comment-bubble-v263\.png/)
   assert.match(wxml, /socialUnread\.label/)
   assert.doesNotMatch(wxml, /<text>◌<\/text>/)
 })
@@ -94,6 +95,12 @@ test('player library core markup and library source filter remain intact', () =>
   const wxml = fs.readFileSync(path.join(root, 'pages/player-notes/player-notes.wxml'), 'utf8')
   ;['player-search', 'player-type-scroll', 'player-card', 'player-empty'].forEach(className => assert.match(wxml, new RegExp('class="[^"]*' + className)))
   assert.match(js, /sourceKind:\s*'library'/)
+})
+
+test('friend invitation entry is a compact plus button', () => {
+  const wxml = fs.readFileSync(path.join(root, 'pages/player-notes/player-notes.wxml'), 'utf8')
+  assert.match(wxml, /player-notes-invite-plus">＋/)
+  assert.doesNotMatch(wxml, /player-notes-invite[^>]*>[\s\S]{0,80}邀请好友<\/text>/)
 })
 
 test('player unread account key honors an explicit logout and tolerates older mocks', () => {

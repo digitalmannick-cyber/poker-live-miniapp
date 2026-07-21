@@ -12,6 +12,14 @@ const FRIENDSHIP_COLLECTION = 'social_friendships'
 const INVITE_COLLECTION = 'social_invites'
 const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000
 const MAX_FRIEND_OFFSET = 1000
+const MAX_SEARCH_RESULTS = 20
+
+function normalizeSearchKeyword(value) {
+  const keyword = String(value || '').trim()
+  const length = Array.from(keyword).length
+  if (length < 2 || length > 24) throw socialError('INVALID_USER_SEARCH', 'invalid user search')
+  return keyword
+}
 
 function orderedPair(leftUserId, rightUserId) {
   const pair = [String(leftUserId || ''), String(rightUserId || '')].sort()
@@ -226,7 +234,8 @@ function createFriendshipHandlers(repository, options) {
     const image = await config.qrCode.getUnlimited({
       scene: token,
       page: 'pages/social-invite/social-invite',
-      checkPath: false
+      checkPath: false,
+      envVersion: String(config.qrEnvVersion || 'trial')
     })
     const uploaded = await config.uploadTempFile({ cloudPath: 'social-invites/' + result.inviteId + '.png', fileContent: image })
     const qrCodeUrl = String(uploaded && uploaded.url || '')
@@ -273,6 +282,73 @@ function createFriendshipHandlers(repository, options) {
         await consumeRateLimit(store, requester._id, 'friendRequest', at)
         await store.set(FRIENDSHIP_COLLECTION, pairId, record)
         await store.set(INVITE_COLLECTION, invite._id, Object.assign({}, invite, { usedCount: (Number(invite.usedCount) || 0) + 1, updatedAt: at }))
+        await notificationWriter.write(store, {
+          recipientId: record.receiverId,
+          kind: 'friend_request',
+          actor: requester,
+          targetType: 'friendship',
+          targetId: record._id,
+          sourceEventId: friendRequestEventId(record),
+          actionState: 'pending',
+          at
+        })
+        return friendshipResult(record)
+      })
+    },
+
+    async search_social_users(event, actor) {
+      const requester = await findActorUser(repository, actor)
+      const keyword = normalizeSearchKeyword(event && event.keyword)
+      let candidates
+      if (typeof repository.searchSocialUsers === 'function') {
+        candidates = await repository.searchSocialUsers(keyword, MAX_SEARCH_RESULTS)
+      } else {
+        const lowered = keyword.toLocaleLowerCase()
+        candidates = repository.where(USER_COLLECTION, row => String(row && row.profile && row.profile.nickname || '').toLocaleLowerCase().includes(lowered))
+      }
+      const items = []
+      for (const candidate of (Array.isArray(candidates) ? candidates : []).slice(0, MAX_SEARCH_RESULTS)) {
+        if (!candidate || candidate._id === requester._id) continue
+        try { requireActiveSocialUser(candidate) } catch (error) { continue }
+        const relationship = await repository.get(FRIENDSHIP_COLLECTION, getPairId(requester._id, candidate._id))
+        const profile = await publicUserDto(candidate, avatarUrl)
+        items.push({
+          socialUserId: profile.socialUserId,
+          nickname: profile.nickname,
+          avatarUrl: profile.avatarUrl,
+          avatarText: profile.avatarText,
+          title: profile.title,
+          relationshipStatus: relationship ? String(relationship.status || 'none') : 'none',
+          canRequest: !relationship || relationship.status === 'rejected' || relationship.status === 'removed'
+        })
+      }
+      items.sort((left, right) => {
+        const leftExact = left.nickname === keyword ? 0 : left.nickname.startsWith(keyword) ? 1 : 2
+        const rightExact = right.nickname === keyword ? 0 : right.nickname.startsWith(keyword) ? 1 : 2
+        return leftExact - rightExact || left.nickname.localeCompare(right.nickname) || left.socialUserId.localeCompare(right.socialUserId)
+      })
+      return { items }
+    },
+
+    async send_friend_request_by_user(event, actor) {
+      const requester = await findActorUser(repository, actor)
+      const targetUserId = String(event && event.targetUserId || '').trim()
+      if (!targetUserId || targetUserId === requester._id) throw socialError('INVALID_FRIENDSHIP', 'invalid friendship')
+      return runIdempotent(repository, requester._id, 'send_friend_request_by_user', event, async store => {
+        const at = now()
+        const target = requireActiveSocialUser(await store.get(USER_COLLECTION, targetUserId))
+        const pairId = getPairId(requester._id, target._id)
+        const existing = await store.get(FRIENDSHIP_COLLECTION, pairId)
+        transition(existing, 'request', at)
+        if (existing && existing.status !== 'rejected' && existing.status !== 'removed') return friendshipResult(existing)
+        const record = buildFriendshipRecord(requester._id, target._id, requester._id, at)
+        record.profileSnapshots = {}
+        if (existing) {
+          record._id = existing._id
+          record.userIds = existing.userIds
+        }
+        await consumeRateLimit(store, requester._id, 'friendRequest', at)
+        await store.set(FRIENDSHIP_COLLECTION, pairId, record)
         await notificationWriter.write(store, {
           recipientId: record.receiverId,
           kind: 'friend_request',

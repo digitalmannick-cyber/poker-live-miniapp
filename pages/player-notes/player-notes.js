@@ -5,6 +5,8 @@ const onboardingGuide = require('../../utils/onboarding-guide')
 const socialUnreadState = require('../../utils/social-unread-state')
 const socialCache = require('../../utils/social-cache')
 const socialProfileSync = require('../../utils/social-profile-sync')
+const socialService = require('../../services/social-service')
+const socialHandPrefetch = require('../../utils/social-hand-prefetch')
 
 function getSocialAccountKey() {
   try {
@@ -92,8 +94,8 @@ Page({
     await this.ensureSocialProfile(socialAccountKey)
     tabBar.syncCustomTabBar('/pages/player-notes/player-notes')
     if (this.data.playerSection === 'library') await this.refresh()
-    if (this.data.playerSection === 'friends' && this.data.friendSection === 'friends' && this.data.friendsLoaded) {
-      await this.ensureFriendsLoaded(true)
+    if (this.data.playerSection === 'friends' && this.data.friendSection === 'friends') {
+      await this.ensureFriendsLoaded(this.data.friendsLoaded)
     }
     this.syncOnboardingGuide()
   },
@@ -132,15 +134,24 @@ Page({
         socialCache.clearAccountCaches({ accountId: previousAccountKey, socialUserId: previousSocialUserId })
       }
       this._socialProfileAccountKey = currentAccountKey
+      this._socialProfileVerifiedAccountKey = ''
       this._socialProfileGeneration = (Number(this._socialProfileGeneration) || 0) + 1
       this._socialProfileFlight = null
-      this.setData({ socialAccountKey: currentAccountKey, socialUserId: '', socialProfileStatus: 'idle' })
+      const cachedIdentity = currentAccountKey && typeof socialCache.readAccountIdentity === 'function'
+        ? socialCache.readAccountIdentity(currentAccountKey)
+        : null
+      const cachedSocialUserId = String(cachedIdentity && cachedIdentity.socialUserId || '')
+      this.setData({
+        socialAccountKey: currentAccountKey,
+        socialUserId: cachedSocialUserId,
+        socialProfileStatus: cachedSocialUserId ? 'ready' : 'idle'
+      })
     }
     if (!currentAccountKey || this._socialProfileAttached !== true) {
       if (!currentAccountKey && this.data.socialProfileStatus !== 'idle') this.setData({ socialProfileStatus: 'idle' })
       return Promise.resolve('')
     }
-    if (this.data.socialUserId) {
+    if (this.data.socialUserId && this._socialProfileVerifiedAccountKey === currentAccountKey) {
       if (this.data.socialProfileStatus !== 'ready') this.setData({ socialProfileStatus: 'ready' })
       return Promise.resolve(this.data.socialUserId)
     }
@@ -152,18 +163,26 @@ Page({
         typeof dataService.getCurrentProfile === 'function' ? dataService.getCurrentProfile() : { playerId: currentAccountKey, name: '玩家' },
         { isCurrent: () => getSocialAccountKey() === currentAccountKey }
       ))
-      .then(profile => {
+      .then(async profile => {
         const socialUserId = profile && typeof profile.socialUserId === 'string' ? profile.socialUserId.trim() : ''
         if (this._socialProfileAttached !== true || generation !== this._socialProfileGeneration || currentAccountKey !== this._socialProfileAccountKey) return ''
-        if (socialUserId) socialCache.registerAccountIdentity({ accountId: currentAccountKey, socialUserId })
+        if (socialUserId) {
+          socialCache.registerAccountIdentity({ accountId: currentAccountKey, socialUserId })
+          this._socialProfileVerifiedAccountKey = currentAccountKey
+          if (typeof socialService.scheduleMyStatsSync === 'function') {
+            await socialService.scheduleMyStatsSync(currentAccountKey).catch(() => null)
+          }
+        }
+        if (this._socialProfileAttached !== true || generation !== this._socialProfileGeneration || currentAccountKey !== this._socialProfileAccountKey) return ''
         this.setData({ socialUserId, socialProfileStatus: socialUserId ? 'ready' : 'error' })
         return socialUserId
       })
       .catch(() => {
         if (this._socialProfileAttached === true && generation === this._socialProfileGeneration && currentAccountKey === this._socialProfileAccountKey) {
-          this.setData({ socialUserId: '', socialProfileStatus: 'error' })
+          const cachedSocialUserId = String(this.data.socialUserId || '')
+          this.setData({ socialUserId: cachedSocialUserId, socialProfileStatus: cachedSocialUserId ? 'ready' : 'error' })
         }
-        return ''
+        return String(this.data.socialUserId || '')
       })
     this._socialProfileFlight = promise
     promise.finally(() => {
@@ -172,8 +191,12 @@ Page({
     return promise
   },
 
-  retrySocialProfile() {
-    return this.ensureSocialProfile(getSocialAccountKey())
+  async retrySocialProfile() {
+    const socialUserId = await this.ensureSocialProfile(getSocialAccountKey())
+    if (socialUserId && this.data.playerSection === 'friends' && this.data.friendSection === 'friends') {
+      await this.ensureFriendsLoaded(true)
+    }
+    return socialUserId
   },
 
   bindSocialUnread() {
@@ -190,9 +213,12 @@ Page({
   },
 
   async ensureFriendsLoaded(force) {
-    if (this.data.friendsLoaded && !force) return
     const friendHub = this.selectComponent && this.selectComponent('#friendHub')
     if (!friendHub || typeof friendHub.loadFriends !== 'function') return
+    if (!force && friendHub.data && friendHub.data.status === 'ready') {
+      if (!this.data.friendsLoaded) this.setData({ friendsLoaded: true })
+      return friendHub.data.friends
+    }
     await friendHub.loadFriends(!!force)
     if (friendHub.data && friendHub.data.status === 'ready') this.setData({ friendsLoaded: true })
   },
@@ -295,11 +321,28 @@ Page({
     wx.navigateTo({ url: '/pages/player-note-detail/player-note-detail?friendUserId=' + encodeURIComponent(friendUserId) })
   },
 
-  openHand(event) {
+  async openHand(event) {
     if (this.isSocialSurfaceReadOnly()) return
     const shareId = String(event && event.detail && event.detail.shareId || '')
-    if (!shareId) return
-    wx.navigateTo({ url: '/pages/social-hand-detail/social-hand-detail?shareId=' + encodeURIComponent(shareId) })
+    if (!shareId || this._openingHandShare) return
+    const autoplay = !!(event && event.detail && event.detail.autoplay)
+    const target = String(event && event.detail && event.detail.target || (autoplay ? 'replay' : 'detail'))
+    this._openingHandShare = true
+    if (wx.showNavigationBarLoading) wx.showNavigationBarLoading()
+    try {
+      await socialHandPrefetch.prefetch(shareId, () => socialService.getHandShare(shareId))
+      const query = target === 'replay' ? '&replay=1' : target === 'comments' ? '&section=comments' : ''
+      await new Promise((resolve, reject) => wx.navigateTo({
+        url: '/pages/social-hand-detail/social-hand-detail?shareId=' + encodeURIComponent(shareId) + query,
+        success: resolve,
+        fail: reject
+      }))
+    } catch (error) {
+      if (wx.showToast) wx.showToast({ title: '暂时无法打开这手分享', icon: 'none' })
+    } finally {
+      this._openingHandShare = false
+      if (wx.hideNavigationBarLoading) wx.hideNavigationBarLoading()
+    }
   },
 
   openMessages() {

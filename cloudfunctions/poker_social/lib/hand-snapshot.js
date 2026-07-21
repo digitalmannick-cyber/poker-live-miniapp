@@ -5,6 +5,7 @@ const ACTIVE_SLOTS = Object.freeze({
   8: Object.freeze(['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'HJ', 'CO']),
   9: Object.freeze(['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'LJ', 'HJ', 'CO'])
 })
+const ALL_PERSISTED_SLOTS = new Set(ACTIVE_SLOTS[9])
 const ALIASES = Object.freeze(['夜鸦', '赤狐', '黑猫', '银狼', '幻蝶', '灰隼', '绿蛇', '白鲸'])
 const POSITIONS = new Set(['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'MP', 'LJ', 'HJ', 'CO'])
 const STREETS = Object.freeze({
@@ -154,20 +155,25 @@ function readSnapshotStack(snapshot, bigBlind) {
 
 function validateFullSeats(hand, bigBlind, playerCount, heroSeat, heroPosition) {
   const activeSlots = ACTIVE_SLOTS[playerCount]
-  if (!activeSlots || !Array.isArray(hand.playerSnapshots) || hand.playerSnapshots.length !== activeSlots.length) throw invalidSnapshot()
+  if (!activeSlots || !Array.isArray(hand.playerSnapshots) || hand.playerSnapshots.length < activeSlots.length || hand.playerSnapshots.length > ALL_PERSISTED_SLOTS.size) throw invalidSnapshot()
   const bySeat = new Map()
   const positions = new Set()
+  const persistedSlots = new Set()
   hand.playerSnapshots.forEach(snapshot => {
     if (!snapshot || typeof snapshot !== 'object') throw invalidSnapshot()
-    const seat = activeSlots.indexOf(normalizeSlot(snapshot.slot)) + 1
-    if (!seat || bySeat.has(seat)) throw invalidSnapshot()
+    const slot = normalizeSlot(snapshot.slot)
+    if (!ALL_PERSISTED_SLOTS.has(slot) || persistedSlots.has(slot)) throw invalidSnapshot()
+    persistedSlots.add(slot)
+    const seat = activeSlots.indexOf(slot) + 1
+    if (!seat) return
+    if (bySeat.has(seat)) throw invalidSnapshot()
     const position = normalizePosition(snapshot.position)
     if (activeSlots.indexOf(position) === -1 || positions.has(position)) throw invalidSnapshot()
     positions.add(position)
     const stackBb = readSnapshotStack(snapshot, bigBlind)
     bySeat.set(seat, { snapshot, position, stackBb })
   })
-  if (positions.size !== activeSlots.length || !bySeat.has(heroSeat) || bySeat.get(heroSeat).position !== heroPosition) throw invalidSnapshot()
+  if (bySeat.size !== activeSlots.length || positions.size !== activeSlots.length || !bySeat.has(heroSeat) || bySeat.get(heroSeat).position !== heroPosition) throw invalidSnapshot()
   return bySeat
 }
 
@@ -220,7 +226,7 @@ function buildHandSnapshot(input) {
   const bigBlind = resolveBigBlind(hand, session)
   if (hasOwn(hand, 'playerSnapshots') && hand.playerSnapshots != null && !Array.isArray(hand.playerSnapshots)) throw invalidSnapshot()
   const isFullLedger = Array.isArray(hand.playerSnapshots) && hand.playerSnapshots.length > 0
-  const playerCount = normalizePlayerCount(hand.playerCount, !isFullLedger)
+  const playerCount = normalizePlayerCount(hand.playerCount, true)
   const heroSeat = hand.heroSeat
   if (!Number.isInteger(heroSeat) || heroSeat < 1 || heroSeat > playerCount) throw invalidSnapshot()
   const heroPosition = normalizePosition(hand.heroPosition)

@@ -1,9 +1,14 @@
 const socialService = require('../services/social-service')
 
 const flights = Object.create(null)
+const PLACEHOLDER_NICKNAMES = new Set(['', '\u73a9\u5bb6', '\u5fae\u4fe1\u7528\u6237'])
 
 function accountKey(profile) {
   return String(profile && profile.playerId || '').trim().toUpperCase()
+}
+
+function isPlaceholderNickname(value) {
+  return PLACEHOLDER_NICKNAMES.has(String(value || '').trim())
 }
 
 function staleAccountError() {
@@ -111,10 +116,39 @@ async function executeSync(profile, options) {
     else throw error
   }
   assertCurrent(config)
-  const needsWrite = missing || force || hasPendingProfile(playerId, fingerprint) || String(remote && remote.nickname || '') !== nickname
+  const remoteNickname = String(remote && remote.nickname || '').trim()
+  // A cache reset recreates the neutral placeholder. It is not an explicit
+  // profile edit, so it must never overwrite an initialized cloud identity.
+  if (!missing && remote && isPlaceholderNickname(nickname) && !isPlaceholderNickname(remoteNickname)) {
+    clearPendingProfile(playerId)
+    return remote
+  }
+  const pending = hasPendingProfile(playerId, fingerprint)
+  const localAvatarSource = String(profile && (profile.avatarFileId || profile.avatarUrl) || '').trim()
+  const needsAvatarRetry = pending && !!localAvatarSource && !String(remote && remote.avatarUrl || '').trim() && remoteNickname === nickname
+  // Normal app startup is a read/restore operation. A nickname difference can
+  // come from an older core-profile backup or WeChat-only characters, and must
+  // not be treated as an explicit edit. Only a forced save may replace it.
+  if (!missing && remote && !force && !needsAvatarRetry) {
+    clearPendingProfile(playerId)
+    return remote
+  }
+  const needsWrite = missing || force || needsAvatarRetry
   if (!needsWrite) return remote
   markPendingProfile(playerId, fingerprint)
-  const avatarFileId = await uploadProfileAvatar(profile, playerId)
+  let avatarFileId = ''
+  let avatarPending = false
+  try {
+    avatarFileId = await uploadProfileAvatar(profile, playerId)
+  } catch (error) {
+    // An unavailable local avatar must not block first-time social identity
+    // creation. Keep the pending fingerprint so a later sync retries it.
+    if (!missing) {
+      assertCurrent(config)
+      return remote
+    }
+    avatarPending = true
+  }
   assertCurrent(config)
   const saved = await socialService.initializeSocialProfile({
     playerId,
@@ -127,7 +161,7 @@ async function executeSync(profile, options) {
       : 'friends'
   })
   assertCurrent(config)
-  clearPendingProfile(playerId)
+  if (!avatarPending) clearPendingProfile(playerId)
   return saved
 }
 

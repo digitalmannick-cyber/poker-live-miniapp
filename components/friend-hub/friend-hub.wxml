@@ -5,17 +5,17 @@
     <view class="friend-subnav-item {{activeSection === 'ranking' ? 'active' : ''}}" data-section="ranking" bindtap="selectSection">排行榜</view>
   </view>
 
-  <view wx:if="{{demoMode}}" class="friend-demo-banner">开发者工具演示数据 · 仅用于查看界面效果</view>
+  <view wx:if="{{activeSection === 'ranking' && rankingDemoMode}}" class="friend-demo-banner">开发者工具排行榜演示数据 · 仅用于查看界面效果</view>
 
-  <view wx:if="{{!demoMode && !socialUserId && profileStatus === 'loading'}}" class="friend-hub-state">正在同步社交资料…</view>
-  <view wx:elif="{{!demoMode && !socialUserId && profileStatus === 'error'}}" class="friend-hub-state friend-hub-error">
+  <view wx:if="{{!socialUserId && !(activeSection === 'ranking' && rankingDemoMode) && profileStatus === 'loading'}}" class="friend-hub-state">正在同步社交资料…</view>
+  <view wx:elif="{{!socialUserId && !(activeSection === 'ranking' && rankingDemoMode) && profileStatus === 'error'}}" class="friend-hub-state friend-hub-error">
     <text>社交资料同步失败，请检查网络后重试</text>
     <view class="friend-retry" bindtap="retrySocialProfile">重试</view>
   </view>
   <view wx:elif="{{activeSection === 'friends'}}">
     <view wx:if="{{friendsOffline}}" class="feed-offline-banner">离线只读 · 好友资料可能不是最新状态</view>
-    <view wx:if="{{status === 'loading'}}" class="friend-hub-state">正在同步好友资料…</view>
-    <view wx:elif="{{status === 'error'}}" class="friend-hub-state friend-hub-error">
+    <view wx:if="{{status === 'loading' && !friends.length}}" class="friend-hub-state">正在同步好友资料…</view>
+    <view wx:elif="{{status === 'error' && !friends.length}}" class="friend-hub-state friend-hub-error">
       <text>{{errorMessage}}</text>
       <view class="friend-retry" bindtap="loadFriends">重试</view>
     </view>
@@ -23,7 +23,7 @@
       <view wx:for="{{friends}}" wx:key="friendUserId" class="friend-card" style="{{item.rowStyle}}" data-id="{{item.friendUserId}}" bindtap="openFriend">
         <view class="friend-card-color" style="{{item.colorStyle}}"></view>
         <view class="friend-avatar">
-          <image wx:if="{{item.avatarUrl}}" class="friend-avatar-img" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+          <image wx:if="{{item.avatarDisplayUrl || item.avatarUrl}}" class="friend-avatar-img" src="{{item.avatarDisplayUrl || item.avatarUrl}}" mode="aspectFill"></image>
           <text wx:else>{{item.avatarText}}</text>
         </view>
         <view class="friend-main">
@@ -31,7 +31,7 @@
             <view class="friend-name">{{item.name}}</view>
             <view wx:if="{{item.title}}" class="friend-title">{{item.title}}</view>
           </view>
-          <view class="friend-type" style="{{item.typeStyle}}">玩家类型 · {{item.type}}</view>
+          <view class="friend-type" style="{{item.typeStyle}}">{{item.type}}</view>
           <view class="friend-private-line">Leak · <block wx:if="{{item.leakTags.length}}"><text wx:for="{{item.leakTags}}" wx:for-item="tag" wx:key="label">{{tag.label}} </text></block><text wx:else>暂无</text></view>
           <view class="friend-private-line">Note · {{item.notePreview}}</view>
           <view class="friend-bottom">
@@ -44,7 +44,8 @@
       </view>
       <view wx:if="{{nextOffset !== null && !friendsReadOnly}}" class="friend-load-more {{loadingMore ? 'is-loading' : ''}}" bindtap="loadMoreFriends">{{loadingMore ? '加载中…' : (loadMoreError || '加载更多') }}</view>
     </view>
-    <view wx:else class="friend-hub-state">还没有已确认的好友</view>
+    <view wx:elif="{{status === 'ready'}}" class="friend-hub-state">没有好友</view>
+    <view wx:else class="friend-hub-state">正在同步好友资料…</view>
   </view>
 
   <view wx:elif="{{activeSection === 'feed'}}" class="feed-panel">
@@ -59,7 +60,7 @@
         <view class="feed-card-head">
           <view class="feed-publisher" data-social-user-id="{{item.publisher.socialUserId}}" catchtap="openPublisher">
             <view class="feed-avatar">
-              <image wx:if="{{item.publisher.avatarUrl}}" class="feed-avatar-image" src="{{item.publisher.avatarUrl}}" mode="aspectFill"></image>
+              <image wx:if="{{item.publisher.avatarDisplayUrl || item.publisher.avatarUrl}}" class="feed-avatar-image" src="{{item.publisher.avatarDisplayUrl || item.publisher.avatarUrl}}" mode="aspectFill"></image>
               <text wx:else>{{item.publisher.avatarText}}</text>
             </view>
             <view class="feed-publisher-copy">
@@ -71,26 +72,46 @@
         </view>
 
         <view class="feed-hand-summary">
-          <view class="feed-hand-line">
-            <text class="feed-hand-label">手牌</text>
-            <text class="feed-hole-cards">{{item.heroCardsLabel}}</text>
+          <view class="feed-card-zone feed-hero-zone">
+            <view class="feed-zone-heading"><text class="feed-zone-kicker">HERO</text><text class="feed-zone-label">手牌</text></view>
+            <view class="feed-card-row feed-hero-cards">
+              <view wx:for="{{item.heroCardsVisual}}" wx:for-item="card" wx:key="token" class="feed-mini-card feed-mini-card-{{card.suitClass}}">
+                <text class="feed-mini-card-rank">{{card.rank}}</text><text class="feed-mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
+              <text wx:if="{{!item.heroCardsVisual.length}}" class="feed-card-empty">--</text>
+            </view>
           </view>
-          <view class="feed-board">{{item.boardLabel}}</view>
-          <view class="feed-metrics">
-            <view><text>底池</text><text class="feed-metric-value">{{item.potBbLabel}}</text></view>
-            <view><text>有效筹码</text><text class="feed-metric-value">{{item.stackBbLabel}}</text></view>
-            <view><text>行动</text><text class="feed-metric-value">{{item.summary.actionCount || 0}}</text></view>
+          <view class="feed-zone-divider"></view>
+          <view class="feed-card-zone feed-board-zone">
+            <view class="feed-zone-heading"><text class="feed-zone-kicker">BOARD</text><text class="feed-zone-label">公共牌</text></view>
+            <view class="feed-card-row feed-board-cards">
+              <view wx:for="{{item.boardCardsVisual}}" wx:for-item="card" wx:key="token" class="feed-mini-card feed-board-card feed-board-card-{{card.street}} feed-mini-card-{{card.suitClass}}">
+                <text class="feed-mini-card-rank">{{card.rank}}</text><text class="feed-mini-card-suit">{{card.suitSymbol}}</text>
+              </view>
+              <text wx:if="{{!item.boardCardsVisual.length}}" class="feed-card-empty">公共牌未记录</text>
+            </view>
+          </view>
+          <view class="feed-summary-bottom">
+            <view class="feed-pot">
+              <text class="feed-pot-value">{{item.potBbLabel}}</text>
+              <text class="feed-pot-label">底池</text>
+            </view>
+            <view class="feed-replay" data-share-id="{{item.shareId}}" catchtap="openReplay" aria-label="查看手牌回放">
+              <image class="feed-replay-icon" src="/assets/social-icons/play.svg" mode="aspectFit"></image>
+              <text>回放</text>
+            </view>
           </view>
         </view>
 
-        <view class="feed-card-actions">
-          <view class="feed-action" data-share-id="{{item.shareId}}" catchtap="openHand" aria-label="点赞 {{item.likeCount}}">
-            <text class="feed-action-icon feed-like-icon">{{item.likedByMe ? '♥' : '♡'}}</text>
-            <text class="feed-action-count">{{item.likeCount}}</text>
+        <view class="feed-card-footer">
+          <view class="feed-action feed-comment-action" data-share-id="{{item.shareId}}" data-target="comments" catchtap="openHand" aria-label="评论 {{item.commentCount}}">
+            <image class="feed-action-icon feed-comment-icon" src="/assets/social-icons/message-circle.svg" mode="aspectFit"></image>
+            <text class="feed-action-copy">{{item.commentCount}} 条评论</text>
           </view>
-          <view class="feed-action" data-share-id="{{item.shareId}}" catchtap="openHand" aria-label="评论 {{item.commentCount}}">
-            <image class="feed-action-icon feed-comment-icon" src="/assets/review-icons/comment-bubble-v263.png" mode="aspectFit"></image>
-            <text class="feed-action-count">{{item.commentCount}}</text>
+          <view class="feed-action feed-like-action {{item.likedByMe ? 'is-liked' : ''}}" data-share-id="{{item.shareId}}" catchtap="openHand" aria-label="点赞 {{item.likeCount}}">
+            <image wx:if="{{item.likedByMe}}" class="feed-action-icon" src="/assets/social-icons/heart-filled.svg" mode="aspectFit"></image>
+            <image wx:else class="feed-action-icon" src="/assets/social-icons/heart-outline.svg" mode="aspectFit"></image>
+            <text class="feed-action-count">{{item.likeCount}}</text>
           </view>
         </view>
       </view>
@@ -120,14 +141,14 @@
         <view wx:for="{{rankingPodium}}" wx:key="socialUserId" class="podium-card podium-{{item.podiumTone}} rank-slot-{{index + 1}}">
           <view class="podium-medal">{{item.rank}}</view>
           <view class="podium-avatar-wrap">
-            <image wx:if="{{item.avatarUrl}}" class="podium-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+            <image wx:if="{{item.avatarDisplayUrl || item.avatarUrl}}" class="podium-avatar" src="{{item.avatarDisplayUrl || item.avatarUrl}}" mode="aspectFill"></image>
             <view wx:else class="podium-avatar podium-avatar-text">{{item.avatarText}}</view>
           </view>
           <view class="podium-name">{{item.nickname}}</view>
           <view class="podium-title">{{item.title}}</view>
           <view class="podium-duration">{{item.durationLabel}}</view>
           <view class="podium-hands">{{item.handCountLabel}}</view>
-          <view class="podium-plinth"><text>{{item.rankText}}</text></view>
+          <view class="podium-plinth podium-plinth-{{item.podiumTone}}"><text>{{item.rankText}}</text></view>
         </view>
       </view>
 
@@ -136,7 +157,7 @@
           <view class="ranking-row-accent"></view>
           <view class="ranking-number">{{item.rankText}}</view>
           <view class="ranking-avatar-wrap">
-            <image wx:if="{{item.avatarUrl}}" class="ranking-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+            <image wx:if="{{item.avatarDisplayUrl || item.avatarUrl}}" class="ranking-avatar" src="{{item.avatarDisplayUrl || item.avatarUrl}}" mode="aspectFill"></image>
             <view wx:else class="ranking-avatar ranking-avatar-text">{{item.avatarText}}</view>
           </view>
           <view class="ranking-copy">
@@ -149,16 +170,16 @@
 
       <view wx:if="{{rankingMyRank}}" class="ranking-my-card">
         <view class="ranking-my-label">我的排名</view>
-        <view class="ranking-number">{{rankingMyRank.rankText}}</view>
+        <view class="ranking-my-rank">{{rankingMyRank.rankText}}</view>
         <view class="ranking-avatar-wrap">
-          <image wx:if="{{rankingMyRank.avatarUrl}}" class="ranking-avatar" src="{{rankingMyRank.avatarUrl}}" mode="aspectFill"></image>
+          <image wx:if="{{rankingMyRank.avatarDisplayUrl || rankingMyRank.avatarUrl}}" class="ranking-avatar" src="{{rankingMyRank.avatarDisplayUrl || rankingMyRank.avatarUrl}}" mode="aspectFill"></image>
           <view wx:else class="ranking-avatar ranking-avatar-text">{{rankingMyRank.avatarText}}</view>
         </view>
-        <view class="ranking-copy">
+        <view class="ranking-copy ranking-my-profile">
           <view class="ranking-name">{{rankingMyRank.nickname}}</view>
           <view class="ranking-title">{{rankingMyRank.title}} · {{rankingMyRank.handCountLabel}}</view>
         </view>
-        <view class="ranking-duration">{{rankingMyRank.durationLabel}}</view>
+        <view class="ranking-duration ranking-my-duration">{{rankingMyRank.durationLabel}}</view>
       </view>
     </view>
     <view wx:else class="friend-hub-state ranking-state">这个范围还没有可参与排名的好友统计</view>

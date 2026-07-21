@@ -15,6 +15,16 @@ assert.match(js, /openDetailExport\(\)/)
 assert.match(js, /copyDetailExportText\(\)/)
 assert.match(wxss, /\.review-export-sheet/)
 
+assert.match(wxml, /bindtap="openDetailSocialHandPublish"/)
+assert.match(wxml, />发布<\/view>/)
+assert.match(js, /openDetailSocialHandPublish\(\)/)
+assert.match(js, /\/pages\/social-hand-publish\/social-hand-publish\?handId=/)
+assert.match(js, /encodeURIComponent\(handId\)/)
+assert.doesNotMatch(
+  js.match(/openDetailSocialHandPublish\(\)\s*\{[\s\S]*?\n  \},/)[0],
+  /[?&](snapshot|session|actions|playerId|ownerOpenId|privatePlayerId|bigBlind|amount)=/i
+)
+
 function readZIndex(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = wxss.match(new RegExp(escaped + '\\s*\\{[\\s\\S]*?z-index:\\s*(\\d+)'))

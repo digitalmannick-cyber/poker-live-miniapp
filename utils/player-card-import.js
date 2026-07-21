@@ -1,3 +1,5 @@
+const { safeHttpsUrl } = require('./https-url')
+
 function normalizePlayerName(value) {
   const source = String(value || '')
   const compatible = typeof source.normalize === 'function' ? source.normalize('NFKC') : source
@@ -46,13 +48,10 @@ function avatarError(code, message, cause) {
 }
 
 function requireHttpsUrl(value) {
-  try {
-    const parsed = new URL(String(value || ''))
-    if (parsed.protocol !== 'https:') throw new Error('HTTPS required')
-    return parsed.toString()
-  } catch (error) {
-    throw avatarError('INVALID_CARD_AVATAR', 'player card avatar must be HTTPS', error)
-  }
+  const source = String(value || '')
+  const safe = safeHttpsUrl(source)
+  if (safe !== null && safe !== '') return safe
+  throw avatarError('INVALID_CARD_AVATAR', 'player card avatar must be HTTPS')
 }
 
 function safeCloudSegment(value) {

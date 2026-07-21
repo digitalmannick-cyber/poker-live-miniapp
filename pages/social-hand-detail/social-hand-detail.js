@@ -1,5 +1,9 @@
 const socialService = require('../../services/social-service')
 const socialMutation = require('../../utils/social-mutation')
+const handReplay = require('../../utils/hand-replay')
+const cardUi = require('../../utils/card-ui')
+const { safeHttpsUrl } = require('../../utils/https-url')
+const socialHandPrefetch = require('../../utils/social-hand-prefetch')
 const { POKER_STICKER_IDS, POKER_STICKERS, POKER_STICKER_BY_ID } = require('../../utils/poker-stickers')
 
 const SCOPES = ['square', 'friends', 'selected']
@@ -45,13 +49,28 @@ function protocolText(value) {
 function protocolAvatarUrl(value) {
   const source = protocolText(value)
   if (!source) return ''
-  try {
-    const parsed = new URL(source)
-    if (parsed.protocol !== 'https:' || !parsed.hostname) throw contractError()
-    return parsed.toString()
-  } catch (error) {
-    if (error && error.code === 'SOCIAL_CONTRACT_ERROR') throw error
-    throw contractError()
+  const safe = safeHttpsUrl(source)
+  if (safe === null) throw contractError()
+  return safe
+}
+
+function decorateCards(value, limit, street) {
+  return cardUi.parseCardsInput((Array.isArray(value) ? value : []).join(''), limit).map(card => Object.assign({}, card, {
+    token: card.rank + card.suit,
+    street: street || ''
+  }))
+}
+
+function buildDetailVisuals(value) {
+  const detail = value || {}
+  const snapshot = detail.handSnapshot || {}
+  const board = snapshot.board || {}
+  return {
+    heroCardsVisual: decorateCards(snapshot.hero && snapshot.hero.cards, 2, 'hero'),
+    boardCardsVisual: []
+      .concat(decorateCards(board.flop, 3, 'flop'))
+      .concat(decorateCards(board.turn, 1, 'turn'))
+      .concat(decorateCards(board.river, 1, 'river'))
   }
 }
 
@@ -301,6 +320,10 @@ Page({
   data: {
     shareId: '',
     detail: null,
+    heroCardsVisual: [],
+    boardCardsVisual: [],
+    replayData: null,
+    replayVisible: false,
     status: 'loading',
     errorMessage: '',
     mySocialUserId: '',
@@ -335,8 +358,10 @@ Page({
     this._likeFlight = null
     this._commentWriteFlight = null
     const shareId = safeDecode(options && options.shareId)
+    this._openReplayAfterLoad = text(options && (options.replay || options.autoplay)) === '1'
+    this._openCommentsAfterLoad = text(options && options.section) === 'comments'
     this.invalidateDetail()
-    this.setData({ shareId, detail: null, status: 'loading', errorMessage: '' })
+    this.setData({ shareId, detail: null, heroCardsVisual: [], boardCardsVisual: [], replayData: null, replayVisible: false, status: 'loading', errorMessage: '' })
     return this.loadDetail()
   },
 
@@ -356,14 +381,14 @@ Page({
 
   onHide() {
     this._detailVisible = false
-    this.setData({ manageVisible: false, manageSubmitting: false })
+    this.setData({ manageVisible: false, manageSubmitting: false, replayVisible: false })
     this.invalidateDetail()
   },
 
   onUnload() {
     this._detailAttached = false
     this._detailVisible = false
-    this.setData({ manageVisible: false, manageSubmitting: false })
+    this.setData({ manageVisible: false, manageSubmitting: false, replayVisible: false })
     this.invalidateDetail()
   },
 
@@ -390,6 +415,8 @@ Page({
     }
     this.setData({
       detail: null,
+      heroCardsVisual: [],
+      boardCardsVisual: [],
       status: 'loading',
       errorMessage: '',
       mySocialUserId: '',
@@ -403,14 +430,33 @@ Page({
     })
     const flight = (async () => {
       try {
-        const detail = copyDetail(await socialService.getHandShare(shareId))
+        const prefetched = socialHandPrefetch.consume(shareId)
+        const detail = copyDetail(prefetched || await socialService.getHandShare(shareId))
         if (!this.isCurrentDetail(generation, shareId)) return
-        this.setData({ detail, status: 'ready', errorMessage: '' })
+        const replayData = handReplay.buildSocialReplayView(detail.handSnapshot, 'share-' + shareId)
+        const detailVisuals = buildDetailVisuals(detail)
+        this.setData({
+          detail,
+          heroCardsVisual: detailVisuals.heroCardsVisual,
+          boardCardsVisual: detailVisuals.boardCardsVisual,
+          replayData,
+          replayVisible: !!(this._openReplayAfterLoad && replayData.available),
+          status: 'ready',
+          errorMessage: ''
+        })
         await this.loadInitialInteractions(generation, shareId)
+        if (this._openCommentsAfterLoad && typeof wx !== 'undefined' && wx.pageScrollTo) {
+          const scrollToComments = () => wx.pageScrollTo({ selector: '.comments-card', duration: 0 })
+          if (wx.nextTick) wx.nextTick(scrollToComments)
+          else scrollToComments()
+          this._openCommentsAfterLoad = false
+        }
       } catch (error) {
         if (!this.isCurrentDetail(generation, shareId)) return
         this.setData({
           detail: null,
+          heroCardsVisual: [],
+          boardCardsVisual: [],
           status: unavailableError(error) ? 'unavailable' : 'error',
           comments: [],
           commentsStatus: unavailableError(error) ? 'unavailable' : 'error',
@@ -519,6 +565,15 @@ Page({
   },
 
   stopModalTap() {},
+
+  openReplay() {
+    if (!this.data.replayData || !this.data.replayData.available) return
+    this.setData({ replayVisible: true })
+  },
+
+  closeReplay() {
+    this.setData({ replayVisible: false })
+  },
 
   changeManageScope(event) {
     if (this.data.manageSubmitting) return Promise.resolve()

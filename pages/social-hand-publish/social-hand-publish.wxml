@@ -33,6 +33,10 @@
         <view class="bb-stamp">BB</view>
       </view>
 
+      <view class="publish-replay-shell">
+        <hand-replay-player replay="{{replayData}}" closable="{{false}}" auto-play="{{false}}" compact="{{true}}" />
+      </view>
+
       <view class="hero-line">
         <view>
           <view class="hero-label">{{snapshot.hero.label || 'Hero'}} · {{snapshot.hero.position}}</view>

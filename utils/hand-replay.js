@@ -265,7 +265,100 @@ function buildReplayView(hand) {
   }
 }
 
+function socialCardInput(cards) {
+  return (Array.isArray(cards) ? cards : []).join('')
+}
+
+function socialStackText(value) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount) || amount < 0) return ''
+  return String(Math.round(amount * 10) / 10) + ' BB'
+}
+
+function buildSocialPlayers(snapshot) {
+  const source = snapshot || {}
+  const hero = source.hero || {}
+  const combined = [hero].concat(Array.isArray(source.players) ? source.players : [])
+  const seen = {}
+  return combined.reduce(function (players, player) {
+    const position = normalizePosition(player && player.position)
+    if (!position || PLAYER_POSITIONS_8_MAX.indexOf(position) < 0 || seen[position]) return players
+    seen[position] = true
+    const isHero = String(player && player.label || '') === 'Hero' || position === normalizePosition(hero.position)
+    players.push({
+      id: 'social-' + position.toLowerCase().replace(/\W+/g, '-'),
+      position,
+      name: isHero ? 'Hero' : String(player && player.label || position),
+      stackText: socialStackText(player && player.stackBb),
+      isHero,
+      isVillain: !isHero,
+      isDealer: position === 'BTN',
+      hasAvatar: false,
+      seatClass: 'seat-' + position.toLowerCase().replace(/\+/, 'plus').replace(/\W+/g, '-')
+    })
+    return players
+  }, [])
+}
+
+function socialBoardForStreet(board, street) {
+  const source = board || {}
+  const flop = socialCardInput(source.flop)
+  const turn = socialCardInput(source.turn)
+  const river = socialCardInput(source.river)
+  if (street === 'flop') return cardUi.parseCardsInput(flop, 3)
+  if (street === 'turn') return cardUi.parseCardsInput(flop + turn, 4)
+  if (street === 'river') return cardUi.parseCardsInput(flop + turn + river, 5)
+  return []
+}
+
+function buildSocialReplayView(snapshot, handId) {
+  const source = snapshot || {}
+  const hero = source.hero || {}
+  const players = buildSocialPlayers(source)
+  const positionsByActor = {}
+  players.forEach(function (player) { positionsByActor[player.name] = player.position })
+  positionsByActor.Hero = normalizePosition(hero.position)
+  const actions = Array.isArray(source.actions) ? source.actions : []
+  const steps = actions.map(function (action, index) {
+    const street = String(action && action.street || 'preflop').toLowerCase()
+    const actor = String(action && action.actor || '')
+    const actionType = classifyAction(action && action.type)
+    const actionLabel = ACTION_LABELS[actionType] || String(action && action.type || 'ACTION').toUpperCase()
+    const amount = Number(action && action.amountBb)
+    const amountText = Number.isFinite(amount) && amount >= 0 ? String(Math.round(amount * 10) / 10) + ' BB' : ''
+    const actionChipText = amountText ? actionLabel + ' ' + amountText : actionLabel
+    return {
+      key: 'social-' + index,
+      street,
+      streetLabel: STREET_LABELS[street] || street.toUpperCase(),
+      actionText: [actor, actionLabel, amountText].filter(Boolean).join(' '),
+      fullActionText: '',
+      actorPosition: positionsByActor[actor] || '',
+      actionType,
+      actionLabel,
+      actionAmount: amountText,
+      actionChipText,
+      displayActionText: [actor, actionLabel, amountText].filter(Boolean).join(' '),
+      betText: amountText,
+      potText: index === actions.length - 1 ? socialStackText(source.potBb) : '',
+      boardCards: socialBoardForStreet(source.board, street),
+      progressText: (index + 1) + ' / ' + actions.length
+    }
+  })
+  return {
+    handId: String(handId || ''),
+    title: '匿名 · BB',
+    heroCards: cardUi.parseCardsInput(socialCardInput(hero.cards), 2),
+    players,
+    steps,
+    stepCount: steps.length,
+    available: cardUi.parseCardsInput(socialCardInput(hero.cards), 2).length === 2 && steps.length > 0,
+    privacyMode: true
+  }
+}
+
 module.exports = {
   buildReplayView,
+  buildSocialReplayView,
   canReplayHand
 }

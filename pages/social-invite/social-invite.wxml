@@ -17,15 +17,40 @@
     <view class="invite-action invite-action-secondary" bindtap="retry">重试</view>
   </view>
 
-  <view wx:elif="{{mode === 'mine'}}" class="invite-card">
+  <block wx:elif="{{mode === 'mine'}}">
+  <view class="invite-card">
     <view class="invite-card-kicker">MY INVITE</view>
     <view class="invite-card-title">把好友带进你的牌局记录</view>
-    <view class="invite-card-text">从微信分享卡片或个人二维码进入后，对方需要主动发送申请；不会自动成为好友。</view>
+    <view class="invite-card-text">从微信分享卡片或个人小程序码进入后，对方需要主动发送申请；不会自动成为好友。</view>
     <image wx:if="{{qrCodeUrl}}" class="invite-qr" src="{{qrCodeUrl}}" mode="aspectFit"></image>
     <view wx:else class="invite-qr invite-qr-empty">QR</view>
-    <view class="invite-qr-caption">{{qrUnavailable ? '二维码暂不可用，仍可用微信卡片分享' : '个人邀请二维码'}}</view>
+    <view class="invite-qr-caption">{{qrUnavailable ? '小程序码暂不可用，仍可用微信卡片分享' : '个人邀请小程序码'}}</view>
     <button class="invite-action invite-action-primary" open-type="share">发送微信邀请</button>
   </view>
+
+  <view class="invite-card invite-search-card">
+    <view class="invite-card-kicker">FIND PLAYERS</view>
+    <view class="invite-card-title">搜索小程序好友</view>
+    <view class="invite-card-text">输入至少 2 个字，按对方在小程序中的昵称查找。</view>
+    <view class="invite-search-row">
+      <input class="invite-search-input" value="{{searchQuery}}" placeholder="输入小程序昵称" maxlength="24" bindinput="onSearchInput" bindconfirm="searchUsers" confirm-type="search" />
+      <view class="invite-search-button {{searchStatus === 'loading' ? 'is-disabled' : ''}}" bindtap="searchUsers">{{searchStatus === 'loading' ? '搜索中' : '搜索'}}</view>
+    </view>
+    <view wx:if="{{searchError}}" class="invite-search-error">{{searchError}}</view>
+    <view wx:if="{{searchStatus === 'ready' && !searchResults.length}}" class="invite-search-empty">没有找到匹配的玩家</view>
+    <view wx:if="{{searchResults.length}}" class="invite-search-results">
+      <view wx:for="{{searchResults}}" wx:key="socialUserId" class="invite-search-result">
+        <image wx:if="{{item.avatarUrl}}" class="invite-search-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="invite-search-avatar invite-search-avatar-text">{{item.avatarText || '牌'}}</view>
+        <view class="invite-search-copy">
+          <view class="invite-search-name">{{item.nickname}}</view>
+          <view class="invite-search-title">{{item.title || '小程序玩家'}}</view>
+        </view>
+        <view class="invite-search-add {{item.canRequest ? '' : 'is-disabled'}}" data-id="{{item.socialUserId}}" bindtap="addSearchedUser">{{item.requesting ? '发送中' : item.actionLabel}}</view>
+      </view>
+    </view>
+  </view>
+  </block>
 
   <view wx:else class="invite-card">
     <view class="invite-card-kicker">FRIEND REQUEST</view>

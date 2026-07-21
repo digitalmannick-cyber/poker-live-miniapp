@@ -150,6 +150,22 @@ test('detail page consumes only decoded shareId and trusts only the server DTO',
   } finally { loaded.restore() }
 })
 
+test('detail accepts signed HTTPS avatars when the WeChat runtime has no browser URL constructor', async () => {
+  const dto = expectedDetail('share-wechat-url', 'square', false)
+  const loaded = loadDetailPage({ responses: [dto] })
+  const originalUrl = global.URL
+  try {
+    global.URL = undefined
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'share-wechat-url' })
+    assert.equal(page.data.status, 'ready')
+    assert.equal(page.data.detail.publisher.avatarUrl, dto.publisher.avatarUrl)
+  } finally {
+    global.URL = originalUrl
+    loaded.restore()
+  }
+})
+
 test('detail page rejects every polluted HandSnapshotV1 numeric leaf without retaining canaries', async t => {
   const commonInvalid = [
     { ownerOpenId: 'CANARY_NUMERIC_LEAF' },

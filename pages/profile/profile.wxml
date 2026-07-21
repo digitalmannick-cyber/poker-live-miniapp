@@ -325,7 +325,7 @@
   </view>
 
   <view wx:if="{{wechatProfileDialogVisible}}" class="wechat-profile-mask">
-    <view class="wechat-profile-dialog">
+    <form class="wechat-profile-dialog" bindsubmit="saveWechatProfileFromOfficialControls">
       <view class="wechat-profile-title">同步微信资料</view>
       <view class="wechat-profile-desc">微信限制不能静默读取头像昵称，请在下方授权卡片里确认后保存。</view>
       <view class="wechat-sync-panel">
@@ -338,21 +338,25 @@
           <view class="wechat-sync-field">
             <view class="wechat-sync-label">微信昵称</view>
             <input
+              id="wechat-nickname-input"
               class="wechat-sync-nickname-input"
               type="nickname"
+              name="nickname"
               value="{{wechatDraftNickname}}"
               placeholder="填写微信昵称"
               placeholder-class="profile-editor-placeholder"
               bindinput="onWechatNicknameInput"
+              bindblur="onWechatNicknameBlur"
+              bindnicknamereview="onWechatNicknameReview"
             />
           </view>
         </view>
       </view>
       <view class="wechat-profile-actions">
         <view class="wechat-profile-action wechat-profile-action-secondary" bindtap="closeWechatProfilePrompt">暂不</view>
-        <view class="wechat-profile-action wechat-profile-action-primary" bindtap="saveWechatProfileFromOfficialControls">保存资料</view>
+        <button class="wechat-profile-action wechat-profile-action-primary" form-type="submit">保存资料</button>
       </view>
-    </view>
+    </form>
   </view>
 
   <view wx:if="{{aiReminderEditorVisible}}" class="settings-editor-mask ai-reminder-mask" bindtap="closeAiReminderEditor">

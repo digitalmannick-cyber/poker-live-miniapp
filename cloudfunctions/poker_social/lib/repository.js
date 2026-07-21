@@ -519,6 +519,18 @@ function createCloudSocialRepository(database) {
   }
   return Object.assign(store, {
     runTransaction,
+    async searchSocialUsers(keyword, limit) {
+      const value = String(keyword || '').trim()
+      const pageSize = Math.min(20, Math.max(1, Number(limit) || 20))
+      if (!value || typeof database.RegExp !== 'function') throw new Error('social user search unavailable')
+      const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const matcher = database.RegExp({ regexp: escaped, options: 'i' })
+      const response = await database.collection(SOCIAL_COLLECTIONS.SOCIAL_USERS)
+        .where({ 'profile.nickname': matcher })
+        .limit(pageSize)
+        .get()
+      return Array.isArray(response && response.data) ? response.data : []
+    },
     async replaceSocialStatsIfActive(socialUserId, buckets, patch) {
       const existingRows = await store.listDailyStats([socialUserId])
       return runTransaction(async transaction => {

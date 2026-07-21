@@ -1,7 +1,7 @@
 const SOCIAL_FUNCTION_NAME = 'poker_social'
 
 async function callSocialFunction(action, payload) {
-  if (!global.wx || !wx.cloud || typeof wx.cloud.callFunction !== 'function') {
+  if (typeof wx === 'undefined' || !wx.cloud || typeof wx.cloud.callFunction !== 'function') {
     const error = new Error('social function unavailable')
     error.code = 'NETWORK_ERROR'
     throw error

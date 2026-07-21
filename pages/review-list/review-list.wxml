@@ -282,6 +282,7 @@
               <view class="review-position-line">{{detailHand.heroPosition || '-'}}</view>
               <view class="review-copy-hand-id-btn" bindtap="copyDetailHandId">复制ID</view>
               <view class="review-copy-hand-id-btn export" bindtap="openDetailExport">导出</view>
+              <view class="review-copy-hand-id-btn publish" bindtap="openDetailSocialHandPublish">发布</view>
             </view>
             <view class="small muted">
               {{detailHand.playedDate || '-'}} · {{detailHand.stakeLevel || '-'}}

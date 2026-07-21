@@ -257,18 +257,18 @@ test('client schedule throttles per player only after success and shares one in-
     assert.strictEqual(first, second)
     resolveCall({ ok: true })
     assert.deepEqual(await first, { ok: true })
-    assert.equal(typeof storage['pokerSocialStatsSyncedAt_PLAYER-1'], 'number')
+    assert.equal(typeof storage['pokerSocialStatsSyncedAtV3_PLAYER-1'], 'number')
     assert.notEqual(socialService.__test.socialStatsStorageKey('A-B'), socialService.__test.socialStatsStorageKey('A_B'))
 
     assert.deepEqual(await socialService.scheduleMyStatsSync('PLAYER-1'), { skipped: true })
     fail = true
     await assert.rejects(() => socialService.scheduleMyStatsSync('PLAYER-2'), /network/)
-    assert.equal(storage['pokerSocialStatsSyncedAt_PLAYER-2'], undefined)
+    assert.equal(storage['pokerSocialStatsSyncedAtV3_PLAYER-2'], undefined)
     fail = false
     const retry = socialService.scheduleMyStatsSync('PLAYER-2')
     resolveCall({ retried: true })
     assert.deepEqual(await retry, { retried: true })
-    assert.equal(typeof storage['pokerSocialStatsSyncedAt_PLAYER-2'], 'number')
+    assert.equal(typeof storage['pokerSocialStatsSyncedAtV3_PLAYER-2'], 'number')
   } finally {
     api.callSocialFunction = original
     delete require.cache[servicePath]

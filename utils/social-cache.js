@@ -1,10 +1,12 @@
 const FEED_CACHE_PREFIX = 'socialFeedFirstPage:'
 const FEED_CACHE_TTL_MS = 300000
+const SOCIAL_CACHE_DISPLAY_MAX_AGE_MS = 86400000
 const SOCIAL_CACHE_SCHEMA_VERSION = 1
 const FRIENDS_CACHE_PREFIX = 'socialFriendsFirstPage:'
 const RANKING_CACHE_PREFIX = 'socialRankingFirstPage:'
 const NOTIFICATIONS_CACHE_PREFIX = 'socialNotificationsFirstPage:'
 const ACCOUNT_IDENTITY_PREFIX = 'socialCacheAccountIdentity:'
+const { safeHttpsUrl } = require('./https-url')
 const RANKING_RANGES = Object.freeze(['week', 'month', 'all'])
 const PRIVATE_CACHE_KEY_TOKENS = new Set([
   'openid', 'owneropenid', 'ownerhash', 'playerid', 'privateplayerid',
@@ -94,6 +96,9 @@ function readScopedFirstPage(input, now) {
   const source = input || {}
   const accountId = safeString(source.accountKey)
   const schemaVersion = source.schemaVersion
+  const maxAgeMs = Number.isSafeInteger(source.maxAgeMs) && source.maxAgeMs >= FEED_CACHE_TTL_MS
+    ? source.maxAgeMs
+    : FEED_CACHE_TTL_MS
   const key = getScopedCacheKey(source.namespace, accountId)
   const currentTime = now === undefined ? Date.now() : now
   if (!key || !Number.isSafeInteger(schemaVersion) || schemaVersion <= 0 ||
@@ -108,7 +113,7 @@ function readScopedFirstPage(input, now) {
   if (!exactKeys(cached, ['accountId', 'schemaVersion', 'savedAt', 'data'])) return null
   if (cached.accountId !== accountId || cached.schemaVersion !== schemaVersion ||
     !Number.isSafeInteger(cached.savedAt) || cached.savedAt <= 0 || cached.savedAt > currentTime ||
-    currentTime - cached.savedAt > FEED_CACHE_TTL_MS) return null
+    currentTime - cached.savedAt > maxAgeMs) return null
   return cloneCacheData(cached.data)
 }
 
@@ -194,11 +199,7 @@ function clearAccountCaches(input) {
 function safeAvatarUrl(value) {
   const avatarUrl = safeString(value)
   if (avatarUrl === null || avatarUrl === '') return avatarUrl
-  try {
-    return new URL(avatarUrl).protocol === 'https:' ? avatarUrl : null
-  } catch (error) {
-    return null
-  }
+  return safeHttpsUrl(avatarUrl)
 }
 
 function safeCount(value) {
@@ -308,9 +309,10 @@ function writeFeedFirstPage(socialUserId, response, now) {
   }
 }
 
-function readFeedFirstPage(socialUserId, now) {
+function readFeedFirstPage(socialUserId, now, maxAge) {
   const key = getFeedCacheKey(socialUserId)
   const currentTime = now === undefined ? Date.now() : now
+  const maxAgeMs = Number.isSafeInteger(maxAge) && maxAge >= FEED_CACHE_TTL_MS ? maxAge : FEED_CACHE_TTL_MS
   if (!key || !Number.isSafeInteger(currentTime) || currentTime <= 0) return null
   let cached
   try {
@@ -322,7 +324,7 @@ function readFeedFirstPage(socialUserId, now) {
   if (containsPrivateCacheData(cached)) return null
   if (!exactKeys(cached, ['socialUserId', 'items', 'nextCursor', 'savedAt'])) return null
   if (cached.socialUserId !== socialUserId || typeof cached.nextCursor !== 'string') return null
-  if (!Number.isSafeInteger(cached.savedAt) || cached.savedAt <= 0 || cached.savedAt > currentTime || currentTime - cached.savedAt > FEED_CACHE_TTL_MS) return null
+  if (!Number.isSafeInteger(cached.savedAt) || cached.savedAt <= 0 || cached.savedAt > currentTime || currentTime - cached.savedAt > maxAgeMs) return null
   const items = copyItems(cached.items, true)
   if (!items) return null
   return { socialUserId, items, nextCursor: cached.nextCursor, savedAt: cached.savedAt }
@@ -363,11 +365,13 @@ function clearAllFeedCaches() {
 
 module.exports = {
   FEED_CACHE_TTL_MS,
+  SOCIAL_CACHE_DISPLAY_MAX_AGE_MS,
   SOCIAL_CACHE_SCHEMA_VERSION,
   SOCIAL_CACHE_KEY_BUILDERS,
   getScopedCacheKey,
   getAccountIdentityKey,
   registerAccountIdentity,
+  readAccountIdentity,
   readScopedFirstPage,
   writeScopedFirstPage,
   clearAccountCaches,

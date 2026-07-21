@@ -9,18 +9,26 @@ const pageWxml = fs.readFileSync(path.join(root, 'pages', 'player-notes', 'playe
 
 test('player tab keeps the library list and exposes the friends / library hierarchy', () => {
   const friendHubWxml = fs.readFileSync(path.join(root, 'components', 'friend-hub', 'friend-hub.wxml'), 'utf8')
+  const friendHubJs = fs.readFileSync(path.join(root, 'components', 'friend-hub', 'friend-hub.js'), 'utf8')
+  const pageJs = fs.readFileSync(path.join(root, 'pages', 'player-notes', 'player-notes.js'), 'utf8')
   assert.match(pageWxml, /好友[\s\S]*玩家库/)
   assert.match(pageWxml, /player-notes-title">玩家<\//)
   assert.match(pageWxml, /player-list/)
   assert.match(friendHubWxml, /动态[\s\S]*好友[\s\S]*排行榜/)
   assert.match(friendHubWxml, /累计时长/)
   assert.match(friendHubWxml, /手牌数/)
-  assert.match(friendHubWxml, /玩家类型/)
+  assert.doesNotMatch(friendHubWxml, /玩家类型 ·/)
   assert.match(friendHubWxml, /Leak/)
   assert.match(friendHubWxml, /Note/)
   assert.match(pageWxml, /profile-status="\{\{socialProfileStatus\}\}"/)
   assert.match(pageWxml, /bindretrysocialprofile="retrySocialProfile"/)
   assert.match(friendHubWxml, /社交资料同步失败，请检查网络后重试/)
+  assert.match(friendHubWxml, />没有好友<\/view>/)
+  assert.doesNotMatch(friendHubWxml, /还没有已确认的好友/)
+  assert.match(friendHubJs, /value === 'friends'[\s\S]{0,100}loadFriends\(\)/, 'returning to the friend subsection must trigger its own loader')
+  assert.match(friendHubJs, /activeSection === 'friends'\) this\.loadFriends\(\)/, 'a recreated friend component must self-load after returning from the library')
+  assert.match(friendHubJs, /Promise\.all\(remoteFriends\.map/, 'local friend notes should hydrate in parallel')
+  assert.doesNotMatch(pageJs, /ensureFriendsLoaded\(force\)\s*\{\s*if \(this\.data\.friendsLoaded/, 'page-level state must not suppress a recreated component load')
 })
 
 test('player page exposes a retryable first-social-profile failure and recovers in place', async () => {
@@ -76,6 +84,12 @@ test('player page exposes a retryable first-social-profile failure and recovers 
   assert.equal(instance.data.socialProfileStatus, 'ready')
   assert.equal(instance.data.socialUserId, 'su-recovered')
   assert.equal(syncCalls, 2)
+})
+
+test('recovering the social profile from the friends branch immediately reloads the friend list', async () => {
+  const source = fs.readFileSync(path.join(root, 'pages', 'player-notes', 'player-notes.js'), 'utf8')
+  assert.match(source, /retrySocialProfile[\s\S]{0,500}ensureFriendsLoaded\(true\)/)
+  assert.match(source, /friendSection === 'friends'[\s\S]{0,160}ensureFriendsLoaded\(this\.data\.friendsLoaded\)/)
 })
 
 test('friend hub merges an accepted friend snapshot with only the viewer local player note', async () => {
@@ -152,6 +166,8 @@ test('friend hub merges an accepted friend snapshot with only the viewer local p
     friendshipId: '',
     name: '桌上银狼',
     avatarUrl: 'wxfile://local-wolf.png',
+    avatarCacheKey: 'social-avatar:su_friend',
+    avatarDisplayUrl: 'wxfile://local-wolf.png',
     avatarText: '银',
     type: '常客',
     typeColor: '#ffd447',

@@ -3,5 +3,8 @@
   "navigationBarBackgroundColor": "#0b0b0f",
   "navigationBarTextStyle": "white",
   "backgroundColor": "#0b0b0f",
-  "enablePullDownRefresh": false
+  "enablePullDownRefresh": false,
+  "usingComponents": {
+    "hand-replay-player": "/components/hand-replay-player/hand-replay-player"
+  }
 }

@@ -2,9 +2,12 @@ const socialService = require('../../services/social-service')
 const dataService = require('../../services/data-service')
 const socialCache = require('../../utils/social-cache')
 const socialDemoData = require('../../utils/social-demo-data')
+const cardUi = require('../../utils/card-ui')
+const avatarCache = require('../../utils/player-avatar-cache')
 
 const FEED_PAGE_SIZE = 20
 const SOCIAL_CACHE_SCHEMA_VERSION = socialCache.SOCIAL_CACHE_SCHEMA_VERSION || 1
+const SOCIAL_CACHE_DISPLAY_MAX_AGE_MS = socialCache.SOCIAL_CACHE_DISPLAY_MAX_AGE_MS || 86400000
 const FEED_SCOPE_LABELS = Object.freeze({ square: '广场', friends: '全部好友', selected: '指定好友' })
 
 function isNetworkError(error) {
@@ -32,24 +35,44 @@ function formatFeedTime(createdAt) {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+function withCachedAvatar(source, socialUserId, avatarUrl) {
+  const item = source || {}
+  const url = String(avatarUrl || '')
+  const avatarCacheKey = avatarCache.socialAvatarKey(socialUserId)
+  return Object.assign({}, item, {
+    avatarCacheKey,
+    avatarUrl: url,
+    avatarDisplayUrl: avatarCache.getAvatarDisplayUrl(avatarCacheKey, url)
+  })
+}
+
 function decorateFeedItem(item) {
   const source = item || {}
+  const publisher = source.publisher || {}
   const summary = source.summary || {}
   const board = summary.board || {}
   const cards = value => Array.isArray(value) ? value.filter(card => typeof card === 'string').join(' ') : ''
   const boardLabel = [cards(board.flop), cards(board.turn), cards(board.river)].filter(Boolean).join('  ·  ')
+  const visualCards = (value, limit, street) => cardUi.parseCardsInput((value || []).join(''), limit).map(card => Object.assign({}, card, {
+    token: card.rank + card.suit,
+    street: street || ''
+  }))
+  const heroCardsVisual = visualCards(summary.heroCards, 2, 'hero')
+  const boardCardsVisual = []
+    .concat(visualCards(board.flop, 3, 'flop'))
+    .concat(visualCards(board.turn, 1, 'turn'))
+    .concat(visualCards(board.river, 1, 'river'))
   return Object.assign({}, source, {
+    publisher: withCachedAvatar(publisher, publisher.socialUserId, publisher.avatarUrl),
     scopeLabel: FEED_SCOPE_LABELS[source.scope] || String(source.scopeLabel || ''),
     heroCardsLabel: cards(summary.heroCards) || '--',
+    heroCardsVisual,
     boardLabel: boardLabel || '公共牌未记录',
+    boardCardsVisual,
     potBbLabel: Number.isFinite(summary.potBb) ? `${summary.potBb} BB` : '--',
     stackBbLabel: Number.isFinite(summary.effectiveStackBb) ? `${summary.effectiveStackBb} BB` : '--',
     timeLabel: formatFeedTime(source.createdAt)
   })
-}
-
-function decorateDemoFeedItem(item) {
-  return Object.assign(decorateFeedItem(item), { demo: true })
 }
 
 function formatDuration(minutes) {
@@ -65,12 +88,17 @@ function buildFriendCard(remote, localNote) {
   const battleHandCount = Array.isArray(note.battleHandIds) ? note.battleHandIds.length : 0
   const statsVisible = profile.statsVisible !== false
   const handCount = Number(profile.recordedHandCount)
+  const friendUserId = String(profile.socialUserId || '')
+  const avatarUrl = String(note.avatarUrl || profile.avatarUrl || '')
+  const avatarCacheKey = avatarCache.socialAvatarKey(friendUserId)
 
   return {
-    friendUserId: String(profile.socialUserId || ''),
+    friendUserId,
     friendshipId: String(profile.friendshipId || ''),
     name: String(note.name || profile.nickname || ''),
-    avatarUrl: String(note.avatarUrl || profile.avatarUrl || ''),
+    avatarUrl,
+    avatarCacheKey,
+    avatarDisplayUrl: avatarCache.getAvatarDisplayUrl(avatarCacheKey, avatarUrl),
     avatarText: String(note.avatarText || profile.avatarText || String(note.name || profile.nickname || '').slice(0, 1)),
     type: String(note.type || '未分类'),
     typeColor: color,
@@ -92,10 +120,15 @@ function buildFriendCard(remote, localNote) {
 function buildRankingRow(row, position) {
   const source = row || {}
   const rank = Math.max(1, Math.floor(Number(source.rank) || 1))
+  const socialUserId = String(source.socialUserId || '')
+  const avatarUrl = String(source.avatarUrl || '')
+  const avatarCacheKey = avatarCache.socialAvatarKey(socialUserId)
   return {
-    socialUserId: String(source.socialUserId || ''),
+    socialUserId,
     nickname: String(source.nickname || '玩家'),
-    avatarUrl: String(source.avatarUrl || ''),
+    avatarUrl,
+    avatarCacheKey,
+    avatarDisplayUrl: avatarCache.getAvatarDisplayUrl(avatarCacheKey, avatarUrl),
     avatarText: String(source.avatarText || String(source.nickname || '玩').slice(0, 1)),
     title: String(source.title || '初来乍到'),
     rank,
@@ -161,6 +194,7 @@ Component({
       observer(value) {
         if (value === 'ranking' && this._friendHubAttached === true) this.loadRanking(this.data.rankingRange)
         if (value === 'feed' && this._friendHubAttached === true && this.data.socialUserId) this.loadFeed()
+        if (value === 'friends' && this._friendHubAttached === true) this.loadFriends()
       }
     },
     socialUserId: {
@@ -219,7 +253,7 @@ Component({
     feedMoreError: '',
     feedOffline: false,
     feedReadOnly: false,
-    demoMode: socialDemoData.isEnabled()
+    rankingDemoMode: socialDemoData.isRankingEnabled()
   },
 
   lifetimes: {
@@ -229,8 +263,8 @@ Component({
       this._rankingLoadSequence = Number(this._rankingLoadSequence) || 0
       this._feedGeneration = Number(this._feedGeneration) || 0
       if (this.data.activeSection === 'ranking') this.loadRanking(this.data.rankingRange)
-      if (this.data.activeSection === 'friends' && this.data.demoMode) this.loadFriends()
-      if (this.data.activeSection === 'feed' && (this.data.socialUserId || this.data.demoMode)) this.loadFeed()
+      if (this.data.activeSection === 'friends') this.loadFriends()
+      if (this.data.activeSection === 'feed' && this.data.socialUserId) this.loadFeed()
     },
 
     detached() {
@@ -244,6 +278,38 @@ Component({
   },
 
   methods: {
+    warmFeedAvatars(items) {
+      return avatarCache.warmRemoteAvatars((items || []).map(item => item && item.publisher), () => {
+        if (this._friendHubAttached === true) this.setData({ feedItems: this.data.feedItems.map(decorateFeedItem) })
+      })
+    },
+
+    warmFriendAvatars(items) {
+      return avatarCache.warmRemoteAvatars(items || [], () => {
+        if (this._friendHubAttached !== true) return
+        this.setData({
+          friends: this.data.friends.map(item => withCachedAvatar(item, item.friendUserId, item.avatarUrl))
+        })
+      })
+    },
+
+    warmRankingAvatars(rows, myRank) {
+      const items = (rows || []).concat(myRank ? [myRank] : [])
+      return avatarCache.warmRemoteAvatars(items, () => {
+        if (this._friendHubAttached !== true) return
+        const rankingRows = this.data.rankingRows.map(item => withCachedAvatar(item, item.socialUserId, item.avatarUrl))
+        const rankingMyRank = this.data.rankingMyRank
+          ? withCachedAvatar(this.data.rankingMyRank, this.data.rankingMyRank.socialUserId, this.data.rankingMyRank.avatarUrl)
+          : null
+        this.setData({
+          rankingRows,
+          rankingPodium: rankingRows.slice(0, 3),
+          rankingListRows: rankingRows.slice(3),
+          rankingMyRank
+        })
+      })
+    },
+
     retrySocialProfile() {
       this.triggerEvent('retrysocialprofile')
     },
@@ -252,6 +318,8 @@ Component({
       this._friendLoadSequence = (Number(this._friendLoadSequence) || 0) + 1
       this._friendLoadPromise = null
       this._friendLoadMorePromise = null
+      this._friendsCacheHydrated = false
+      this._friendsRefreshed = false
       this._rankingLoadSequence = (Number(this._rankingLoadSequence) || 0) + 1
       this.setData({
         status: 'idle', friends: [], nextOffset: null, loadingMore: false, loadMoreError: '', errorMessage: '',
@@ -267,6 +335,8 @@ Component({
       this._feedFirstFlight = null
       this._feedMoreFlight = null
       if (config.clear) {
+        this._feedCacheHydrated = false
+        this._feedRefreshed = false
         this.setData({
           feedStatus: this.data.socialUserId ? 'idle' : 'unavailable',
           feedError: '',
@@ -301,15 +371,14 @@ Component({
     },
 
     requestFeedFirstPage() {
-      if (this.data.demoMode) {
-        const cards = socialDemoData.getFeed().map(decorateDemoFeedItem)
-        this.setData({ feedStatus: 'ready', feedError: '', feedItems: cards, feedNextCursor: '', feedLoadingMore: false, feedMoreError: '', feedOffline: false, feedReadOnly: true })
-        return Promise.resolve(cards)
-      }
       const socialUserId = String(this.data.socialUserId || '')
       if (!socialUserId || this._friendHubAttached !== true) return Promise.resolve([])
       const generation = Number(this._feedGeneration) || 0
-      this.setData({ feedStatus: 'loading', feedError: '', feedMoreError: '', feedOffline: false, feedReadOnly: false })
+      this.setData({
+        feedStatus: this.data.feedItems.length ? 'ready' : 'loading',
+        feedError: '',
+        feedMoreError: ''
+      })
       let request
       try {
         request = socialService.listFeed({ cursor: '', limit: FEED_PAGE_SIZE })
@@ -335,11 +404,14 @@ Component({
             feedOffline: false,
             feedReadOnly: false
           })
+          this._feedRefreshed = true
           return cards
         })
         .catch(error => {
           if (!this.isCurrentFeedRequest(generation, socialUserId)) return this.data.feedItems
-          const cached = isNetworkError(error) ? socialCache.readFeedFirstPage(socialUserId) : null
+          const cached = isNetworkError(error)
+            ? socialCache.readFeedFirstPage(socialUserId, undefined, SOCIAL_CACHE_DISPLAY_MAX_AGE_MS)
+            : null
           if (cached) {
             const cards = cached.items.map(decorateFeedItem)
             this.setData({
@@ -371,8 +443,12 @@ Component({
     loadFeed(force) {
       if (force) this.invalidateFeed({ clear: false })
       if (!force && this._feedFirstFlight) return this._feedFirstFlight
-      if (!force && this.data.feedStatus === 'ready') return Promise.resolve(this.data.feedItems)
-      const promise = this.requestFeedFirstPage()
+      if (!force && !this._feedCacheHydrated) this.hydrateFeedCache()
+      if (!force && this.data.feedStatus === 'ready' && this._feedRefreshed) return Promise.resolve(this.data.feedItems)
+      const promise = this.requestFeedFirstPage().then(items => {
+        this.warmFeedAvatars(items)
+        return items
+      })
       this._feedFirstFlight = promise
       promise.finally(() => {
         if (this._feedFirstFlight === promise) this._feedFirstFlight = null
@@ -382,8 +458,28 @@ Component({
 
     refreshFeed() {
       if (this._feedFirstFlight) return this._feedFirstFlight
-      this.setData({ feedItems: [], feedNextCursor: '', feedStatus: 'idle', feedError: '', feedOffline: false, feedReadOnly: false })
+      this.setData({ feedError: '', feedMoreError: '' })
       return this.loadFeed(true)
+    },
+
+    hydrateFeedCache() {
+      this._feedCacheHydrated = true
+      const socialUserId = String(this.data.socialUserId || '')
+      if (!socialUserId) return false
+      const cached = socialCache.readFeedFirstPage(socialUserId, undefined, SOCIAL_CACHE_DISPLAY_MAX_AGE_MS)
+      if (!cached) return false
+      const items = cached.items.map(decorateFeedItem)
+      this.setData({
+        feedStatus: 'ready',
+        feedError: '',
+        feedItems: items,
+        feedNextCursor: '',
+        feedLoadingMore: false,
+        feedMoreError: '',
+        feedOffline: false,
+        feedReadOnly: true
+      })
+      return true
     },
 
     requestFeedMore(cursor) {
@@ -404,6 +500,7 @@ Component({
           const nextCursor = copied.nextCursor === null ? '' : copied.nextCursor
           const items = this.mergeFeedItems(this.data.feedItems, incoming)
           this.setData({ feedItems: items, feedNextCursor: nextCursor, feedLoadingMore: false, feedMoreError: '' })
+          this.warmFeedAvatars(items)
           return items
         })
         .catch(() => {
@@ -429,7 +526,15 @@ Component({
       if (this._friendHubAttached !== true || this.data.feedReadOnly) return
       const dataset = event && event.currentTarget && event.currentTarget.dataset || {}
       const shareId = String(dataset.shareId || dataset.id || '')
-      if (shareId) this.triggerEvent('openhand', { shareId })
+      const target = String(dataset.target || 'detail')
+      if (shareId) this.triggerEvent('openhand', { shareId, target })
+    },
+
+    openReplay(event) {
+      if (this._friendHubAttached !== true || this.data.feedReadOnly) return
+      const dataset = event && event.currentTarget && event.currentTarget.dataset || {}
+      const shareId = String(dataset.shareId || '')
+      if (shareId) this.triggerEvent('openhand', { shareId, target: 'replay', autoplay: true })
     },
 
     openPublisher(event) {
@@ -446,17 +551,45 @@ Component({
 
     async buildFriendCards(remoteFriends, options) {
       const readOnly = options && options.readOnly === true
-      const cards = []
-      for (const remote of remoteFriends) {
+      return Promise.all(remoteFriends.map(async remote => {
         const localNote = readOnly ? null : await dataService.ensureFriendPlayerNote({
           socialUserId: remote.socialUserId,
           nickname: remote.nickname,
           avatarUrl: remote.avatarUrl,
           avatarText: remote.avatarText
         })
-        cards.push(buildFriendCard(remote, localNote))
+        return buildFriendCard(remote, localNote)
+      }))
+    },
+
+    hydrateFriendsCache() {
+      this._friendsCacheHydrated = true
+      const accountKey = String(this.data.accountKey || '')
+      if (!accountKey) return false
+      const cached = socialCache.readScopedFirstPage({
+        namespace: 'friends',
+        accountKey,
+        schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION,
+        maxAgeMs: SOCIAL_CACHE_DISPLAY_MAX_AGE_MS
+      })
+      if (!cached) return false
+      try {
+        const response = copyFriendsResponse(cached)
+        const cards = response.items.map(remote => buildFriendCard(remote, null))
+        this.setData({
+          status: 'ready',
+          errorMessage: '',
+          friends: cards,
+          nextOffset: null,
+          loadingMore: false,
+          loadMoreError: '',
+          friendsOffline: false,
+          friendsReadOnly: true
+        })
+        return true
+      } catch (error) {
+        return false
       }
-      return cards
     },
 
     mergeFriends(existing, incoming) {
@@ -474,13 +607,11 @@ Component({
       const sequence = (Number(this._friendLoadSequence) || 0) + 1
       this._friendLoadSequence = sequence
       if (config.append) this.setData({ loadingMore: true, loadMoreError: '' })
-      else this.setData({ status: 'loading', errorMessage: '', loadMoreError: '', friendsOffline: false, friendsReadOnly: false })
-
-      if (this.data.demoMode) {
-        const cards = socialDemoData.getFriends().map(item => Object.assign(buildFriendCard(item.remote, item.note), { demo: true }))
-        this.setData({ status: 'ready', friends: cards, nextOffset: null, loadingMore: false, loadMoreError: '', errorMessage: '', friendsOffline: false, friendsReadOnly: true })
-        return cards
-      }
+      else this.setData({
+        status: this.data.friends.length ? 'ready' : 'loading',
+        errorMessage: '',
+        loadMoreError: ''
+      })
 
       try {
         const response = copyFriendsResponse(await socialService.listFriends({ offset, limit: 20 }))
@@ -497,6 +628,7 @@ Component({
           friendsOffline: false,
           friendsReadOnly: false
         })
+        this._friendsRefreshed = true
         return this.data.friends
       } catch (error) {
         if (!this.isCurrentLoad(sequence, accountKey)) return this.data.friends
@@ -504,7 +636,10 @@ Component({
           this.setData({ loadingMore: false, loadMoreError: '加载更多失败，请重试' })
           return this.data.friends
         }
-        const cached = isNetworkError(error) && accountKey ? socialCache.readScopedFirstPage({ namespace: 'friends', accountKey, schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION }) : null
+        const cached = isNetworkError(error) && accountKey ? socialCache.readScopedFirstPage({
+          namespace: 'friends', accountKey, schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION,
+          maxAgeMs: SOCIAL_CACHE_DISPLAY_MAX_AGE_MS
+        }) : null
         if (cached) {
           try {
             const response = copyFriendsResponse(cached)
@@ -532,8 +667,12 @@ Component({
 
     loadFriends(force) {
       if (!force && this._friendLoadPromise) return this._friendLoadPromise
-      if (!force && this.data.status === 'ready') return this.data.friends
-      const promise = this.requestFriendPage(0, { append: false })
+      if (!force && !this._friendsCacheHydrated) this.hydrateFriendsCache()
+      if (!force && this.data.status === 'ready' && this._friendsRefreshed) return Promise.resolve(this.data.friends)
+      const promise = this.requestFriendPage(0, { append: false }).then(items => {
+        this.warmFriendAvatars(items)
+        return items
+      })
       this._friendLoadPromise = promise
       return promise.finally(() => {
         if (this._friendLoadPromise === promise) this._friendLoadPromise = null
@@ -543,7 +682,10 @@ Component({
     loadMoreFriends() {
       const offset = Number(this.data.nextOffset)
       if (!Number.isFinite(offset) || offset < 0 || this._friendLoadMorePromise || this.data.friendsReadOnly) return this.data.friends
-      const promise = this.requestFriendPage(offset, { append: true })
+      const promise = this.requestFriendPage(offset, { append: true }).then(items => {
+        this.warmFriendAvatars(items)
+        return items
+      })
       this._friendLoadMorePromise = promise
       return promise.finally(() => {
         if (this._friendLoadMorePromise === promise) this._friendLoadMorePromise = null
@@ -555,12 +697,32 @@ Component({
       const accountKey = String(this.data.accountKey || '')
       const sequence = (Number(this._rankingLoadSequence) || 0) + 1
       this._rankingLoadSequence = sequence
-      this.setData({ rankingRange: range, rankingStatus: 'loading', rankingError: '', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null, rankingOffline: false, rankingReadOnly: false })
-      if (this.data.demoMode) {
+      const cached = accountKey ? socialCache.readScopedFirstPage({
+        namespace: 'ranking:' + range,
+        accountKey,
+        schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION,
+        maxAgeMs: SOCIAL_CACHE_DISPLAY_MAX_AGE_MS
+      }) : null
+      let cachedRows = []
+      let hasCachedRanking = false
+      if (cached) {
+        try {
+          const response = copyRankingResponse(cached)
+          hasCachedRanking = true
+          cachedRows = response.top10.map(buildRankingRow)
+          const myRank = response.myRank ? buildRankingRow(response.myRank) : null
+          const uniqueMyRank = myRank && !cachedRows.some(row => row.socialUserId === myRank.socialUserId) ? myRank : null
+          this.setData({ rankingRange: range, rankingStatus: 'ready', rankingError: '', rankingRows: cachedRows, rankingPodium: cachedRows.slice(0, 3), rankingListRows: cachedRows.slice(3), rankingMyRank: uniqueMyRank, rankingOffline: false, rankingReadOnly: true })
+          this.warmRankingAvatars(cachedRows, uniqueMyRank)
+        } catch (error) {}
+      }
+      if (!hasCachedRanking) this.setData({ rankingRange: range, rankingStatus: 'loading', rankingError: '', rankingRows: [], rankingPodium: [], rankingListRows: [], rankingMyRank: null, rankingOffline: false, rankingReadOnly: false })
+      if (this.data.rankingDemoMode) {
         const response = socialDemoData.getRanking(range)
         const rows = response.top10.map(buildRankingRow)
         const myRank = buildRankingRow(response.myRank)
         this.setData({ rankingStatus: 'ready', rankingRows: rows, rankingPodium: rows.slice(0, 3), rankingListRows: rows.slice(3), rankingMyRank: myRank, rankingError: '', rankingOffline: false, rankingReadOnly: true })
+        this.warmRankingAvatars(rows, myRank)
         return rows
       }
       try {
@@ -580,17 +742,19 @@ Component({
           rankingOffline: false,
           rankingReadOnly: false
         })
+        this.warmRankingAvatars(rows, uniqueMyRank)
         return rows
       } catch (error) {
         if (sequence !== this._rankingLoadSequence || this._friendHubAttached === false || String(this.data.accountKey || '') !== accountKey) return []
-        const cached = isNetworkError(error) && accountKey ? socialCache.readScopedFirstPage({ namespace: 'ranking:' + range, accountKey, schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION }) : null
-        if (cached) {
+        const fallback = isNetworkError(error) && accountKey ? socialCache.readScopedFirstPage({ namespace: 'ranking:' + range, accountKey, schemaVersion: SOCIAL_CACHE_SCHEMA_VERSION, maxAgeMs: SOCIAL_CACHE_DISPLAY_MAX_AGE_MS }) : null
+        if (fallback) {
           try {
-            const response = copyRankingResponse(cached)
+            const response = copyRankingResponse(fallback)
             const rows = response.top10.map(buildRankingRow)
             const myRank = response.myRank ? buildRankingRow(response.myRank) : null
             const uniqueMyRank = myRank && !rows.some(row => row.socialUserId === myRank.socialUserId) ? myRank : null
             this.setData({ rankingStatus: 'ready', rankingRows: rows, rankingPodium: rows.slice(0, 3), rankingListRows: rows.slice(3), rankingMyRank: uniqueMyRank, rankingError: '', rankingOffline: true, rankingReadOnly: true })
+            this.warmRankingAvatars(rows, uniqueMyRank)
             return rows
           } catch (cacheError) {}
         }
@@ -614,7 +778,7 @@ Component({
     },
 
     openFriend(event) {
-      if (this.data.friendsReadOnly || this.data.demoMode) return
+      if (this.data.friendsReadOnly) return
       const friendUserId = String(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.id || '')
       if (friendUserId) this.triggerEvent('openfriend', { friendUserId })
     },

@@ -22,6 +22,8 @@ _local-artifacts/
 .codex-auto-preview*/
 .codex-upload*/
 .codex-remote-attachments/
+.cc-connect/
+canvas/
 .pytest-tmp-agent/
 .minium-python/
 logs/

@@ -8,7 +8,7 @@ function normalizePlayerId(value) {
 }
 
 function socialStatsStorageKey(playerId) {
-  return 'pokerSocialStatsSyncedAt_' + encodeURIComponent(String(playerId || ''))
+  return 'pokerSocialStatsSyncedAtV3_' + encodeURIComponent(String(playerId || ''))
 }
 
 function scheduleMyStatsSync(playerId) {
@@ -59,6 +59,8 @@ function createInvite(input) { return write('create_invite', input) }
 function createInviteQr(input) { return write('create_invite_qr', input) }
 function inspectInvite(input) { return callSocialFunction('inspect_invite', input) }
 function sendFriendRequest(input) { return write('send_friend_request', input) }
+function searchSocialUsers(keyword) { return callSocialFunction('search_social_users', { keyword: String(keyword || '').trim() }) }
+function sendFriendRequestByUser(input) { return write('send_friend_request_by_user', input) }
 function acceptFriendRequest(input) { return write('accept_friend_request', input) }
 function rejectFriendRequest(input) { return write('reject_friend_request', input) }
 function removeFriend(input) { return write('remove_friend', input) }
@@ -261,6 +263,8 @@ module.exports = {
   createInviteQr,
   inspectInvite,
   sendFriendRequest,
+  searchSocialUsers,
+  sendFriendRequestByUser,
   acceptFriendRequest,
   rejectFriendRequest,
   removeFriend,

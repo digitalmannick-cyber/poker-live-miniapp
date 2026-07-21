@@ -9,10 +9,14 @@ const originalLoad = Module._load
 let pageDefinition = null
 let updateSettingsPatch = null
 let lastToast = null
+let lastModal = null
 let socialSettingsPatch = null
 let socialProfileLoader = null
 let socialSettingsSaver = null
 let socialProfileSyncCalls = null
+let socialProfileSyncResult = null
+let updateProfilePatch = null
+let updateProfileBase = null
 
 function setByPath(target, keyPath, value) {
   const parts = String(keyPath).split('.')
@@ -43,13 +47,17 @@ function installProfilePage() {
   pageDefinition = null
   updateSettingsPatch = null
   lastToast = null
+  lastModal = null
   socialSettingsPatch = null
   socialProfileLoader = null
   socialSettingsSaver = null
   socialProfileSyncCalls = []
+  socialProfileSyncResult = { socialUserId: 'su-me' }
+  updateProfilePatch = null
+  updateProfileBase = { playerId: 'P5-1', name: '旧昵称', avatarUrl: 'cloud://avatar' }
   global.wx = {
     showToast(options) { lastToast = options },
-    showModal() {},
+    showModal(options) { lastModal = options },
     getStorageSync() {},
     setStorageSync() {},
     removeStorageSync() {}
@@ -73,7 +81,8 @@ function installProfilePage() {
           }, patch)
         },
         async updateProfile(patch) {
-          return Object.assign({ playerId: 'P5-1', name: '旧昵称', avatarUrl: 'cloud://avatar' }, patch)
+          updateProfilePatch = patch
+          return Object.assign({}, updateProfileBase, patch)
         }
       }
     }
@@ -94,7 +103,7 @@ function installProfilePage() {
       return {
         async syncSocialProfile(profile, options) {
           socialProfileSyncCalls.push({ profile, options })
-          return { socialUserId: 'su-me' }
+          return socialProfileSyncResult
         }
       }
     }
@@ -165,6 +174,122 @@ test('saving a public nickname also updates the social profile', async () => {
   assert.equal(socialProfileSyncCalls.length, 1)
   assert.equal(socialProfileSyncCalls[0].profile.name, '新昵称')
   assert.equal(socialProfileSyncCalls[0].options.force, true)
+})
+
+test('wechat nickname selection is submitted even when the native picker skips bindinput', async () => {
+  const page = installProfilePage()
+  page.setData({
+    profile: { playerId: 'P5-1', name: 'Old name', avatarUrl: 'cloud://avatar' },
+    wechatProfileDialogVisible: true,
+    wechatDraftNickname: '',
+    wechatDraftAvatarUrl: ''
+  })
+  page.refresh = async () => null
+
+  await page.saveWechatProfileFromOfficialControls({
+    detail: { value: { nickname: 'HIDE1900' } }
+  })
+
+  assert.equal(socialProfileSyncCalls.length, 1)
+  assert.equal(socialProfileSyncCalls[0].profile.name, 'HIDE1900')
+  assert.equal(page.data.wechatProfileDialogVisible, false)
+})
+
+test('wechat nickname save falls back to the last native candidate when the form reports empty', async () => {
+  const page = installProfilePage()
+  page.setData({
+    profile: { playerId: 'P5-1', name: 'Old name', avatarUrl: 'cloud://avatar' },
+    wechatProfileDialogVisible: true,
+    wechatDraftNickname: '',
+    wechatDraftAvatarUrl: ''
+  })
+  page.refresh = async () => null
+  page.onWechatNicknameInput({ detail: { value: 'HIDE1900' } })
+  page.onWechatNicknameInput({ detail: { value: '' } })
+
+  await page.saveWechatProfileFromOfficialControls({
+    detail: { value: { nickname: '' } }
+  })
+
+  assert.equal(socialProfileSyncCalls[0].profile.name, 'HIDE1900')
+})
+
+test('wechat nickname input keeps the last valid native selection', () => {
+  const wxml = require('node:fs').readFileSync(path.resolve(__dirname, '../pages/profile/profile.wxml'), 'utf8')
+  const typeIndex = wxml.indexOf('type="nickname"')
+  const nicknameInput = typeIndex < 0
+    ? ''
+    : wxml.slice(wxml.lastIndexOf('<input', typeIndex), wxml.indexOf('/>', typeIndex) + 2)
+
+  assert.ok(nicknameInput, 'nickname input must exist')
+  assert.match(wxml, /<form[^>]*class="wechat-profile-dialog"[^>]*bindsubmit="saveWechatProfileFromOfficialControls"/)
+  assert.match(nicknameInput, /name="nickname"/)
+  assert.match(nicknameInput, /value="{{wechatDraftNickname}}"/)
+  assert.match(nicknameInput, /bindinput="onWechatNicknameInput"/)
+  assert.match(nicknameInput, /bindblur="onWechatNicknameBlur"/)
+  assert.match(nicknameInput, /bindnicknamereview="onWechatNicknameReview"/)
+  assert.match(wxml, /<button[^>]*class="wechat-profile-action wechat-profile-action-primary"[^>]*form-type="submit"/)
+})
+
+test('wechat nickname ignores the DevTools empty event after a valid selection', () => {
+  const page = installProfilePage()
+  page.setData({ wechatDraftNickname: '' })
+
+  page.onWechatNicknameInput({ detail: { value: 'HIDE1900' } })
+  page.onWechatNicknameInput({ detail: { value: '' } })
+  page.onWechatNicknameBlur({ detail: { value: '' } })
+
+  assert.equal(page.data.wechatDraftNickname, 'HIDE1900')
+  assert.equal(page._wechatNicknameCandidate, 'HIDE1900')
+})
+
+test('wechat nickname review removes rejected decorative symbols but keeps the usable name', () => {
+  const page = installProfilePage()
+  page.setData({ wechatDraftNickname: '' })
+
+  page.onWechatNicknameInput({ detail: { value: '♠HIDE♠1900' } })
+  page.onWechatNicknameReview({ detail: { pass: false, timeout: false } })
+
+  assert.equal(page.data.wechatDraftNickname, 'HIDE1900')
+  assert.equal(page._wechatNicknameCandidate, 'HIDE1900')
+  assert.equal(lastModal.title, '昵称含不支持字符')
+})
+
+test('an existing cloud social profile restores a cache-reset placeholder without reopening the picker', async () => {
+  const page = installProfilePage()
+  socialProfileSyncResult = {
+    socialUserId: 'su-me',
+    nickname: 'HIDE1900',
+    avatarUrl: 'https://example.test/avatar.jpg',
+    avatarText: 'H'
+  }
+  updateProfileBase = { playerId: 'WX-P1', name: '\u73a9\u5bb6', avatarUrl: '', avatarText: 'PL' }
+  page.setData({
+    accountLoggedOut: false,
+    profile: { playerId: 'WX-P1', name: '\u73a9\u5bb6', avatarUrl: '', avatarText: 'PL' },
+    wechatProfilePromptVisible: true,
+    wechatProfileDialogVisible: false
+  })
+
+  const remote = await page.syncOwnSocialProfile(page.data.profile)
+  await page.restoreProfileFromSocial(remote)
+
+  assert.deepEqual(updateProfilePatch, { name: 'HIDE1900', avatarText: 'H' })
+  assert.equal(page.data.profile.name, 'HIDE1900')
+  assert.equal(page.data.profile.avatarUrl, 'https://example.test/avatar.jpg')
+  assert.equal(page.data.wechatProfilePromptVisible, false)
+  assert.equal(page.data.wechatProfileDialogVisible, false)
+})
+
+test('wechat nickname can still be cleared by an explicit keyboard edit', () => {
+  const page = installProfilePage()
+  page.setData({ wechatDraftNickname: 'HIDE1900' })
+  page._wechatNicknameCandidate = 'HIDE1900'
+
+  page.onWechatNicknameInput({ detail: { value: '', keyCode: 8 } })
+
+  assert.equal(page.data.wechatDraftNickname, '')
+  assert.equal(page._wechatNicknameCandidate, '')
 })
 
 test('a stale profile GET cannot overwrite a successful privacy save and loading/saving block conflict taps', async () => {

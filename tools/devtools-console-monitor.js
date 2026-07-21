@@ -78,7 +78,8 @@ async function main() {
     '/pages/hand-record/hand-record',
     '/pages/review-list/review-list',
     '/pages/stats/stats',
-    '/pages/profile/profile'
+    '/pages/profile/profile',
+    '/pages/player-notes/player-notes'
   ]
   const entries = []
   let miniProgram = null
@@ -116,7 +117,7 @@ async function main() {
     for (const route of routes) {
       process.stdout.write('[devtools-monitor] open ' + route + '\n')
       const routeResult = await withTimeout(
-        route === routes[0] ? miniProgram.reLaunch(route) : miniProgram.switchTab(route),
+        miniProgram.reLaunch(route),
         Number(process.env.WECHAT_MONITOR_ROUTE_TIMEOUT_MS || 10000),
         route
       )

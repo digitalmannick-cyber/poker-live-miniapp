@@ -1,12 +1,14 @@
 <view class="app-bg"></view>
 <view class="container social-messages-shell">
   <view class="social-messages-head">
-    <view>
+    <view class="social-messages-heading">
       <view class="social-messages-kicker">NOTIFICATIONS</view>
-      <view class="social-messages-title">消息</view>
-      <view class="social-messages-summary">{{unread.hasUnread ? '还有 ' + unread.label + ' 条未读' : '暂无未读消息'}}</view>
+      <view class="social-messages-title-row">
+        <view class="social-messages-title">消息</view>
+        <view class="social-messages-summary {{unread.hasUnread ? 'has-unread' : ''}}">{{unread.hasUnread ? unread.label + ' 条未读' : '全部已读'}}</view>
+      </view>
     </view>
-    <button class="mark-all" bindtap="markAllRead" disabled="{{!unread.hasUnread || offline || markingAll}}" loading="{{markingAll}}">全部已读</button>
+    <button class="mark-all" bindtap="markAllRead" disabled="{{!unread.hasUnread || offline || markingAll}}" loading="{{markingAll}}">标为已读</button>
   </view>
 
   <view wx:if="{{offline}}" class="offline-banner">离线内容 · 仅可查看，恢复网络后刷新</view>
@@ -23,6 +25,7 @@
 
   <view wx:else class="message-list">
     <view wx:for="{{items}}" wx:key="notificationId" class="message-card {{item.read ? 'is-read' : 'is-unread'}} {{item.unavailable ? 'is-unavailable' : ''}}" data-id="{{item.notificationId}}" bindtap="openNotification" aria-label="{{item.read ? item.title : '未读：' + item.title}}">
+      <view class="message-card-corner"></view>
       <view wx:if="{{!item.read}}" class="unread-marker"><text class="sr-only">未读</text></view>
       <view class="message-avatar">
         <image wx:if="{{item.actor.avatarUrl}}" src="{{item.actor.avatarUrl}}" mode="aspectFill"></image>

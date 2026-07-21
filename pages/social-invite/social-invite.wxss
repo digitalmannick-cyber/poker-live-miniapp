@@ -37,3 +37,19 @@
 .invite-login-tip { margin-top: 16rpx; color: rgba(255,255,255,0.48); font-size: 20rpx; line-height: 1.5; }
 .invite-login-error { position: relative; z-index: 1; margin-top: 16rpx; color: #ff8793; font-size: 22rpx; text-align: center; }
 .invite-state-card { min-height: 260rpx; box-sizing: border-box; }
+
+.invite-search-card { margin-top: 24rpx; }
+.invite-search-row { position: relative; z-index: 1; display: flex; gap: 12rpx; margin-top: 24rpx; }
+.invite-search-input { flex: 1; min-width: 0; height: 76rpx; padding: 0 22rpx; box-sizing: border-box; border-radius: 15rpx; color: #fff; font-size: 25rpx; background: rgba(255,255,255,.065); border: 1rpx solid rgba(255,255,255,.14); }
+.invite-search-button { flex: 0 0 118rpx; height: 76rpx; display: flex; align-items: center; justify-content: center; border-radius: 15rpx; color: #fff; font-size: 24rpx; font-weight: 950; background: linear-gradient(135deg, #e60012, #ff3045); }
+.invite-search-button.is-disabled, .invite-search-add.is-disabled { opacity: .48; }
+.invite-search-error, .invite-search-empty { position: relative; z-index: 1; padding: 22rpx 0 2rpx; color: #ff8793; font-size: 22rpx; text-align: center; }
+.invite-search-empty { color: rgba(255,255,255,.44); }
+.invite-search-results { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12rpx; margin-top: 20rpx; }
+.invite-search-result { display: flex; align-items: center; gap: 15rpx; min-width: 0; padding: 16rpx; border-radius: 17rpx; background: rgba(255,255,255,.045); border: 1rpx solid rgba(255,255,255,.09); }
+.invite-search-avatar { flex: 0 0 72rpx; width: 72rpx; height: 72rpx; overflow: hidden; border-radius: 15rpx; background: #252b38; border: 1rpx solid rgba(255,255,255,.15); }
+.invite-search-avatar-text { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 25rpx; font-weight: 950; }
+.invite-search-copy { flex: 1; min-width: 0; }
+.invite-search-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 25rpx; font-weight: 950; }
+.invite-search-title { margin-top: 5rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,.44); font-size: 20rpx; }
+.invite-search-add { flex: 0 0 100rpx; height: 58rpx; display: flex; align-items: center; justify-content: center; border-radius: 13rpx; color: #fff; font-size: 21rpx; font-weight: 950; background: #e60012; }

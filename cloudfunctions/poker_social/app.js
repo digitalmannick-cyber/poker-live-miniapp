@@ -35,6 +35,7 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   FRIENDSHIP_NOT_FOUND: 'friendship not found',
   INVALID_FRIENDSHIP: 'invalid friendship',
   INVALID_FRIENDSHIP_STATE: 'invalid friendship state',
+  INVALID_USER_SEARCH: 'invalid user search',
   SOCIAL_USER_NOT_FOUND: 'social user not found',
   QR_UNAVAILABLE: 'qr unavailable',
   INVITE_SECRET_UNAVAILABLE: 'invite unavailable',

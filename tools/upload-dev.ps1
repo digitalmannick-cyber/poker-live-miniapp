@@ -3,6 +3,7 @@ param(
   [int]$Port = 0,
   [string]$CliPath = "",
   [int]$TimeoutSeconds = 180,
+  [string]$VerifiedPreviewInfo = "",
   [switch]$NoBump
 )
 
@@ -101,13 +102,36 @@ Write-Host "Upload workspace $uploadRoot"
 Write-Host "Upload source size ${uploadSourceKb}KB"
 # Keep a buffer below WeChat's 2 MB source limit without rejecting the same
 # clean runtime package that has already passed auto-preview compilation.
-if ($uploadSourceBytes -gt (1980 * 1KB)) {
+$previewPackageBytes = 0
+$previewVerified = $false
+if ($VerifiedPreviewInfo) {
+  if (!(Test-Path -LiteralPath $VerifiedPreviewInfo -PathType Leaf)) {
+    throw "Verified preview info does not exist: $VerifiedPreviewInfo"
+  }
+  try {
+    $previewPayload = Get-Content -LiteralPath $VerifiedPreviewInfo -Raw -Encoding UTF8 | ConvertFrom-Json
+    $previewPackageBytes = [long]$previewPayload.size.total
+    $previewInfoWrite = (Get-Item -LiteralPath $VerifiedPreviewInfo).LastWriteTimeUtc
+    $latestUploadSourceWrite = (Get-ChildItem -LiteralPath $uploadRoot -Recurse -File |
+      Sort-Object LastWriteTimeUtc -Descending |
+      Select-Object -First 1).LastWriteTimeUtc
+    $previewVerified = $previewPackageBytes -gt 0 -and
+      $previewPackageBytes -le (1980 * 1KB) -and
+      $previewInfoWrite -ge $latestUploadSourceWrite
+  } catch {
+    throw "Verified preview info is invalid: $VerifiedPreviewInfo"
+  }
+}
+if ($uploadSourceBytes -gt (1980 * 1KB) -and !$previewVerified) {
   $largestFiles = Get-ChildItem -LiteralPath $uploadRoot -Recurse -File |
     Sort-Object Length -Descending |
     Select-Object -First 20 @{ Name = "KB"; Expression = { [math]::Round($_.Length / 1KB, 1) } }, FullName |
     Format-Table -AutoSize |
     Out-String
-  throw "Upload source is too close to the 2MB limit. Largest files:`n$largestFiles"
+  throw "Upload source is too close to the 2MB limit and has no current verified preview package. Pass -VerifiedPreviewInfo after a successful auto-preview. Largest files:`n$largestFiles"
+}
+if ($previewVerified) {
+  Write-Host "Verified compiled preview size $([math]::Round($previewPackageBytes / 1KB, 1))KB from $VerifiedPreviewInfo"
 }
 
 $logDir = Join-Path $root "logs"

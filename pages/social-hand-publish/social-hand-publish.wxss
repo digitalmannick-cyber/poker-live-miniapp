@@ -13,6 +13,10 @@
 .success-id { margin-top: 12rpx; padding: 18rpx; border-radius: 12rpx; color: #00d1ff; background: rgba(0,209,255,.08); font-family: Menlo, Consolas, monospace; font-size: 24rpx; word-break: break-all; }
 
 .publish-preview-card { padding: 34rpx 30rpx 30rpx; box-shadow: 0 24rpx 60rpx rgba(0,0,0,.28); }
+.publish-replay-shell { position: relative; z-index: 1; margin: 26rpx -14rpx 0; }
+.publish-preview-card > .hero-line,
+.publish-preview-card > .metric-strip,
+.publish-preview-card > .preview-section { display: none; }
 .preview-accent { position: absolute; top: 0; left: -32rpx; width: 260rpx; height: 12rpx; background: #e60012; transform: skewX(-30deg); box-shadow: 120rpx 0 0 #00d1ff; }
 .preview-head, .hero-line, .friend-picker-head, .action-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
 .preview-title { color: #fff; font-size: 42rpx; font-weight: 1000; letter-spacing: 1rpx; }

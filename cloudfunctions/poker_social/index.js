@@ -51,7 +51,8 @@ const app = createSocialApp({
   friendship: {
     qrCode: cloud.openapi && cloud.openapi.wxacode,
     uploadTempFile,
-    tokenSecret: process.env.SOCIAL_INVITE_TOKEN_SECRET
+    tokenSecret: process.env.SOCIAL_INVITE_TOKEN_SECRET,
+    qrEnvVersion: process.env.SOCIAL_INVITE_QR_ENV_VERSION || 'trial'
   },
   requestId: () => 'social_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10)
 })

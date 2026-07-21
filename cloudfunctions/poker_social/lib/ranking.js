@@ -74,9 +74,27 @@ function addBucket(map, dateKey, durationMinutes, recordedHandCount) {
   bucket.recordedHandCount += Math.max(0, Math.floor(Number(recordedHandCount) || 0))
 }
 
+function isHistoryImportHand(hand) {
+  const source = hand && (hand.source || hand.voiceExtract && hand.voiceExtract.source)
+  return source === 'feishu_base_history_import'
+}
+
+function isHistoryImportSession(session) {
+  const source = session && session.source
+  return !!(source && source.type === 'feishu_base_history_import')
+}
+
 function addSessionDuration(map, session, timezoneOffsetMinutes) {
   if (!session || session.status !== 'finished') return
   const start = parseTime(session.startTime || session.startedAt, timezoneOffsetMinutes)
+  const explicitMinutes = Number(session.durationMinutes)
+  if (start !== null && Number.isFinite(explicitMinutes) && explicitMinutes > 0) {
+    addBucket(map, dateKeyAt(start, timezoneOffsetMinutes), explicitMinutes, 0)
+    return
+  }
+  // Imported history sessions are date placeholders. Their 00:00-23:59 span is
+  // not played time; the canonical stats summary applies one 360-hour baseline.
+  if (isHistoryImportSession(session)) return
   const end = parseTime(session.endTime || session.endedAt || session.finishedAt, timezoneOffsetMinutes)
   if (start === null || end === null || end <= start) return
   let cursor = start
@@ -101,6 +119,46 @@ function addSessionDuration(map, session, timezoneOffsetMinutes) {
   chunks.forEach(chunk => addBucket(map, chunk.dateKey, chunk.minutes, 0))
 }
 
+function addHistoryImportDuration(map, sessions, hands, timezoneOffsetMinutes) {
+  const historyHands = (Array.isArray(hands) ? hands : []).filter(isHistoryImportHand)
+  if (!historyHands.length) return
+  const historySessions = (Array.isArray(sessions) ? sessions : []).filter(isHistoryImportSession)
+  const existingMinutes = historySessions.reduce((sum, item) => sum + Math.max(0, Number(item && item.durationMinutes) || 0), 0)
+  if (existingMinutes > 0) return
+
+  const weights = Object.create(null)
+  historyHands.forEach(hand => {
+    const timestamp = handTimestamp(hand, timezoneOffsetMinutes)
+    const dateKey = timestamp === null ? '' : dateKeyAt(timestamp, timezoneOffsetMinutes)
+    if (dateKey) weights[dateKey] = (weights[dateKey] || 0) + 1
+  })
+  if (!Object.keys(weights).length) {
+    for (const session of historySessions) {
+      const timestamp = parseTime(session && (session.startTime || session.startedAt), timezoneOffsetMinutes)
+      const dateKey = timestamp === null ? '' : dateKeyAt(timestamp, timezoneOffsetMinutes)
+      if (dateKey) weights[dateKey] = 1
+    }
+  }
+  const keys = Object.keys(weights).sort()
+  if (!keys.length) return
+
+  const totalMinutes = 360 * 60
+  const totalWeight = keys.reduce((sum, key) => sum + weights[key], 0)
+  let allocated = 0
+  const rows = keys.map(key => {
+    const exact = totalMinutes * weights[key] / totalWeight
+    const minutes = Math.floor(exact)
+    allocated += minutes
+    return { key, minutes, remainder: exact - minutes }
+  })
+  rows
+    .slice()
+    .sort((left, right) => right.remainder - left.remainder || left.key.localeCompare(right.key))
+    .slice(0, totalMinutes - allocated)
+    .forEach(row => { row.minutes += 1 })
+  rows.forEach(row => addBucket(map, row.key, row.minutes, 0))
+}
+
 function handTimestamp(hand, timezoneOffsetMinutes) {
   const source = hand || {}
   const values = [source.playedDate, source.playedAt, source.handTime, source.recordedAt, source.createdAt]
@@ -120,6 +178,7 @@ function buildDailyBuckets(input) {
     const timestamp = handTimestamp(hand, timezoneOffsetMinutes)
     if (timestamp !== null) addBucket(buckets, dateKeyAt(timestamp, timezoneOffsetMinutes), 0, 1)
   })
+  addHistoryImportDuration(buckets, source.sessions, source.hands, timezoneOffsetMinutes)
   return Object.keys(buckets)
     .sort()
     .map(key => buckets[key])
