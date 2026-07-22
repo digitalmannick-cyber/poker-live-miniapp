@@ -6,7 +6,8 @@ const {
   createAccountClearHandlers,
   BATCH_SIZE,
   ANONYMOUS_COMMENT_AUTHOR,
-  ANONYMOUS_NOTIFICATION_ACTOR
+  ANONYMOUS_NOTIFICATION_ACTOR,
+  managedProfileAvatarFileId
 } = require('../cloudfunctions/poker_social/lib/account-clear')
 const { createSocialApp } = require('../cloudfunctions/poker_social/app')
 const { createCloudSocialRepository } = require('../cloudfunctions/poker_social/lib/repository')
@@ -137,6 +138,43 @@ function baseSeed(patch) {
     social_mutations: [], social_daily_stats: [], social_moderation_audits: []
   }, patch || {})
 }
+
+test('account clear deletes only managed social profile avatars and retries before redacting the profile', async () => {
+  const avatarFileId = 'cloud://cloud1.example/social-profile-avatars/avatar-1.png'
+  const user = Object.assign({}, USER, { profile: Object.assign({}, USER.profile, { avatarFileId }) })
+  const repository = memoryRepository(baseSeed({ social_users: [user, OTHER] }))
+  const deleted = []
+  let failOnce = true
+  const handlers = createAccountClearHandlers(repository, {
+    now: () => 10_000,
+    async deleteCloudFiles(fileList) {
+      deleted.push(fileList.slice())
+      if (failOnce) {
+        failOnce = false
+        throw new Error('temporary cloud storage failure')
+      }
+    }
+  })
+
+  await assert.rejects(
+    handlers.clear_my_social_data({ clientMutationId: 'clear-avatar' }, { ownerOpenId: USER.ownerOpenId }),
+    /temporary cloud storage failure/
+  )
+  assert.equal(repository.get('social_users', USER._id).profile.avatarFileId, avatarFileId)
+  assert.equal(repository.get('social_users', USER._id).accountClear, undefined)
+
+  const result = await handlers.clear_my_social_data({ clientMutationId: 'clear-avatar' }, { ownerOpenId: USER.ownerOpenId })
+  assert.equal(result.remainingStage, 'invites')
+  assert.deepEqual(deleted, [[avatarFileId], [avatarFileId]])
+  assert.equal(repository.get('social_users', USER._id).profile.avatarFileId, '')
+
+  for (const rejected of [
+    'cloud://cloud1.example/player-notes/avatar.png',
+    'cloud://cloud1.example/social-profile-avatars/../other.png',
+    'https://example.test/avatar.png',
+    'cloud://missing-path'
+  ]) assert.equal(managedProfileAvatarFileId(rejected), '')
+})
 
 test('account clear uses a private checkpoint, batches at 50, accepts same or new retry mutation and completes stably', async () => {
   const invites = Array.from({ length: 51 }, (_, index) => ({

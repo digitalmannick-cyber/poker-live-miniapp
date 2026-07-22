@@ -2,10 +2,12 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const Module = require('node:module')
 
-function createCloud(seed) {
+function createCloud(seed, options) {
+  const config = options || {}
   const collections = Object.assign({ player_card_import_receipts: [], sync_operations: [], audit_logs: [] }, seed || {})
   const transactionCalls = []
   const queryCalls = []
+  const deletedFileLists = []
   function collection(name, inTransaction) {
     if (!collections[name]) collections[name] = []
     const query = { filters: {}, offset: 0, size: Infinity, orders: [], usedSkip: false }
@@ -51,6 +53,12 @@ function createCloud(seed) {
     collections,
     transactionCalls,
     queryCalls,
+    deletedFileLists,
+    async deleteFile({ fileList }) {
+      deletedFileLists.push(fileList.slice())
+      if (config.deleteFileError) throw config.deleteFileError
+      return { fileList: fileList.map(fileID => ({ fileID, status: 0, errMsg: 'ok' })) }
+    },
     database: {
       command: { gt(value) { return { $gt: String(value) } } },
       collection(name) { return collection(name, false) },
@@ -61,14 +69,15 @@ function createCloud(seed) {
   }
 }
 
-function loadPokerData(seed) {
-  const cloud = createCloud(seed)
+function loadPokerData(seed, options) {
+  const cloud = createCloud(seed, options)
   let ownerOpenId = 'owner-a'
   const originalLoad = Module._load
   Module._load = function load(request, parent, isMain) {
     if (request === 'wx-server-sdk') {
       return {
         DYNAMIC_CURRENT_ENV: 'test', init() {}, database() { return cloud.database },
+        deleteFile(input) { return cloud.deleteFile(input) },
         getWXContext() { return { OPENID: ownerOpenId } }
       }
     }
@@ -82,6 +91,7 @@ function loadPokerData(seed) {
       collections: cloud.collections,
       transactionCalls: cloud.transactionCalls,
       queryCalls: cloud.queryCalls,
+      deletedFileLists: cloud.deletedFileLists,
       setOwner(value) { ownerOpenId = value }
     }
   } finally { Module._load = originalLoad }
@@ -165,6 +175,13 @@ test('clear_all_data removes every owned private payload while retaining redacte
   ]
   const seed = {}
   businessCollections.forEach(name => { seed[name] = [owned(name + '-mine', { secret: name }), foreign(name + '-foreign')] })
+  const noteAvatar = 'cloud://cloud1.example/player-notes/avatar-mine.png'
+  const profileAvatar = 'cloud://cloud1.example/social-profile-avatars/avatar-mine.png'
+  seed.player_notes[0].avatarFileId = noteAvatar
+  seed.player_notes[0].avatarUrl = noteAvatar
+  seed.player_notes[1].avatarFileId = 'cloud://cloud1.example/player-notes/avatar-foreign.png'
+  seed.profiles[0].avatarFileId = profileAvatar
+  seed.sessions[0].avatarFileId = 'cloud://cloud1.example/unmanaged/file.png'
   seed.sync_operations = [
     owned('sync-old', { action: 'update_hand', clientMutationId: 'old-1', status: 'completed', result: { hand: { cards: 'AA' } }, recoveryEvidence: { before: { cards: 'KK' } } }),
     foreign('sync-foreign')
@@ -192,6 +209,7 @@ test('clear_all_data removes every owned private payload while retaining redacte
   assert.equal('after' in auditOld, false)
   assert.equal(loaded.collections.sync_operations.find(item => item._id === 'sync-foreign').secret, 'keep')
   assert.equal(loaded.collections.audit_logs.find(item => item._id === 'audit-foreign').secret, 'keep')
+  assert.deepEqual(loaded.deletedFileLists.flat().sort(), [noteAvatar, profileAvatar].sort())
 
   assert.deepEqual(await loaded.pokerData.main({ action: 'clear_all_data', playerId: 'WX-ME', clientMutationId: 'clear-1' }), result)
 
@@ -202,4 +220,17 @@ test('clear_all_data removes every owned private payload while retaining redacte
   assert.ok(receiptQueries.every(call => Object.keys(call.filters).sort().join(',') === '_id,ownerOpenId,playerId'))
   assert.ok(receiptQueries.every(call => call.filters.ownerOpenId === 'owner-a' && call.filters.playerId === 'WX-ME'))
   assert.ok(receiptQueries.every(call => !Object.prototype.hasOwnProperty.call(call.filters, '_openid')))
+})
+
+test('clear_all_data keeps database records when managed cloud-file deletion fails', async () => {
+  const avatarFileId = 'cloud://cloud1.example/player-notes/avatar-mine.png'
+  const loaded = loadPokerData({
+    player_notes: [{ _id: 'note-mine', ownerOpenId: 'owner-a', playerId: 'WX-ME', avatarFileId }]
+  }, { deleteFileError: new Error('cloud storage unavailable') })
+
+  const result = await loaded.pokerData.main({ action: 'clear_all_data', playerId: 'WX-ME', clientMutationId: 'clear-file-failure' })
+  assert.equal(result.code, 'POKER_DATA_ERROR')
+  assert.equal(result.message, 'cloud storage unavailable')
+  assert.deepEqual(loaded.deletedFileLists, [[avatarFileId]])
+  assert.equal(loaded.collections.player_notes.some(item => item._id === 'note-mine'), true)
 })

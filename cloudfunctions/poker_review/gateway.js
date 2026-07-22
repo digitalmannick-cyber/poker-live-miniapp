@@ -1,9 +1,17 @@
 const https = require('https')
-const { randomUUID } = require('crypto')
+const { createHash, randomUUID } = require('crypto')
 
 const SUPPORTED_MODES = new Set(['extract', 'advice', 'chat', 'session_summary', 'all_in_ev'])
 const RETRYABLE_STATUS = new Set([502, 503])
 const RETRYABLE_ERROR_CODES = new Set(['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET'])
+
+function pseudonymousAgentUserId(value) {
+  const source = String(value || 'miniapp').trim() || 'miniapp'
+  return 'u_' + createHash('sha256')
+    .update('poker_review_user_v1:' + source)
+    .digest('hex')
+    .slice(0, 32)
+}
 
 function normalizeMode(value) {
   const mode = String(value || 'extract').trim().toLowerCase()
@@ -215,10 +223,11 @@ function createGateway(options) {
     async handle(event, identity) {
       const requestId = requestIdFactory()
       const source = event || {}
-      const userId = String(
+      const rawUserId = String(
         identity && (identity.openid || identity.OPENID) ||
         source.userId || source.playerId || 'miniapp'
       ).trim() || 'miniapp'
+      const userId = pseudonymousAgentUserId(rawUserId)
       const payload = buildAgentPayload(source, userId, requestId)
       let lastStatus = 0
 
@@ -274,6 +283,7 @@ module.exports = {
   createProductionGateway,
   normalizeAgentResponseBody,
   normalizeMode,
+  pseudonymousAgentUserId,
   requestJson,
   safeError
 }

@@ -21,6 +21,16 @@ const ANONYMOUS_NOTIFICATION_ACTOR = Object.freeze({
   avatarFileId: '',
   avatarText: '匿'
 })
+const MANAGED_PROFILE_AVATAR_PREFIX = 'social-profile-avatars/'
+
+function managedProfileAvatarFileId(value) {
+  const fileId = String(value || '').trim()
+  const match = /^cloud:\/\/[^/]+\/(.+)$/.exec(fileId)
+  if (!match) return ''
+  const cloudPath = match[1]
+  if (!cloudPath.startsWith(MANAGED_PROFILE_AVATAR_PREFIX) || cloudPath.includes('..') || cloudPath.includes('\\')) return ''
+  return fileId
+}
 
 const STAGES = Object.freeze([
   'profile',
@@ -265,6 +275,13 @@ function createAccountClearHandlers(repository, options) {
   const config = options || {}
   const now = typeof config.now === 'function' ? config.now : () => Date.now()
 
+  async function deleteManagedProfileAvatar(user) {
+    const fileId = managedProfileAvatarFileId(user && user.profile && user.profile.avatarFileId)
+    if (!fileId) return
+    if (typeof config.deleteCloudFiles !== 'function') throw new Error('account clear cloud file deletion unavailable')
+    await config.deleteCloudFiles([fileId])
+  }
+
   async function findUser(ownerOpenId) {
     if (typeof repository.findAccountClearUserByOpenId === 'function') {
       return repository.findAccountClearUserByOpenId(ownerOpenId)
@@ -289,6 +306,7 @@ function createAccountClearHandlers(repository, options) {
       if (current.stage === 'complete') return publicResult(socialUserId, 'complete')
 
       if (current.stage === 'profile') {
+        await deleteManagedProfileAvatar(user)
         const stage = nextStage('profile')
         await repository.runTransaction(store => saveCheckpoint(store, socialUserId, stage, hash, current, at, {
           deleted: true,
@@ -363,6 +381,7 @@ module.exports = {
   STAGES,
   ANONYMOUS_COMMENT_AUTHOR,
   ANONYMOUS_NOTIFICATION_ACTOR,
+  managedProfileAvatarFileId,
   mutationHash,
   createAccountClearHandlers
 }

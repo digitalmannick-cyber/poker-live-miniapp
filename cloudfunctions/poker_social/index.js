@@ -43,6 +43,16 @@ async function uploadTempFile(payload) {
   return { url: await avatarUrl(fileId) }
 }
 
+async function deleteCloudFiles(fileList) {
+  if (typeof cloud.deleteFile !== 'function') throw new Error('cloud file deletion unavailable')
+  const result = await cloud.deleteFile({ fileList })
+  const rows = result && result.fileList
+  if (!Array.isArray(rows) || rows.length !== fileList.length || rows.some(item => !item || (item.status !== 0 && item.status !== -503003))) {
+    throw new Error('cloud file deletion failed')
+  }
+  return result
+}
+
 const app = createSocialApp({
   identity,
   repository,
@@ -51,6 +61,9 @@ const app = createSocialApp({
   avatarUrl,
   profile: {
     checkProfileText: createProfileTextSafety(cloud.openapi)
+  },
+  accountClear: {
+    deleteCloudFiles
   },
   interaction: {
     checkCommentText: createCommentTextSafety(cloud.openapi)

@@ -25,6 +25,43 @@ const COLLECTIONS = {
   syncOperations: 'sync_operations',
   auditLogs: 'audit_logs'
 }
+const MANAGED_PRIVATE_FILE_PREFIXES = Object.freeze([
+  'player-notes/',
+  'player-card-imports/',
+  'social-profile-avatars/'
+])
+
+function managedPrivateCloudFileId(value) {
+  const fileId = String(value || '').trim()
+  const match = /^cloud:\/\/[^/]+\/(.+)$/.exec(fileId)
+  if (!match) return ''
+  const cloudPath = match[1]
+  if (cloudPath.includes('..') || cloudPath.includes('\\') ||
+    !MANAGED_PRIVATE_FILE_PREFIXES.some(prefix => cloudPath.startsWith(prefix))) return ''
+  return fileId
+}
+
+function managedPrivateFileIds(doc) {
+  const source = doc || {}
+  const nestedProfile = source.profile && typeof source.profile === 'object' ? source.profile : {}
+  return [source.avatarFileId, source.avatarUrl, nestedProfile.avatarFileId, nestedProfile.avatarUrl]
+    .map(managedPrivateCloudFileId)
+    .filter(Boolean)
+}
+
+async function deleteManagedPrivateFiles(docs) {
+  const fileList = Array.from(new Set((Array.isArray(docs) ? docs : []).flatMap(managedPrivateFileIds)))
+  if (!fileList.length) return
+  if (typeof cloud.deleteFile !== 'function') throw new Error('account clear cloud file deletion unavailable')
+  for (let index = 0; index < fileList.length; index += 50) {
+    const batch = fileList.slice(index, index + 50)
+    const result = await cloud.deleteFile({ fileList: batch })
+    const rows = result && result.fileList
+    if (!Array.isArray(rows) || rows.length !== batch.length || rows.some(item => !item || (item.status !== 0 && item.status !== -503003))) {
+      throw new Error('account clear cloud file deletion failed')
+    }
+  }
+}
 
 function normalizePlayerId(value) {
   return String(value || '').trim().toUpperCase()
@@ -2853,6 +2890,7 @@ async function clearOwnedCollection(collectionName, playerId, ownerOpenId, clear
   const docs = collectionName === COLLECTIONS.playerCardImportReceipts
     ? await fetchPlayerCardImportReceiptsForClear(playerId, ownerOpenId)
     : await fetchOwnedByPlayer(collectionName, playerId, ownerOpenId)
+  await deleteManagedPrivateFiles(docs)
   for (const doc of docs) {
     if (doc && doc._id) await removeClearBusinessDocById(clearFence, collectionName, doc._id)
   }
