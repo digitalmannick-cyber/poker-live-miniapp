@@ -1211,16 +1211,16 @@ function buildOnboardingParsedVoicePreview(hand, session) {
   const parsed = Object.assign({}, hand || {}, {
     provider: 'onboarding_demo',
     playedDate: (hand && hand.playedDate) || (session && session.date) || '2026-06-29',
-    stakeLevel: (hand && hand.stakeLevel) || '300/600',
+    stakeLevel: (hand && hand.stakeLevel) || '1/2',
     playerCount: 8,
     hasStraddle: false,
     heroPosition: 'CO',
     villainPosition: 'SB',
     opponentType: '紧凶',
     heroCardsInput: ONBOARDING_REVIEW_DEMO_HAND,
-    currentProfit: -42000,
-    effectiveStack: 300000,
-    potSize: 96000,
+    currentProfit: -140,
+    effectiveStack: 1000,
+    potSize: 320,
     board: {
       flop: 'Qd7d3c',
       turn: '8d',
@@ -1230,14 +1230,14 @@ function buildOnboardingParsedVoicePreview(hand, session) {
     opponentCardsSource: 'voice',
     showdown: 'AdJd',
     streetInputs: {
-      preflop: { pot: 3900, actionLine: 'Hero CO open 1500，SB call，BB fold' },
-      flop: { pot: 14600, actionLine: 'Qd7d3c，SB check，Hero bet 2500，SB raise 7800，Hero call' },
-      turn: { pot: 29200, actionLine: '8d，SB check，Hero check back' },
-      river: { pot: 96000, actionLine: '2s，SB bet 42000，Hero call' }
+      preflop: { pot: 13, actionLine: 'Hero CO open 5，SB call，BB fold' },
+      flop: { pot: 49, actionLine: 'Qd7d3c，SB check，Hero bet 8，SB raise 26，Hero call' },
+      turn: { pot: 97, actionLine: '8d，SB check，Hero check back' },
+      river: { pot: 320, actionLine: '2s，SB bet 140，Hero call' }
     },
     tags: ['River 决策', '可优化'],
     mindJourney: '河牌觉得对手可能有错过的听牌，但忽略了转牌同花已经完成。',
-    naturalLanguageSummary: '已从 QdQs 口述中识别出位置、手牌、牌面、底池、摊牌和本手亏损 -42000。',
+    naturalLanguageSummary: '已从 QdQs 口述中识别出位置、手牌、牌面、底池、摊牌和本手结果 -140。',
     missingFields: [],
     followUpQuestions: []
   })
@@ -2551,7 +2551,7 @@ Page({
 
   applyOnboardingVoiceDemo(stepKey) {
     if (!this.data.detailHand) return
-    const voiceNote = '我在 CO 拿 QdQs，澳门 300/600，8人桌无 Straddle。翻前 open 1500，SB call。翻牌 Qd7d3c，我下注 2500，被 SB raise 到 7800 后 call。转牌 8d，我 check back。河牌 2s，SB bet 42000，我 call，摊牌输给 AdJd 同花。'
+    const voiceNote = '我在 CO 拿 QdQs，训练示例 1/2，8人桌无 Straddle。翻前 open 5，SB call。翻牌 Qd7d3c，我下注 8，被 SB raise 到 26 后 call。转牌 8d，我 check back。河牌 2s，SB bet 140，我 call，摊牌输给 AdJd 同花。'
     const parsedVoice = buildOnboardingParsedVoicePreview(this.data.detailHand, this.data.detailSession)
     this.voiceNoteDraft = voiceNote
     this.setData({
@@ -2564,7 +2564,7 @@ Page({
       voiceNeedsRefresh: false,
       voiceStatus: stepKey === 'reviewVoice'
         ? '演示口述已填入：可以用手机 AI 输入法说出这段内容。'
-        : '演示解析字段已生成：检查 QdQs、位置、牌面、底池和 -42000 是否正确。'
+        : '演示解析字段已生成：检查 QdQs、位置、牌面、底池和 -140 是否正确。'
     })
   },
 

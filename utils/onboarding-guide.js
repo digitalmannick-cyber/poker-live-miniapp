@@ -14,9 +14,9 @@ const RAW_STEPS = [
     route: 'pages/session-list/session-list',
     url: '/pages/session-list/session-list',
     navType: 'switchTab',
-    title: '从澳门 300/600 开始',
+    title: '从训练示例开始',
     copy: '先从场次页新建一场牌局。新版本里，新建 Session 在场次页弹层完成。',
-    example: '澳门 300/600 试用场 · 1 手牌 · QdQs',
+    example: '训练示例 1/2 · 1 手牌 · QdQs',
     targetClass: 'onboarding-target-session'
   },
   {
@@ -25,9 +25,9 @@ const RAW_STEPS = [
     route: 'pages/session-list/session-list',
     url: '/pages/session-list/session-list',
     navType: 'switchTab',
-    title: '买入填 300000',
+    title: '买入填 1000',
     copy: '先填本场初始买入，收局时再补带出金额做结算。',
-    example: '买入：300000',
+    example: '买入：1000',
     targetClass: 'onboarding-target-session-buyin'
   },
   {
@@ -36,9 +36,9 @@ const RAW_STEPS = [
     route: 'pages/session-list/session-list',
     url: '/pages/session-list/session-list',
     navType: 'switchTab',
-    title: '级别选 300/600',
+    title: '级别选 1/2',
     copy: '级别会影响 BB 换算、盈亏统计和后面的手牌复盘。',
-    example: '小盲 300 · 大盲 600',
+    example: '小盲 1 · 大盲 2',
     targetClass: 'onboarding-target-session-blind'
   },
   {
@@ -47,9 +47,9 @@ const RAW_STEPS = [
     route: 'pages/session-list/session-list',
     url: '/pages/session-list/session-list',
     navType: 'switchTab',
-    title: '场地选澳门',
-    copy: '场地用于后续按赌场、级别复盘自己的胜率和表现。',
-    example: '场地：澳门',
+    title: '场地选训练场',
+    copy: '场地用于后续按不同环境和级别复盘自己的表现。',
+    example: '场地：训练场',
     targetClass: 'onboarding-target-session-venue'
   },
   {
@@ -60,7 +60,7 @@ const RAW_STEPS = [
     navType: 'switchTab',
     title: '点击开始',
     copy: '开始后会进入进行中 Session 首页，买入、备注、速记和完整录入都从这里进入。',
-    example: '澳门 300/600 · 买入 300000 · 8 人桌',
+    example: '训练场 1/2 · 买入 1000 · 8 人桌',
     targetClass: 'onboarding-target-session-start'
   },
   {
@@ -71,7 +71,7 @@ const RAW_STEPS = [
     navType: 'switchTab',
     title: '进入速记手牌',
     copy: '新版本的快速记牌入口在进行中 Session 里。点击“速记”即可快速记录一手牌。',
-    example: '当前 Session：澳门 300/600',
+    example: '当前 Session：训练示例 1/2',
     targetClass: 'onboarding-target-record-session'
   },
   {
@@ -101,9 +101,9 @@ const RAW_STEPS = [
     route: 'pages/session-list/session-list',
     url: '/pages/session-list/session-list',
     navType: 'switchTab',
-    title: '录入输赢 -42000',
+    title: '录入结果 -140',
     copy: '快速记牌只需要先填手牌和本手输赢，复杂行动线可以稍后在复盘里补。',
-    example: 'QdQs · 本手亏损 -42000',
+    example: 'QdQs · 本手结果 -140',
     targetClass: 'onboarding-target-record-profit'
   },
   {
@@ -125,7 +125,7 @@ const RAW_STEPS = [
     navType: 'switchTab',
     title: '打开 QdQs 待复盘',
     copy: 'HANDS/手牌页承接速记后的手牌。点击 QdQs 进入详情补全行动线。',
-    example: 'QdQs · 本手亏损 -42000',
+    example: 'QdQs · 本手结果 -140',
     targetClass: 'onboarding-target-review-entry'
   },
   {
@@ -146,7 +146,7 @@ const RAW_STEPS = [
     navType: 'switchTab',
     title: '语音输入复盘',
     copy: '用手机 AI 语音输入法口述行动线，再让系统解析字段。',
-    example: 'CO QdQs · 翻牌 Qd7d3c · 河牌 call 输 -42000',
+    example: 'CO QdQs · 翻牌 Qd7d3c · 河牌 call，结果 -140',
     targetClass: 'onboarding-target-review-voice'
   },
   {
@@ -157,7 +157,7 @@ const RAW_STEPS = [
     navType: 'switchTab',
     title: '解析字段',
     copy: '解析后检查位置、牌面、底池、摊牌和输赢是否正确，不正确可手动改。',
-    example: 'CO / QdQs / Qd7d3c-8d-2s / AdJd / -42000',
+    example: 'CO / QdQs / Qd7d3c-8d-2s / AdJd / -140',
     targetClass: 'onboarding-target-review-parse'
   },
   {
@@ -211,7 +211,7 @@ const RAW_STEPS = [
     navType: 'switchTab',
     title: '查看 AI 总结',
     copy: 'Session 内的手牌都复盘完成后，可以在 Session 列表查看 AI 总结。',
-    example: '澳门 300/600 · AI 总结',
+    example: '训练示例 1/2 · AI 总结',
     targetClass: 'onboarding-target-session-summary'
   },
   {
@@ -244,7 +244,7 @@ const RAW_STEPS = [
     navType: 'switchTab',
     title: '统计页看长期表现',
     copy: 'STATS/统计页会按真实场次和手牌生成资金曲线、级别表现和复盘优先级。',
-    example: '澳门 300/600 · 资金曲线 · 复盘优先级',
+    example: '训练示例 1/2 · 结果曲线 · 复盘优先级',
     targetClass: 'onboarding-target-stats'
   },
   {
@@ -265,8 +265,8 @@ const RAW_STEPS = [
     url: '/pages/session-list/session-list',
     navType: 'switchTab',
     title: '删除示例 Session',
-    copy: '示例手牌清理后，再左滑澳门 300/600 试用场，删除示例 Session，完成闭环。',
-    example: '澳门 300/600 Session 行 · 左滑删除',
+    copy: '示例手牌清理后，再左滑训练示例 1/2，删除示例 Session，完成闭环。',
+    example: '训练示例 1/2 Session 行 · 左滑删除',
     targetClass: 'onboarding-target-session-delete'
   }
 ]

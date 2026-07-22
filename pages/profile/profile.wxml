@@ -57,6 +57,7 @@
     </view>
     <view class="profile-hero-art"></view>
   </view>
+  <view wx:if="{{!accountLoggedOut}}" class="profile-record-disclaimer">所有结果均来自用户自行录入，仅用于个人牌谱记录与复盘，不代表真实资产或平台结算。</view>
 
   <view wx:if="{{accountLoggedOut}}" class="profile-logged-out-utility">
     <view class="profile-logged-out-utility-row" bindtap="openReleaseNotes">

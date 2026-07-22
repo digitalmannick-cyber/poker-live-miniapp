@@ -263,7 +263,7 @@
           <input class="input" type="number" value="{{form.buyIn}}" data-key="buyIn" bindinput="onInput" />
         </view>
         <view>
-          <view class="label">提现</view>
+          <view class="label">结束筹码</view>
           <input class="input" type="number" value="{{form.cashOut}}" data-key="cashOut" bindinput="onInput" />
         </view>
         <view>

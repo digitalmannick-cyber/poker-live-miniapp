@@ -240,6 +240,13 @@
   margin-top: 18rpx;
 }
 
+.stats-record-disclaimer {
+  margin-top: 18rpx;
+  color: rgba(255, 255, 255, 0.54);
+  font-size: 19rpx;
+  line-height: 1.55;
+}
+
 .stats-loading,
 .stats-empty {
   position: relative;

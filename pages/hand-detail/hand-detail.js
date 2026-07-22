@@ -246,7 +246,7 @@ function buildDetailAdviceQuestion(hand) {
   const board = source.board || {}
   const streets = source.streetInputs || {}
   const lines = [
-    '请从职业德州扑克现金局教练角度复盘这手牌。',
+    '请从专业德州扑克牌谱复盘教练角度复盘这手牌。',
     '重点指出明确错误、可优化点、打得好的地方、剥削调整和训练计划。',
     '不要泛泛而谈，要围绕范围、SPR、位置、下注尺度、对手类型和逐街行动线判断。',
     'Hero: ' + [source.heroPosition, source.heroCardsInput].filter(Boolean).join(' '),

@@ -49,7 +49,7 @@ const DEFAULT_PROFILE = {
 const DEFAULT_SETTINGS = {
   chipUnit: 'HKD',
   bankrollInitial: 0,
-  venues: ['MGM', '威尼斯人', 'Home Game'],
+  venues: ['训练场', '线下牌局', '自定义场地'],
   blindPresets: ['100/200', '200/400', '300/600', '500/1000'],
   lastBlindPreset: '200/400',
   positions: ['UTG', 'UTG+1', 'LJ', 'HJ', 'CO', 'BTN', 'SB', 'BB', 'STR'],

@@ -1208,7 +1208,7 @@ Page({
   },
 
   editVenues() {
-    this.openSettingsEditor('venues', '编辑场地预设', '例如 永利 / 威尼斯人 / Home Game')
+    this.openSettingsEditor('venues', '编辑场地预设', '例如 训练场 / 线下牌局 / 自定义场地')
   },
 
   editBlindPresets() {

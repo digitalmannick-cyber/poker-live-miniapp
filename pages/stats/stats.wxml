@@ -37,6 +37,7 @@
         <view class="stats-hero-cell"><view class="stats-cell-value">{{analytics.hero.hands}}</view><view class="stats-cell-label">记录手牌</view></view>
         <view class="stats-hero-cell"><view class="stats-cell-value stats-cell-value-small">{{analytics.hero.hourlyRate}}</view><view class="stats-cell-label">小时收益</view></view>
       </view>
+      <view class="stats-record-disclaimer">所有结果均来自用户自行录入，仅用于个人牌谱记录与复盘，不代表真实资产或平台结算。</view>
     </block>
   </view>
 

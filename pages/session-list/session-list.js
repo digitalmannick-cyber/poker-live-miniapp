@@ -255,14 +255,14 @@ function buildAiReminderSettingsFromDraft(draft, currentSettings) {
 function buildOnboardingCreateForm(settings) {
   const sourceSettings = settings || {}
   return {
-    venue: '澳门',
-    blindPreset: '300/600',
-    smallBlind: 300,
-    bigBlind: 600,
+    venue: '训练场',
+    blindPreset: '1/2',
+    smallBlind: 1,
+    bigBlind: 2,
     gameType: 'NLHE',
     tableSize: '8',
     hasStraddle: false,
-    buyIn: '300000',
+    buyIn: '1000',
     notes: ''
   }
 }
@@ -270,16 +270,16 @@ function buildOnboardingCreateForm(settings) {
 function getOnboardingDemoSession(sessions) {
   const list = Array.isArray(sessions) ? sessions : []
   return list.find(item => item && item.onboardingDemo) || list[0] || {
-    _id: 'demo_session_macau_300_600',
-    title: '澳门 300/600 试用场',
-    venue: '澳门',
-    smallBlind: 300,
-    bigBlind: 600,
-    stakeLevel: '300/600',
+    _id: 'demo_session_training_1_2',
+    title: '训练示例 1/2',
+    venue: '训练场',
+    smallBlind: 1,
+    bigBlind: 2,
+    stakeLevel: '1/2',
     status: 'active',
     date: formatDatePart(new Date()),
     startTime: combineDateTime(formatDatePart(new Date()), formatTimePart(new Date())),
-    buyIn: 300000,
+    buyIn: 1000,
     cashOut: '',
     totalProfit: 0,
     handCount: 0,
@@ -1357,11 +1357,11 @@ Page({
         quickEntryVisible: false,
         sessionActionSheetVisible: false,
         createForm,
-        venueOptions: buildCreateOptions(venues.indexOf('澳门') > -1 ? venues : ['澳门'].concat(venues), createForm.venue),
-        blindPresetOptions: buildCreateOptions(blindPresets.indexOf('300/600') > -1 ? blindPresets : ['300/600'].concat(blindPresets), createForm.blindPreset),
+        venueOptions: buildCreateOptions(venues.indexOf('训练场') > -1 ? venues : ['训练场'].concat(venues), createForm.venue),
+        blindPresetOptions: buildCreateOptions(blindPresets.indexOf('1/2') > -1 ? blindPresets : ['1/2'].concat(blindPresets), createForm.blindPreset),
         tableSizeOptions: tableSizes.map(item => Object.assign({}, item, { active: item.value === createForm.tableSize })),
-        venuePickerIndex: Math.max(0, (venues.indexOf('澳门') > -1 ? venues : ['澳门'].concat(venues)).indexOf(createForm.venue)),
-        blindPickerIndex: Math.max(0, (blindPresets.indexOf('300/600') > -1 ? blindPresets : ['300/600'].concat(blindPresets)).indexOf(createForm.blindPreset)),
+        venuePickerIndex: Math.max(0, (venues.indexOf('训练场') > -1 ? venues : ['训练场'].concat(venues)).indexOf(createForm.venue)),
+        blindPickerIndex: Math.max(0, (blindPresets.indexOf('1/2') > -1 ? blindPresets : ['1/2'].concat(blindPresets)).indexOf(createForm.blindPreset)),
         tableSizePickerIndex: Math.max(0, tableSizes.findIndex(item => item.value === createForm.tableSize))
       })
       this.updateSessionSwipeState('')
@@ -1388,7 +1388,7 @@ Page({
         quickForm: {
           heroCardsInput: 'QdQs',
           heroPosition: 'CO',
-          currentProfit: '-42000',
+          currentProfit: '-140',
           notes: '示例：QdQs 河牌大注跟注，稍后进入复盘补全行动线。'
         },
         quickHeroCardsVisual: cardUi.parseHeroCardsInput('QdQs'),
@@ -1434,12 +1434,12 @@ Page({
           counts: { good: 0, mistakes: 1, optimizations: 1 },
           tendency: '面对强线和湿面河牌时，容易把顶暗三条的绝对牌力看得过重。',
           mistakeHands: ['QdQs：转牌同花完成后缺少范围重估，河牌跟注前没有明确组合数。'],
-          optimizationHands: ['QdQs：河牌面对 42000 大注时，先列出成花、两对/暗三条、错过听牌，再决定 bluff-catch。'],
+          optimizationHands: ['QdQs：河牌面对 140 大注时，先列出成花、两对/暗三条、错过听牌，再决定 bluff-catch。'],
           goodHands: [],
           handSummaries: ['QdQs：CO open，翻牌顶暗三条被 check-raise 后跟注，河牌跟注输给 AdJd 同花。'],
           recommendations: ['以后遇到同花完成后的大注，先问“对手价值下注有哪些、诈唬有哪些、我需要赢多少比例”。'],
           trainingPlan: ['练习 5 手河牌大注 bluff-catch 复盘，每手写出价值组合和诈唬组合。'],
-          oneLiner: `${settings.chipUnit || 'HKD'} 300/600 示例：先用结构化复盘看清决策点，再决定下一次如何调整。`,
+          oneLiner: `${settings.chipUnit || 'BB'} 1/2 训练示例：先用结构化复盘看清决策点，再决定下一次如何调整。`,
           showAnswer: false,
           answer: ''
         }

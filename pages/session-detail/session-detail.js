@@ -544,15 +544,15 @@ function shouldShowOnboardingCreateDemo() {
 
 function buildOnboardingCreateForm(form) {
   return Object.assign({}, form, {
-    venue: '澳门',
-    blindPreset: '300/600',
-    smallBlind: '300',
-    bigBlind: '600',
+    venue: '训练场',
+    blindPreset: '1/2',
+    smallBlind: '1',
+    bigBlind: '2',
     hasStraddle: false,
     tableSize: '8',
-    buyIn: '300000',
+    buyIn: '1000',
     cashOut: '',
-    notes: '新手引导演示：澳门 300/600，买入 300000'
+    notes: '新手引导演示：训练示例 1/2，买入 1000'
   })
 }
 
@@ -1791,7 +1791,7 @@ Page({
       return
     }
     if (form.cashOut === '') {
-      wx.showToast({ title: '请先填写提现', icon: 'none' })
+      wx.showToast({ title: '请先填写结束筹码', icon: 'none' })
       return
     }
     const now = getNowParts()

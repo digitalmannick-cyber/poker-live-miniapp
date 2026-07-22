@@ -279,20 +279,20 @@ function shouldShowOnboardingRecordDemo() {
 function buildOnboardingRecordFormPatch(session) {
   return {
     heroCardsInput: 'QdQs',
-    currentProfit: '-42000',
+    currentProfit: '-140',
     heroPosition: 'CO',
     villainPosition: 'SB',
     opponentType: '紧凶',
     playerCount: '8',
-    effectiveStack: '300000',
-    potSize: '96000',
+    effectiveStack: '1000',
+    potSize: '320',
     tagsInput: 'River 决策,可优化',
-    preflopActionLine: 'Hero CO open 1500，SB call，BB fold',
-    flopActionLine: 'Qd7d3c，SB check，Hero bet 2500，SB raise 7800，Hero call',
+    preflopActionLine: 'Hero CO open 5，SB call，BB fold',
+    flopActionLine: 'Qd7d3c，SB check，Hero bet 8，SB raise 26，Hero call',
     turnActionLine: '8d，SB check，Hero check back',
-    riverActionLine: '2s，SB bet 42000，Hero call',
-    notes: '新手引导演示：QdQs，亏损 -42000。先完成手牌和输赢即可快速保存。',
-    stakeLevel: getSessionLevel(session) || '300/600',
+    riverActionLine: '2s，SB bet 140，Hero call',
+    notes: '新手引导演示：QdQs，结果 -140。先完成手牌和结果即可快速保存。',
+    stakeLevel: getSessionLevel(session) || '1/2',
     hasStraddle: !!(session && session.hasStraddle)
   }
 }
