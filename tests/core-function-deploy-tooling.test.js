@@ -10,6 +10,7 @@ test('core function deployment is fixed-environment, commit-bound and allowliste
   assert.match(source, /cloud1-d3ggy9aq3be912e34/)
   assert.match(source, /ExpectedCommit does not exactly match HEAD/)
   assert.match(source, /Remote function is not active and available/)
+  assert.match(source, /CloudBase read failed after retries/)
 })
 
 test('core function deployment preserves secrets without printing environment values', () => {
