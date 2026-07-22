@@ -1,5 +1,6 @@
 const cloud = require('wx-server-sdk')
 const { createProductionGateway } = require('./gateway')
+const PRIVACY_GATEWAY_VERSION = 'pseudonymousAgentUserId-v1'
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
@@ -11,5 +12,6 @@ exports.main = async event => {
 }
 
 module.exports.__test = {
-  createProductionGateway
+  createProductionGateway,
+  PRIVACY_GATEWAY_VERSION
 }

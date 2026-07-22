@@ -1,5 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 
 const {
   createGateway,
@@ -29,4 +31,9 @@ test('pseudonymous poker-review identity is domain separated and stable', () => 
   assert.equal(pseudonymousAgentUserId('openid-a'), pseudonymousAgentUserId('openid-a'))
   assert.notEqual(pseudonymousAgentUserId('openid-a'), pseudonymousAgentUserId('openid-b'))
   assert.notEqual(pseudonymousAgentUserId('openid-a'), 'openid-a')
+})
+
+test('poker review entrypoint exposes the deployed privacy gateway marker', () => {
+  const entrypoint = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/poker_review/index.js'), 'utf8')
+  assert.match(entrypoint, /PRIVACY_GATEWAY_VERSION = 'pseudonymousAgentUserId-v1'/)
 })
