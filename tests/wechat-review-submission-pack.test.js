@@ -34,7 +34,8 @@ test('review pack records the live platform UGC, privacy, experience and custome
     '当前为“未声明”',
     '未调用录音接口',
     '已经指向 `1.0.20260722.2325.v3.39`',
-    '已存在可用客服人员和客服管理员'
+    '已存在可用客服人员和客服管理员',
+    'Nightly v2.02.2607212'
   ]) {
     assert.match(pack, new RegExp(phrase))
   }
