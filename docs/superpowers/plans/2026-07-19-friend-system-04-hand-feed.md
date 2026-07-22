@@ -16,7 +16,7 @@
 - 范围只允许 `square`、`friends`、`selected`，一次只能选择一个。
 - 广场允许所有已登录用户浏览、评论和点赞；好友范围实时依赖当前好友关系。
 - 发布者不能删除他人评论；只能撤回整条分享。
-- 第一版不实现自动内容检测或举报，但执行长度、贴纸 ID与频率校验。
+- 第一版对广场文字评论、回复和公开昵称做服务端自动检测，并执行长度、贴纸 ID 与频率校验；不建设用户举报队列，管理员保留评论软删除能力。
 
 ---
 
@@ -1202,7 +1202,7 @@ sync_operations / audit_logs（若当前云写边界启用）
 ##### Preview、合规与上传边界
 
 - 使用真实工作区执行 WeChat DevTools auto-preview，逐页核对四份 HTML demo 的关键布局和 reduced-motion；preview 不修改版本号/公告。
-- 公共广场上线前执行当期微信社区内容合规复核。当前内容检测/举报仍是可拓展功能；若平台要求其为前置条件，则 Task 8 结论为 blocked，不得发布。
+- 公共广场上线前执行当期微信社区内容合规复核。广场文字评论、回复和公开昵称自动检测已纳入第一版；用户举报队列仍是可拓展功能。若平台另有未满足的前置要求，则 Task 8 结论为 blocked，不得发布。
 - **没有用户明确说“上传开发版”或“发布”时：不修改版本源、不更新 release notes、不执行 upload、不创建发布。**
 - Task 8 交付报告必须分别写清：自动化测试、CloudBase 三账号、DevTools preview、合规复核、upload 状态；不能用 preview 成功代替上传成功。
 
@@ -1214,7 +1214,7 @@ sync_operations / audit_logs（若当前云写边界启用）
 4. 所有本地门禁通过后部署测试环境集合、索引、权限和函数。
 5. 执行三账号矩阵、并发/限频、清除、抓包与断网测试。
 6. 执行真实工作区 auto-preview，不上传。
-7. 完成合规复核；若需内容检测/举报，明确 blocked。
+7. 完成合规复核；验证已部署的公开文本自动检测，若仍有其他未满足的强制要求则明确 blocked。
 8. 仅在用户另行明确授权后，才进入版本号、公告、development upload 或 release 流程。
 
 - [ ] **Step 1: 执行本地门禁**
@@ -1229,7 +1229,7 @@ sync_operations / audit_logs（若当前云写边界启用）
 
 - [ ] **Step 4: 真实工作区 auto-preview 与合规复核**
   - 核对四份 HTML demo 的布局与 reduced-motion；preview 不等于 development upload/release。
-  - 若当期平台要求内容检测/举报先上线，报告 `blocked`，不得发布。
+  - 验证广场评论、回复和公开昵称自动检测已经生效；若平台还有其他强制能力未满足，报告 `blocked`，不得发布。
 
 - [ ] **Step 5: 写验收报告**
   - 分别记录自动化测试、CloudBase 三账号、DevTools preview、合规复核和 upload 状态。

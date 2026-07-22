@@ -48,6 +48,10 @@
 
 ## 4. 上线监控阈值
 
+当前已回读的 SCF 基线：环境并发上限 1000；`poker_data` 超时 15 秒，`poker_social` 与 `doubao_asr` 为 60 秒，`poker_review` 为 150 秒；四个函数均为 256 MB。AI Agent 位于独立环境 `prod-d7g8pahhve2e17b8d`，服务 `flask-v2u1` 当前状态为 `normal`。
+
+腾讯云监控策略在 2026-07-22 回读为 0，以下阈值在后台建立并绑定真实接收人之前，只是运行标准，不是已经生效的告警：
+
 | 指标 | 告警阈值 | 立即动作 |
 | --- | --- | --- |
 | `poker_data` / `poker_social` 5 分钟错误率 | `> 5%` | 停止发布或新功能宣传；核对最近部署与 CloudBase 状态 |
