@@ -2,9 +2,9 @@
 
 ## 1. 适用基线
 
-- 小程序业务版本：`3.38`
-- 微信开发版本：`1.0.20260722.2243.v3.38`
-- 代码/云端上线基线：`v3.38-launch-ready.2`
+- 小程序业务版本：`3.39`
+- 微信开发版本：`1.0.20260722.2325.v3.39`
+- 代码/云端上线基线：`v3.39-launch-ready`
 - CloudBase 环境：`cloud1-d3ggy9aq3be912e34`
 - 正式发布前环境：邀请小程序码 `trial`，AI 提醒 `trial`
 - 正式发布后环境：邀请小程序码 `release`，AI 提醒 `formal`
@@ -54,7 +54,7 @@
      -ConfirmPublished `
      -ConfirmEnvironmentId cloud1-d3ggy9aq3be912e34 `
      -ExpectedCommit <发布提交> `
-     -ConfirmVersion 3.38
+     -ConfirmVersion 3.39
    ```
 
 5. 再运行一次不带参数的脚本，必须显示 `invite=release; reminder=formal`。
