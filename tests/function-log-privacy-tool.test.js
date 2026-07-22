@@ -25,5 +25,7 @@ test('function log hardening disables platform response logs and verifies the re
   assert.match(source, /\$body\.Replace\('\"', '\\\"'\)/)
   assert.match(source, /Get-FunctionPrivacyState/)
   assert.match(source, /did not enable IgnoreSysLog/)
+  assert.match(source, /attempt -lt 3/)
+  assert.match(source, /CloudBase CLI operation failed after retries/)
   assert.doesNotMatch(source, /Write-Output \$raw|Write-Host \$raw/)
 })

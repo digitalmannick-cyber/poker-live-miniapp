@@ -4,7 +4,7 @@
 
 - 小程序业务版本：`3.39`
 - 微信开发版本：`1.0.20260722.2325.v3.39`
-- 代码/云端上线基线：`v3.39-launch-ready`
+- 代码/云端上线基线：`v3.39-launch-ready.2`
 - CloudBase 环境：`cloud1-d3ggy9aq3be912e34`
 - 正式发布前环境：邀请小程序码 `trial`，AI 提醒 `trial`
 - 正式发布后环境：邀请小程序码 `release`，AI 提醒 `formal`

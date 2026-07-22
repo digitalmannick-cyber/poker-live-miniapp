@@ -23,16 +23,19 @@ function Get-JsonFromOutput {
 
 function Invoke-TcbJson {
   param([string[]]$Arguments)
-  $previousPreference = $ErrorActionPreference
-  try {
-    $ErrorActionPreference = 'Continue'
-    $raw = (& tcb @Arguments 2>&1 | Out-String)
-    $exitCode = $LASTEXITCODE
-  } finally {
-    $ErrorActionPreference = $previousPreference
+  for ($attempt = 0; $attempt -lt 3; $attempt += 1) {
+    $previousPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $raw = (& tcb @Arguments 2>&1 | Out-String)
+      $exitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousPreference
+    }
+    if ($exitCode -eq 0) { return Get-JsonFromOutput $raw }
+    if ($attempt -lt 2) { Start-Sleep -Seconds (2 + $attempt * 2) }
   }
-  if ($exitCode -ne 0) { throw 'CloudBase CLI operation failed' }
-  return Get-JsonFromOutput $raw
+  throw 'CloudBase CLI operation failed after retries'
 }
 
 function Get-FunctionPrivacyState {
