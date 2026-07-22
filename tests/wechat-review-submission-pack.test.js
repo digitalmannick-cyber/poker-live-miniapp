@@ -5,6 +5,7 @@ const path = require('node:path')
 
 const root = path.resolve(__dirname, '..')
 const pack = fs.readFileSync(path.join(root, 'docs/superpowers/specs/2026-07-22-wechat-review-submission-pack.md'), 'utf8')
+const privacyInventory = fs.readFileSync(path.join(root, 'docs/superpowers/specs/2026-07-22-privacy-declaration-inventory.md'), 'utf8')
 const version = require('../config/app-version').displayVersion
 
 test('review submission pack is bound to the current mini-program candidate', () => {
@@ -36,5 +37,18 @@ test('review pack records the live platform UGC, privacy, experience and custome
     '已存在可用客服人员和客服管理员'
   ]) {
     assert.match(pack, new RegExp(phrase))
+  }
+})
+
+test('privacy inventory maps the actual platform information types and removes the stale microphone claim', () => {
+  for (const phrase of [
+    '用户信息（微信昵称、头像）',
+    '发布内容',
+    '操作日志',
+    '账号标识与云端牌谱/训练数据',
+    'AI 复盘输入',
+    '删除当前后台中与候选运行时不一致的“麦克风—语音录入”声明'
+  ]) {
+    assert.match(privacyInventory, new RegExp(phrase))
   }
 })
