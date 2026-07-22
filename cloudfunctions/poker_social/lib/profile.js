@@ -64,6 +64,7 @@ async function resolveAvatarUrl(record, avatarUrl) {
 
 function createProfileHandlers(repository, options) {
   const config = options || {}
+  const checkProfileText = typeof config.checkProfileText === 'function' ? config.checkProfileText : null
 
   async function getDto(record) {
     return toProfileDto(record, { avatarUrl: await resolveAvatarUrl(record, config.avatarUrl) })
@@ -75,6 +76,10 @@ function createProfileHandlers(repository, options) {
       const existing = await repository.find(PROFILE_COLLECTION, { ownerOpenId: actor.ownerOpenId })
       const now = Date.now()
       if (existing) requireActiveSocialUser(existing)
+      const existingNickname = String(existing && existing.profile && existing.profile.nickname || '').trim()
+      if (checkProfileText && normalized.profile.nickname !== existingNickname) {
+        await checkProfileText({ content: normalized.profile.nickname, openId: String(actor.ownerOpenId || '') })
+      }
       const reservationId = ownerReservationId(actor.ownerOpenId)
       const expectedOwnerHash = ownerHash(actor.ownerOpenId)
       const candidateUserId = existing && existing._id || randomSocialUserId()

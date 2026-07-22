@@ -35,6 +35,13 @@ function getUnitLabel(unit) {
   return 'BB'
 }
 
+function getProfileSafetyErrorTitle(error) {
+  const code = String(error && (error.code || error.errCode) || '')
+  if (code === 'PROFILE_CONTENT_BLOCKED') return '昵称可能含有不适宜内容，请修改后重试'
+  if (code === 'PROFILE_CHECK_UNAVAILABLE') return '昵称检测暂不可用，请稍后重试'
+  return ''
+}
+
 function createEditableItems(list) {
   return (list || []).map((value, index) => ({
     id: 'item_' + Date.now() + '_' + index + '_' + Math.floor(Math.random() * 10000),
@@ -381,7 +388,7 @@ Page({
       })
   },
 
-  async syncOwnSocialProfile(profile, force) {
+  async syncOwnSocialProfile(profile, force, throwOnError) {
     if (this.data.accountLoggedOut) return null
     const source = profile || this.data.profile
     const playerId = String(source && source.playerId || '').trim().toUpperCase()
@@ -392,6 +399,7 @@ Page({
       })
     } catch (error) {
       console.warn('sync social profile failed', error)
+      if (throwOnError) throw error
       return null
     }
   },
@@ -430,8 +438,19 @@ Page({
 
   async updateOwnPublicProfile(patch) {
     const profile = await dataService.updateProfile(patch)
-    const synced = await this.syncOwnSocialProfile(profile, true)
-    return { profile, synced }
+    try {
+      const synced = await this.syncOwnSocialProfile(profile, true, true)
+      return { profile, synced, errorCode: '' }
+    } catch (error) {
+      return { profile, synced: null, errorCode: String(error && (error.code || error.errCode) || '') }
+    }
+  },
+
+  showProfileSafetyError(code) {
+    const title = getProfileSafetyErrorTitle({ code })
+    if (!title) return false
+    wx.showToast({ title, icon: 'none' })
+    return true
   },
 
   async loadSocialSettings() {
@@ -665,10 +684,11 @@ Page({
       content: this.data.profile.name || ''
     })
     if (!res.confirm || !res.content) return
-    await this.updateOwnPublicProfile({
+    const saved = await this.updateOwnPublicProfile({
       name: res.content.trim(),
       avatarText: res.content.trim().slice(0, 2)
     })
+    if (this.showProfileSafetyError(saved.errorCode)) return
     this.refresh()
   },
 
@@ -705,6 +725,13 @@ Page({
     this.setData({ profileEditorName: e.detail.value || '' })
   },
 
+  onProfileEditorNicknameReview(e) {
+    const detail = e && e.detail || {}
+    if (detail.pass === false && !detail.timeout) {
+      wx.showToast({ title: '昵称未通过微信审核，请修改', icon: 'none' })
+    }
+  },
+
   async saveProfileEditor() {
     const name = String(this.data.profileEditorName || '').trim()
     if (!name) {
@@ -715,6 +742,7 @@ Page({
       name,
       avatarText: getAvatarText(name)
     })
+    if (this.showProfileSafetyError(saved.errorCode)) return
     this.closeProfileEditor()
     wx.showToast({ title: saved.synced ? '资料已保存' : '已保存，好友资料稍后同步', icon: saved.synced ? 'success' : 'none' })
     this.refresh()
@@ -831,6 +859,7 @@ Page({
       avatarText: getAvatarText(name || this.data.profile.name),
       avatarUrl: avatarUrl || this.data.profile.avatarUrl
     })
+    if (this.showProfileSafetyError(saved.errorCode)) return
     wx.setStorageSync(WECHAT_PROFILE_PROMPT_SEEN_KEY, true)
     this.setData({
       wechatProfilePromptVisible: false,
@@ -894,6 +923,7 @@ Page({
             const avatarUrl = await saveAvatarFile(tempFilePath)
             if (!avatarUrl) return
             const saved = await this.updateOwnPublicProfile({ avatarUrl })
+            if (this.showProfileSafetyError(saved.errorCode)) return
             if (!saved.synced) wx.showToast({ title: '头像已保存，好友资料稍后同步', icon: 'none' })
             this.refresh()
           }

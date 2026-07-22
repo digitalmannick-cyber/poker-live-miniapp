@@ -99,10 +99,12 @@
           <view class="profile-editor-label">昵称</view>
           <input
             class="profile-editor-input"
+            type="nickname"
             value="{{profileEditorName}}"
             placeholder="输入你的玩家昵称"
             placeholder-class="profile-editor-placeholder"
             bindinput="onProfileEditorNameInput"
+            bindnicknamereview="onProfileEditorNicknameReview"
             confirm-type="done"
           />
         </view>

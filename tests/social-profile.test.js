@@ -387,7 +387,10 @@ test('CloudBase entrypoint reads a profile after a cold-start reload', async () 
     init() {},
     database: () => database,
     getWXContext: () => ({ OPENID: 'openid-persistent' }),
-    getTempFileURL: async ({ fileList }) => ({ fileList: [{ tempFileURL: 'https://temp/' + fileList[0] }] })
+    getTempFileURL: async ({ fileList }) => ({ fileList: [{ tempFileURL: 'https://temp/' + fileList[0] }] }),
+    openapi: {
+      security: { msgSecCheck: async () => ({ result: { suggest: 'pass' } }) }
+    }
   }
   const entryPath = path.join(__dirname, '..', 'cloudfunctions', 'poker_social', 'index.js')
   const originalLoad = Module._load

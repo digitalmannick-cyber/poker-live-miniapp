@@ -103,6 +103,7 @@ function installProfilePage() {
       return {
         async syncSocialProfile(profile, options) {
           socialProfileSyncCalls.push({ profile, options })
+          if (socialProfileSyncResult instanceof Error) throw socialProfileSyncResult
           return socialProfileSyncResult
         }
       }
@@ -176,6 +177,58 @@ test('saving a public nickname also updates the social profile', async () => {
   assert.equal(socialProfileSyncCalls[0].options.force, true)
 })
 
+test('manual nickname edits use the native nickname review control', () => {
+  const wxml = require('node:fs').readFileSync(path.resolve(__dirname, '../pages/profile/profile.wxml'), 'utf8')
+  const valueIndex = wxml.indexOf('value="{{profileEditorName}}"')
+  const nicknameInput = valueIndex < 0
+    ? ''
+    : wxml.slice(wxml.lastIndexOf('<input', valueIndex), wxml.indexOf('/>', valueIndex) + 2)
+  assert.ok(nicknameInput)
+  assert.match(nicknameInput, /type="nickname"/)
+  assert.match(nicknameInput, /bindnicknamereview="onProfileEditorNicknameReview"/)
+})
+
+test('a blocked public nickname stays in the editor and explains that it was rejected', async () => {
+  const page = installProfilePage()
+  const error = new Error('blocked')
+  error.code = 'PROFILE_CONTENT_BLOCKED'
+  socialProfileSyncResult = error
+  page.setData({
+    accountLoggedOut: false,
+    profile: { playerId: 'P5-1', name: '旧昵称', avatarUrl: 'cloud://avatar' },
+    profileEditorVisible: true,
+    profileEditorName: '风险昵称'
+  })
+  page.refresh = async () => null
+
+  await page.saveProfileEditor()
+
+  assert.equal(page.data.profileEditorVisible, true)
+  assert.equal(lastToast.title, '昵称可能含有不适宜内容，请修改后重试')
+  assert.equal(socialProfileSyncCalls.length, 1)
+  assert.equal(socialProfileSyncCalls[0].options.force, true)
+})
+
+test('an unavailable nickname check keeps the WeChat profile dialog open for an exact retry', async () => {
+  const page = installProfilePage()
+  const error = new Error('unavailable')
+  error.code = 'PROFILE_CHECK_UNAVAILABLE'
+  socialProfileSyncResult = error
+  page.setData({
+    accountLoggedOut: false,
+    profile: { playerId: 'P5-1', name: 'Old name', avatarUrl: 'cloud://avatar' },
+    wechatProfileDialogVisible: true,
+    wechatDraftNickname: 'New name',
+    wechatDraftAvatarUrl: ''
+  })
+  page.refresh = async () => null
+
+  await page.saveWechatProfileFromOfficialControls({ detail: { value: { nickname: 'New name' } } })
+
+  assert.equal(page.data.wechatProfileDialogVisible, true)
+  assert.equal(lastToast.title, '昵称检测暂不可用，请稍后重试')
+})
+
 test('wechat nickname selection is submitted even when the native picker skips bindinput', async () => {
   const page = installProfilePage()
   page.setData({
@@ -216,12 +269,13 @@ test('wechat nickname save falls back to the last native candidate when the form
 
 test('wechat nickname input keeps the last valid native selection', () => {
   const wxml = require('node:fs').readFileSync(path.resolve(__dirname, '../pages/profile/profile.wxml'), 'utf8')
-  const typeIndex = wxml.indexOf('type="nickname"')
-  const nicknameInput = typeIndex < 0
+  const valueIndex = wxml.indexOf('value="{{wechatDraftNickname}}"')
+  const nicknameInput = valueIndex < 0
     ? ''
-    : wxml.slice(wxml.lastIndexOf('<input', typeIndex), wxml.indexOf('/>', typeIndex) + 2)
+    : wxml.slice(wxml.lastIndexOf('<input', valueIndex), wxml.indexOf('/>', valueIndex) + 2)
 
   assert.ok(nicknameInput, 'nickname input must exist')
+  assert.match(nicknameInput, /type="nickname"/)
   assert.match(wxml, /<form[^>]*class="wechat-profile-dialog"[^>]*bindsubmit="saveWechatProfileFromOfficialControls"/)
   assert.match(nicknameInput, /name="nickname"/)
   assert.match(nicknameInput, /value="{{wechatDraftNickname}}"/)

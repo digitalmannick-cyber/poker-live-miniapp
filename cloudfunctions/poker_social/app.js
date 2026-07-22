@@ -41,6 +41,8 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   INVITE_SECRET_UNAVAILABLE: 'invite unavailable',
   INVALID_PAGINATION: 'invalid pagination',
   INVALID_RANKING_RANGE: 'invalid ranking range',
+  PROFILE_CONTENT_BLOCKED: 'profile content blocked',
+  PROFILE_CHECK_UNAVAILABLE: 'profile check unavailable',
   INVALID_SOCIAL_SETTINGS: 'invalid social settings',
   INVALID_CARD_TARGET: 'invalid card target',
   PLAYER_CARD_SOURCE_NOT_FOUND: 'player card source not found',
@@ -75,7 +77,7 @@ function createSocialApp(deps) {
   const identity = config.identity || {}
   const notificationWriter = config.notificationWriter || createNotificationWriter(config.notification)
   const profileHandlers = config.repository
-    ? createProfileHandlers(config.repository, { avatarUrl: config.avatarUrl })
+    ? createProfileHandlers(config.repository, Object.assign({}, config.profile || {}, { avatarUrl: config.avatarUrl }))
     : {}
   const friendshipHandlers = config.repository
     ? createFriendshipHandlers(config.repository, Object.assign({}, config.friendship || {}, { avatarUrl: config.avatarUrl, notificationWriter }))
