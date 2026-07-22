@@ -1832,11 +1832,13 @@ async function getOwnedProfiles(ownerOpenId) {
 }
 
 async function buildRecoveryCandidate(playerId, ownerOpenId, profile) {
-  const sessions = await fetchOwnedByPlayer(COLLECTIONS.sessions, playerId, ownerOpenId)
-  const hands = await fetchOwnedByPlayer(COLLECTIONS.hands, playerId, ownerOpenId)
-  const handActions = await fetchOwnedByPlayer(COLLECTIONS.handActions, playerId, ownerOpenId)
-  const playerNotes = await fetchOwnedByPlayer(COLLECTIONS.playerNotes, playerId, ownerOpenId)
-  const bankrollLogs = await fetchOwnedByPlayer(COLLECTIONS.bankrollLogs, playerId, ownerOpenId)
+  const [sessions, hands, handActions, playerNotes, bankrollLogs] = await Promise.all([
+    fetchOwnedByPlayer(COLLECTIONS.sessions, playerId, ownerOpenId),
+    fetchOwnedByPlayer(COLLECTIONS.hands, playerId, ownerOpenId),
+    fetchOwnedByPlayer(COLLECTIONS.handActions, playerId, ownerOpenId),
+    fetchOwnedByPlayer(COLLECTIONS.playerNotes, playerId, ownerOpenId),
+    fetchOwnedByPlayer(COLLECTIONS.bankrollLogs, playerId, ownerOpenId)
+  ])
   const updatedAt = Math.max(
     normalizeNumeric(profile && profile.updatedAt),
     sessions.reduce((max, item) => Math.max(max, normalizeNumeric(item.updatedAt || item.createdAt)), 0),
@@ -1889,7 +1891,9 @@ async function listFencedRecoveryCandidates(ownerOpenId) {
   const candidates = []
   for (const playerId of playerIds) {
     await addBusinessFence(ownerOpenId, playerId)
-    const freshProfiles = await getOwnedProfiles(ownerOpenId)
+  }
+  const freshProfiles = await getOwnedProfiles(ownerOpenId)
+  for (const playerId of playerIds) {
     const profile = freshProfiles
       .filter(item => inferPlayerIdFromProfile(item) === playerId)
       .sort((a, b) => normalizeNumeric(b.updatedAt) - normalizeNumeric(a.updatedAt))[0]
@@ -3505,6 +3509,7 @@ exports.__test = {
   createOpenIdPlayerId,
   sendAiReminderSubscribeMessage,
   normalizeAiReminderMiniProgramState,
+  buildRecoveryCandidate,
   parseIncomingEvent,
   getAuthorizationToken,
   resolveOwnerOpenId,
