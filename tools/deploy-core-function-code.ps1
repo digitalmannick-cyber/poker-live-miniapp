@@ -31,8 +31,15 @@ function Get-JsonFromOutput {
 
 function Invoke-TcbJsonRead {
   param([string[]]$Arguments)
-  $raw = (& tcb @Arguments 2>&1 | Out-String)
-  if ($LASTEXITCODE -ne 0) { throw 'CloudBase read failed' }
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $raw = (& tcb @Arguments 2>&1 | Out-String)
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousPreference
+  }
+  if ($exitCode -ne 0) { throw 'CloudBase read failed' }
   return Get-JsonFromOutput $raw
 }
 
@@ -100,8 +107,15 @@ try {
     })
   }
   [IO.File]::WriteAllText($temporaryConfig, ($config | ConvertTo-Json -Depth 12), (New-Object Text.UTF8Encoding($false)))
-  $null = & tcb --config-file $temporaryConfig --yes fn deploy $FunctionName --force --json 2>&1
-  if ($LASTEXITCODE -ne 0) { throw 'CloudBase function deployment failed' }
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $null = & tcb --config-file $temporaryConfig --yes fn deploy $FunctionName --force --json 2>&1
+    $deployExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousPreference
+  }
+  if ($deployExitCode -ne 0) { throw 'CloudBase function deployment failed' }
 
   $verified = $null
   for ($attempt = 0; $attempt -lt 40; $attempt += 1) {
@@ -135,4 +149,3 @@ try {
     Remove-Item -LiteralPath $resolved -Recurse -Force
   }
 }
-
