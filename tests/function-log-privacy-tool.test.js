@@ -22,6 +22,7 @@ test('function log hardening requires exact environment and commit confirmations
 test('function log hardening disables platform response logs and verifies the remote result', () => {
   assert.match(source, /UpdateFunctionConfiguration/)
   assert.match(source, /IgnoreSysLog = \$true/)
+  assert.match(source, /\$body\.Replace\('\"', '\\\"'\)/)
   assert.match(source, /Get-FunctionPrivacyState/)
   assert.match(source, /did not enable IgnoreSysLog/)
   assert.doesNotMatch(source, /Write-Output \$raw|Write-Host \$raw/)

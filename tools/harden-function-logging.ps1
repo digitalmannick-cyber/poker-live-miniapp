@@ -73,10 +73,13 @@ foreach ($name in $FunctionNames) {
       Namespace = $FixedEnvironmentId
       IgnoreSysLog = $true
     } | ConvertTo-Json -Compress
+    # Windows PowerShell removes JSON quotes while invoking native executables unless
+    # they are escaped for the child process command line.
+    $escapedBody = $body.Replace('"', '\"')
     $null = Invoke-TcbJson @(
       'api', 'scf', 'UpdateFunctionConfiguration',
       '--api-version', '2018-04-16',
-      '--body', $body,
+      '--body', $escapedBody,
       '-e', $FixedEnvironmentId,
       '-r', $FixedRegion,
       '--json'
