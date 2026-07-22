@@ -1,3 +1,3 @@
 ﻿module.exports = {
-  displayVersion: '3.37'
+  displayVersion: '3.38'
 }
