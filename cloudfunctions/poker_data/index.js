@@ -7,6 +7,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
 const db = cloud.database()
 const AI_REMINDER_SUBSCRIBE_TEMPLATE_ID = String(process.env.AI_REMINDER_SUBSCRIBE_TEMPLATE_ID || '').trim()
+const AI_REMINDER_MINIPROGRAM_STATE = normalizeAiReminderMiniProgramState(process.env.AI_REMINDER_MINIPROGRAM_STATE)
 const AGENT_EXPORT_TOKEN = String(process.env.AGENT_EXPORT_TOKEN || '').trim()
 const AGENT_EXPORT_OWNER_OPENID = String(process.env.AGENT_EXPORT_OWNER_OPENID || '').trim()
 const PAGE_SIZE = 100
@@ -24,6 +25,11 @@ const COLLECTIONS = {
   accountLifecycle: 'poker_data_account_lifecycle',
   syncOperations: 'sync_operations',
   auditLogs: 'audit_logs'
+}
+
+function normalizeAiReminderMiniProgramState(value) {
+  const state = String(value || 'trial').trim().toLowerCase()
+  return ['developer', 'trial', 'formal'].includes(state) ? state : ''
 }
 const MANAGED_PRIVATE_FILE_PREFIXES = Object.freeze([
   'player-notes/',
@@ -3301,6 +3307,9 @@ async function sendAiReminderSubscribeMessageLegacy(event, ownerOpenId) {
   if (!templateId) {
     return { code: 'MISSING_TEMPLATE_ID', message: 'missing AI_REMINDER_SUBSCRIBE_TEMPLATE_ID' }
   }
+  if (!AI_REMINDER_MINIPROGRAM_STATE) {
+    return { code: 'INVALID_MINIPROGRAM_STATE', message: 'invalid AI_REMINDER_MINIPROGRAM_STATE' }
+  }
   if (!cloud.openapi || !cloud.openapi.subscribeMessage || typeof cloud.openapi.subscribeMessage.send !== 'function') {
     return { code: 'SUBSCRIBE_API_UNAVAILABLE', message: 'subscribeMessage.send unavailable' }
   }
@@ -3309,7 +3318,7 @@ async function sendAiReminderSubscribeMessageLegacy(event, ownerOpenId) {
     touser: ownerOpenId,
     templateId,
     page: 'pages/profile/profile',
-    miniprogramState: 'developer',
+    miniprogramState: AI_REMINDER_MINIPROGRAM_STATE,
     data: {
       thing1: {
         value: truncateSubscribeValue(reminder.title || 'EV脑提醒', 20)
@@ -3338,6 +3347,9 @@ async function sendAiReminderSubscribeMessage(event, ownerOpenId) {
   if (!templateId) {
     return { code: 'MISSING_TEMPLATE_ID', message: 'missing AI_REMINDER_SUBSCRIBE_TEMPLATE_ID' }
   }
+  if (!AI_REMINDER_MINIPROGRAM_STATE) {
+    return { code: 'INVALID_MINIPROGRAM_STATE', message: 'invalid AI_REMINDER_MINIPROGRAM_STATE' }
+  }
   if (!cloud.openapi || !cloud.openapi.subscribeMessage || typeof cloud.openapi.subscribeMessage.send !== 'function') {
     return { code: 'SUBSCRIBE_API_UNAVAILABLE', message: 'subscribeMessage.send unavailable' }
   }
@@ -3346,7 +3358,7 @@ async function sendAiReminderSubscribeMessage(event, ownerOpenId) {
     touser: ownerOpenId,
     templateId,
     page: 'pages/profile/profile',
-    miniprogramState: 'developer',
+    miniprogramState: AI_REMINDER_MINIPROGRAM_STATE,
     data: {
       thing1: {
         value: getReminderPlanName(reminder)
@@ -3492,6 +3504,7 @@ exports.__test = {
   inferPlayerIdFromProfile,
   createOpenIdPlayerId,
   sendAiReminderSubscribeMessage,
+  normalizeAiReminderMiniProgramState,
   parseIncomingEvent,
   getAuthorizationToken,
   resolveOwnerOpenId,
