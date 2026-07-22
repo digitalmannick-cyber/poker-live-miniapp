@@ -20,8 +20,21 @@ test('review copy states the real product and excludes gambling or settlement cl
 })
 
 test('review pack includes privacy, content safety, reviewer path and true-device evidence gates', () => {
-  for (const phrase of ['内容安全接口', '清除所有数据', '审核员体验路径', '体验版真机验收记录', '公众平台截图证据']) {
+  for (const phrase of ['内容安全接口', '清除所有数据', '审核员体验路径', '体验版真机验收记录', '公众平台截图证据', '用户生成内容场景信息安全声明']) {
     assert.match(pack, new RegExp(phrase))
   }
   assert.match(pack, /T01[\s\S]*T14/)
+})
+
+test('review pack records the live platform UGC, privacy, experience and customer-service gates', () => {
+  for (const phrase of [
+    '用户资料、文本',
+    '使用平台建议的内容安全 API',
+    '当前为“未声明”',
+    '未调用录音接口',
+    '已经指向 `1.0.20260722.2325.v3.39`',
+    '已存在可用客服人员和客服管理员'
+  ]) {
+    assert.match(pack, new RegExp(phrase))
+  }
 })
