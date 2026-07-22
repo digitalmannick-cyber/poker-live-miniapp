@@ -25,8 +25,10 @@ function loadPokerData(database) {
 
 function createControlledReadDatabase() {
   const pending = []
+  let fullReadCount = 0
   return {
     pending,
+    get fullReadCount() { return fullReadCount },
     collection(name) {
       return {
         where(filters) {
@@ -34,6 +36,10 @@ function createControlledReadDatabase() {
             skip() { return query },
             limit() { return query },
             get() {
+              fullReadCount += 1
+              return Promise.resolve({ data: [] })
+            },
+            count() {
               return new Promise(resolve => pending.push({ name, filters, resolve }))
             }
           }
@@ -56,14 +62,11 @@ test('login recovery reads independent business collections concurrently', async
   const resultPromise = pokerData.__test.buildRecoveryCandidate('PLAYER-A', 'owner-a', { updatedAt: 7 })
   await nextTurn()
 
-  assert.equal(database.pending.length, 5, 'all five owner-scoped collection reads should start together')
-  database.pending.slice(0, 5).forEach(read => read.resolve({ data: [] }))
-  await nextTurn()
-
-  assert.equal(database.pending.length, 10, 'legacy owner reads should start together after primary reads')
-  database.pending.slice(5, 10).forEach(read => read.resolve({ data: [] }))
+  assert.equal(database.pending.length, 10, 'both ownership counters for all five collections should start together')
+  database.pending.forEach(read => read.resolve({ total: 0 }))
 
   const candidate = await resultPromise
+  assert.equal(database.fullReadCount, 0, 'empty recovery summaries must not fetch full collection pages')
   assert.deepEqual(candidate, {
     playerId: 'PLAYER-A',
     name: '',

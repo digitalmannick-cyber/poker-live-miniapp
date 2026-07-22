@@ -529,6 +529,16 @@ async function fetchOwnedByPlayer(collectionName, playerId, ownerOpenId) {
   return mergeDocs(ownerScoped, legacyScoped)
 }
 
+async function countOwnedByPlayer(collectionName, playerId, ownerOpenId) {
+  const normalizedPlayerId = normalizePlayerId(playerId)
+  const [ownerCount, legacyCount] = await Promise.all([
+    countWhere(collectionName, { playerId: normalizedPlayerId, ownerOpenId }),
+    countWhere(collectionName, { playerId: normalizedPlayerId, _openid: ownerOpenId })
+  ])
+  if (!ownerCount || !legacyCount) return ownerCount + legacyCount
+  return (await fetchOwnedByPlayer(collectionName, normalizedPlayerId, ownerOpenId)).length
+}
+
 async function fetchPlayerCardImportReceiptsForClear(playerId, ownerOpenId) {
   const normalizedPlayerId = normalizePlayerId(playerId)
   const command = db && db.command
@@ -1832,31 +1842,25 @@ async function getOwnedProfiles(ownerOpenId) {
 }
 
 async function buildRecoveryCandidate(playerId, ownerOpenId, profile) {
-  const [sessions, hands, handActions, playerNotes, bankrollLogs] = await Promise.all([
-    fetchOwnedByPlayer(COLLECTIONS.sessions, playerId, ownerOpenId),
-    fetchOwnedByPlayer(COLLECTIONS.hands, playerId, ownerOpenId),
-    fetchOwnedByPlayer(COLLECTIONS.handActions, playerId, ownerOpenId),
-    fetchOwnedByPlayer(COLLECTIONS.playerNotes, playerId, ownerOpenId),
-    fetchOwnedByPlayer(COLLECTIONS.bankrollLogs, playerId, ownerOpenId)
+  const [sessionCount, handCount, handActionCount, playerNoteCount, bankrollLogCount] = await Promise.all([
+    countOwnedByPlayer(COLLECTIONS.sessions, playerId, ownerOpenId),
+    countOwnedByPlayer(COLLECTIONS.hands, playerId, ownerOpenId),
+    countOwnedByPlayer(COLLECTIONS.handActions, playerId, ownerOpenId),
+    countOwnedByPlayer(COLLECTIONS.playerNotes, playerId, ownerOpenId),
+    countOwnedByPlayer(COLLECTIONS.bankrollLogs, playerId, ownerOpenId)
   ])
-  const updatedAt = Math.max(
-    normalizeNumeric(profile && profile.updatedAt),
-    sessions.reduce((max, item) => Math.max(max, normalizeNumeric(item.updatedAt || item.createdAt)), 0),
-    hands.reduce((max, item) => Math.max(max, normalizeNumeric(item.updatedAt || item.createdAt)), 0),
-    playerNotes.reduce((max, item) => Math.max(max, normalizeNumeric(item.updatedAt || item.createdAt)), 0),
-    bankrollLogs.reduce((max, item) => Math.max(max, normalizeNumeric(item.updatedAt || item.createdAt)), 0)
-  )
+  const updatedAt = normalizeNumeric(profile && profile.updatedAt)
   return {
     playerId,
     name: profile && profile.name || '',
     avatarText: profile && profile.avatarText || '',
-    sessionCount: sessions.length,
-    handCount: hands.length,
-    handActionCount: handActions.length,
-    playerNoteCount: playerNotes.length,
-    bankrollLogCount: bankrollLogs.length,
+    sessionCount,
+    handCount,
+    handActionCount,
+    playerNoteCount,
+    bankrollLogCount,
     updatedAt,
-    score: sessions.length * 1000 + hands.length * 10 + bankrollLogs.length
+    score: sessionCount * 1000 + handCount * 10 + bankrollLogCount
   }
 }
 

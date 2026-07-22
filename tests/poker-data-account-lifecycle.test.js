@@ -165,7 +165,15 @@ function createInterleavingDatabase(seed) {
         }
         return { data: clone(result.slice(queryState.offset, queryState.offset + queryState.limit)) }
       },
-      async count() { return { total: rows().filter(row => Object.keys(queryState.filters).every(key => row[key] === queryState.filters[key])).length } },
+      async count() {
+        if (pausedQuery && pausedQuery.name === name && Object.keys(pausedQuery.filters).every(key => queryState.filters[key] === pausedQuery.filters[key])) {
+          const pause = pausedQuery
+          pausedQuery = null
+          pause.started.resolve()
+          await pause.release.promise
+        }
+        return { total: rows().filter(row => Object.keys(queryState.filters).every(key => row[key] === queryState.filters[key])).length }
+      },
       async add(input) {
         const id = 'generated-' + (rows().length + 1)
         rows().push(Object.assign({ _id: id }, clone(input && input.data || {})))
