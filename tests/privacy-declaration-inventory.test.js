@@ -10,6 +10,21 @@ function source(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8')
 }
 
+function runtimeSources() {
+  const roots = ['pages', 'components', 'services', 'utils']
+  const files = ['app.js']
+  function visit(relativePath) {
+    const absolutePath = path.join(root, relativePath)
+    for (const entry of fs.readdirSync(absolutePath, { withFileTypes: true })) {
+      const child = path.join(relativePath, entry.name)
+      if (entry.isDirectory()) visit(child)
+      else if (/\.(?:js|wxml)$/.test(entry.name)) files.push(child)
+    }
+  }
+  roots.forEach(visit)
+  return files.map(file => ({ file, text: source(file) }))
+}
+
 test('privacy inventory covers every user-triggered sensitive mini-program capability', () => {
   const cases = [
     ['pages/profile/profile.js', /wx\.chooseImage\(/, '相册图片/拍照结果'],
@@ -35,4 +50,21 @@ test('privacy inventory states current public/private and AI identity boundaries
     '原始盈利/金额',
     '清除所有数据时删除本应用管理的云存储头像文件'
   ]) assert.match(inventory, new RegExp(phrase))
+})
+
+test('runtime does not silently add undeclared high-risk private capabilities', () => {
+  const combined = runtimeSources().map(item => item.text).join('\n')
+  const forbidden = [
+    ['location', /wx\.(?:getLocation|chooseLocation|startLocationUpdate|startLocationUpdateBackground)\s*\(/],
+    ['recording', /wx\.(?:getRecorderManager|startRecord)\s*\(/],
+    ['phone number', /open-type=["']getPhoneNumber["']|wx\.getPhoneNumber\s*\(/],
+    ['address', /wx\.chooseAddress\s*\(/],
+    ['invoice', /wx\.chooseInvoiceTitle\s*\(/],
+    ['health data', /wx\.getWeRunData\s*\(/]
+  ]
+  forbidden.forEach(([name, pattern]) => assert.doesNotMatch(combined, pattern, `${name} requires a new privacy review`))
+
+  const appConfig = JSON.parse(source('app.json'))
+  assert.equal(Object.prototype.hasOwnProperty.call(appConfig, 'requiredPrivateInfos'), false,
+    'requiredPrivateInfos is location-related and must not be declared without a real location API')
 })
