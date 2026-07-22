@@ -116,8 +116,15 @@
 .feed-card-footer { display: flex; align-items: center; justify-content: space-between; min-height: 78rpx; margin-top: 14rpx; border-top: 1rpx solid rgba(255,255,255,0.10); }
 .feed-action { min-width: 72rpx; min-height: 72rpx; display: flex; align-items: center; justify-content: center; gap: 8rpx; color: rgba(255,255,255,0.58); }
 .feed-comment-action { justify-content: flex-start; }
-.feed-like-action { padding: 0 10rpx; }
+.feed-like-action { padding: 0 10rpx; transition: transform .12s ease; }
+.feed-like-action:active { transform: scale(.9); }
 .feed-action-icon { width: 32rpx; height: 32rpx; flex: none; }
+.feed-heart-stack { position: relative; flex: none; width: 32rpx; height: 32rpx; }
+.feed-heart-stack .feed-action-icon { position: absolute; inset: 0; transition: opacity .12s ease, transform .18s cubic-bezier(.2,.8,.2,1); }
+.feed-heart-outline { opacity: 1; transform: scale(1); }
+.feed-heart-filled { opacity: 0; transform: scale(.58); }
+.feed-like-action.is-liked .feed-heart-outline { opacity: 0; transform: scale(.72); }
+.feed-like-action.is-liked .feed-heart-filled { opacity: 1; transform: scale(1); }
 .feed-comment-icon { opacity: 0.82; }
 .feed-action-copy { font-size: 21rpx; font-weight: 850; }
 .feed-action-count { min-width: 22rpx; font-size: 21rpx; font-weight: 850; }

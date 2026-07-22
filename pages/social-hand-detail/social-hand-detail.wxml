@@ -75,23 +75,23 @@
       <view class="detail-section">
         <view class="detail-label">行动线</view>
         <view class="action-list">
-          <view wx:for="{{detail.handSnapshot.actions}}" wx:key="index" class="action-item">
-            <text class="action-street">{{item.street}}</text>
-            <text class="action-actor">{{item.actor}}</text>
-            <text class="action-type">{{item.type}}</text>
-            <text wx:if="{{item.amountBb !== undefined}}" class="action-amount">{{item.amountBb}} BB</text>
-          </view>
-          <view wx:if="{{!detail.handSnapshot.actions.length}}" class="empty-actions">暂无行动记录</view>
+          <block wx:for="{{actionTimeline}}" wx:key="key">
+            <view wx:if="{{item.streetStart}}" class="action-street-head">
+              <text>{{item.streetLabel}}</text>
+              <view></view>
+            </view>
+            <view class="action-item action-tone-{{item.tone}}">
+              <view class="action-sequence"><view class="action-dot"></view><text>{{index + 1}}</text></view>
+              <view class="action-main">
+                <view class="action-primary"><text wx:if="{{item.actorPosition}}" class="action-position">{{item.actorPosition}}</text><text class="action-actor">{{item.actor}}</text><text class="action-acting">行动</text></view>
+                <view class="action-secondary"><text class="action-type">{{item.typeLabel}}</text><text wx:if="{{item.amountLabel}}" class="action-amount">本次 {{item.amountLabel}}</text></view>
+              </view>
+              <view class="action-pot"><text>行动后底池</text><text class="action-pot-value">{{item.potAfterLabel}}</text></view>
+            </view>
+          </block>
+          <view wx:if="{{!actionTimeline.length}}" class="empty-actions">暂无行动记录</view>
         </view>
       </view>
-    </view>
-
-    <view class="engagement-card">
-      <view class="engagement-item like-button {{detail.likedByMe ? 'liked' : ''}} {{likeSubmitting ? 'submitting' : ''}} {{commentsStatus !== 'ready' ? 'interaction-disabled' : ''}}" bindtap="toggleLike">
-        <text class="engagement-icon">♥</text><text>{{detail.likeCount}}</text>
-      </view>
-      <view class="engagement-item"><text class="engagement-icon">◌</text><text>{{detail.commentCount}}</text></view>
-      <view class="engagement-hint">评论 · 牌局观点</view>
     </view>
 
     <view class="comments-card">
@@ -107,7 +107,7 @@
       <view wx:elif="{{commentsStatus === 'error'}}" class="comments-state comments-error">评论暂时无法读取，重新进入页面后可重试</view>
       <view wx:elif="{{commentsStatus === 'ready'}}" class="comment-list">
         <view wx:if="{{!comments.length}}" class="comments-state">还没有评论，来说说你的判断</view>
-        <view wx:for="{{comments}}" wx:key="commentId" class="{{item.parentCommentId ? 'comment-row reply-row' : 'comment-row'}}">
+        <view wx:for="{{comments}}" wx:key="commentId" class="{{item.parentCommentId ? 'comment-row reply-row' : 'comment-row'}} {{item.pending ? 'is-pending' : ''}}">
           <view class="comment-avatar">
             <image wx:if="{{item.author.avatarUrl}}" src="{{item.author.avatarUrl}}" mode="aspectFill"></image>
             <text wx:else>{{item.author.avatarText}}</text>
@@ -116,6 +116,7 @@
             <view class="comment-meta">
               <text class="comment-author">{{item.author.nickname}}</text>
               <text wx:if="{{item.parentCommentId}}" class="reply-mark">回复</text>
+              <text wx:if="{{item.pending}}" class="pending-mark">发送中</text>
             </view>
             <view wx:if="{{item.kind === 'sticker' && item.sticker}}" class="poker-sticker-display">
               <text class="sticker-emoji">{{item.sticker.emoji}}</text>
@@ -123,7 +124,7 @@
             </view>
             <view wx:else class="comment-text {{item.deleted ? 'deleted-comment' : ''}}">{{item.text}}</view>
             <view wx:if="{{!item.deleted}}" class="comment-actions">
-              <view wx:if="{{!item.parentCommentId}}" class="comment-action" data-comment-id="{{item.commentId}}" bindtap="replyToComment">↩</view>
+              <view wx:if="{{!item.parentCommentId && !item.pending}}" class="comment-action reply-action" data-comment-id="{{item.commentId}}" bindtap="replyToComment">回复</view>
               <view wx:if="{{item.canDelete}}" class="comment-action delete-action" data-comment-id="{{item.commentId}}" bindtap="deleteComment">删除</view>
               <view wx:if="{{item.canModerate}}" class="comment-action moderate-action" data-comment-id="{{item.commentId}}" bindtap="moderateComment">移除</view>
             </view>

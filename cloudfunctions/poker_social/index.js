@@ -4,6 +4,7 @@ const identity = require('./lib/identity')
 const { createCloudSocialRepository } = require('./lib/repository')
 const { createAdminPolicy } = require('./lib/admin-policy')
 const { toUploadSource } = require('./lib/upload-source')
+const { createCommentTextSafety } = require('./lib/comment-safety')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
@@ -48,6 +49,9 @@ const app = createSocialApp({
   isAdminActor: adminPolicy.isAdminActor,
   reportError,
   avatarUrl,
+  interaction: {
+    checkCommentText: createCommentTextSafety(cloud.openapi)
+  },
   friendship: {
     qrCode: cloud.openapi && cloud.openapi.wxacode,
     uploadTempFile,

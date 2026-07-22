@@ -151,6 +151,7 @@ function createInteractionHandlers(repository, options) {
   const avatarUrl = typeof config.avatarUrl === 'function' ? config.avatarUrl : async () => ''
   const notificationWriter = config.notificationWriter || createNotificationWriter({ now })
   const isAdminActor = typeof config.isAdminActor === 'function' ? config.isAdminActor : () => false
+  const checkCommentText = typeof config.checkCommentText === 'function' ? config.checkCommentText : null
   const auditId = typeof config.auditId === 'function'
     ? config.auditId
     : (moderatorId, commentId, clientMutationId) => 'sma_' + crypto.createHash('sha256')
@@ -173,10 +174,13 @@ function createInteractionHandlers(repository, options) {
     const user = await resolveUser(repository, actor)
     const normalized = normalizeCommentInput(event)
     requireClientMutationId(event)
-    await requireReadableLiveShare(repository, user._id, normalized.shareId)
+    const initialReadable = await requireReadableLiveShare(repository, user._id, normalized.shareId)
     const inputFingerprint = fingerprint('create_comment', normalized)
     const restored = await restoreIdempotent(repository, user._id, 'create_comment', event, { inputFingerprint })
     if (restored.found) return restored.result
+    if (normalized.kind === 'text' && initialReadable.share.scope === 'square' && checkCommentText) {
+      await checkCommentText({ content: normalized.text, openId: String(actor && actor.ownerOpenId || '') })
+    }
     const authorSnapshot = await buildAuthorSnapshot(user, avatarUrl)
     return runIdempotent(repository, user._id, 'create_comment', event, async store => {
       const transactionalUser = await store.get(COLLECTIONS.USERS, user._id)

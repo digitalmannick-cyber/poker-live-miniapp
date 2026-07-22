@@ -7,7 +7,11 @@
       data-path="{{item.pagePath}}"
       bindtap="switchTab"
     >
-      <view wx:if="{{socialUnread && item.pagePath === '/pages/player-notes/player-notes'}}" class="tab-social-dot" aria-label="玩家有未读消息"></view>
+      <view
+        wx:if="{{socialUnread && item.pagePath === '/pages/player-notes/player-notes'}}"
+        class="tab-social-badge"
+        aria-label="玩家有{{socialUnreadLabel}}条未读消息"
+      >{{socialUnreadLabel}}</view>
       <text class="tab-short">{{item.short}}</text>
       <text class="tab-text">{{item.text}}</text>
     </view>

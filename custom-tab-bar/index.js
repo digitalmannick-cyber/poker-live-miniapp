@@ -15,7 +15,8 @@ Component({
   data: {
     selected: '',
     list: tabState.buildTabItems(''),
-    socialUnread: false
+    socialUnread: false,
+    socialUnreadLabel: ''
   },
   lifetimes: {
     attached() {
@@ -46,7 +47,10 @@ Component({
     subscribeSocialUnread() {
       if (this._unsubscribeSocialUnread) return
       this._unsubscribeSocialUnread = socialUnreadState.subscribe(snapshot => {
-        this.setData({ socialUnread: snapshot.hasUnread })
+        this.setData({
+          socialUnread: snapshot.hasUnread,
+          socialUnreadLabel: snapshot.label
+        })
       })
     },
     unsubscribeSocialUnread() {

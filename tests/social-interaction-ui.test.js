@@ -9,7 +9,7 @@ const pageJs = path.join(root, 'pages/social-hand-detail/social-hand-detail.js')
 const pageWxml = path.join(root, 'pages/social-hand-detail/social-hand-detail.wxml')
 const stickerModule = path.join(root, 'utils/poker-stickers.js')
 
-test('interaction surface uses icon actions, one-level replies and the frozen sticker catalogue', () => {
+test('detail keeps comments and stickers but removes the duplicate engagement strip', () => {
   assert.equal(fs.existsSync(stickerModule), true)
   const stickers = require(stickerModule)
   assert.deepEqual(stickers.POKER_STICKER_IDS, [
@@ -21,7 +21,8 @@ test('interaction surface uses icon actions, one-level replies and the frozen st
   assert.equal(Object.isFrozen(stickers.POKER_STICKERS), true)
 
   const wxml = fs.readFileSync(pageWxml, 'utf8')
-  assert.match(wxml, /bindtap="toggleLike"/)
+  assert.doesNotMatch(wxml, /class="engagement-card"/)
+  assert.doesNotMatch(wxml, /bindtap="toggleLike"/)
   assert.match(wxml, /bindtap="loadMoreComments"/)
   assert.match(wxml, /bindtap="chooseSticker"/)
   assert.match(wxml, /bindtap="replyToComment"/)
@@ -305,7 +306,7 @@ test('like, create and delete writes stay disabled until profile and first comme
   } finally { loaded.restore() }
 })
 
-test('desired like is singleflight and applies only the authoritative server state and count', async () => {
+test('desired like is singleflight, updates optimistically, then reconciles authoritative state', async () => {
   const pending = deferred()
   const loaded = loadPage({ likes: [pending.promise] })
   try {
@@ -314,7 +315,8 @@ test('desired like is singleflight and applies only the authoritative server sta
     const first = page.toggleLike()
     const same = page.toggleLike()
     assert.equal(first, same)
-    assert.equal(page.data.detail.likedByMe, false)
+    assert.equal(page.data.detail.likedByMe, true)
+    assert.equal(page.data.detail.likeCount, 3)
     assert.equal(page.data.likeSubmitting, true)
     assert.equal(loaded.calls.likes.length, 1)
     assert.equal(loaded.calls.likes[0].shareId, 'share-1')
@@ -327,6 +329,51 @@ test('desired like is singleflight and applies only the authoritative server sta
     assert.equal(page.data.detail.likeCount, 41)
     assert.equal(page.data.likeSubmitting, false)
   } finally { loaded.restore() }
+})
+
+test('new comments appear immediately, reconcile on success, and restore the draft on failure', async () => {
+  const pending = deferred()
+  const loaded = loadPage({ creates: [pending.promise, typedError('NETWORK_ERROR')] })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'share-1' })
+    page.onCommentInput({ detail: { value: '即时评论' } })
+    const first = page.submitComment()
+    assert.equal(page.data.detail.commentCount, 3)
+    assert.equal(page.data.comments.length, 1)
+    assert.equal(page.data.comments[0].pending, true)
+    assert.equal(page.data.commentDraft, '')
+
+    pending.resolve({ comment: comment('c-live', 'su-me', { text: '即时评论' }), commentCount: 3 })
+    await first
+    assert.equal(page.data.comments.length, 1)
+    assert.equal(page.data.comments[0].commentId, 'c-live')
+    assert.equal(page.data.comments[0].pending, undefined)
+
+    page.onCommentInput({ detail: { value: '失败后保留' } })
+    await page.submitComment()
+    assert.equal(page.data.detail.commentCount, 3)
+    assert.equal(page.data.commentDraft, '失败后保留')
+    assert.equal(page.data.comments.some(item => item.pending), false)
+  } finally { loaded.restore() }
+})
+
+test('comment safety failures restore the draft and show a specific retry message', async () => {
+  for (const [code, title] of [
+    ['COMMENT_CONTENT_BLOCKED', '评论可能含有不适宜内容，请修改后重试'],
+    ['COMMENT_CHECK_UNAVAILABLE', '内容检测暂不可用，请稍后重试']
+  ]) {
+    const loaded = loadPage({ creates: [typedError(code)] })
+    try {
+      const page = createInstance(loaded.definition)
+      await page.onLoad({ shareId: 'share-1' })
+      page.onCommentInput({ detail: { value: '等待检测' } })
+      await page.submitComment()
+      assert.equal(page.data.commentDraft, '等待检测')
+      assert.equal(page.data.detail.commentCount, 2)
+      assert.deepEqual(loaded.calls.toast, [{ title, icon: 'none' }])
+    } finally { loaded.restore() }
+  }
 })
 
 test('response-lost comment retry reuses its mutation id, success clears it, and payload changes rotate it', async () => {

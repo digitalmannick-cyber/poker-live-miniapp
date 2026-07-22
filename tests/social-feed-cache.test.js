@@ -45,7 +45,8 @@ function loadFriendHub(options = {}) {
   let definition
   const feedCopier = requireFeedCache().copyFeedResponse
   const responses = (options.responses || []).slice()
-  const calls = { listFeed: [], cacheRead: [], cacheWrite: [], cacheRemove: [], events: [], toast: [] }
+  const likes = (options.likes || []).slice()
+  const calls = { listFeed: [], setLike: [], cacheRead: [], cacheWrite: [], cacheRemove: [], events: [], toast: [] }
   const service = {
     listFriends: async () => ({ items: [], nextOffset: null }),
     listRanking: async () => ({ top10: [], myRank: null }),
@@ -53,6 +54,11 @@ function loadFriendHub(options = {}) {
       calls.listFeed.push(input)
       const response = responses.shift()
       return typeof response === 'function' ? response(input) : Promise.resolve(response)
+    },
+    setLike(input) {
+      calls.setLike.push(input)
+      const response = likes.shift()
+      return response instanceof Error ? Promise.reject(response) : Promise.resolve(response)
     }
   }
   const cache = {
@@ -113,6 +119,73 @@ function loadFriendHub(options = {}) {
     }
   }
 }
+
+test('feed like updates immediately and rolls back only when the write fails', async t => {
+  const pending = deferred()
+  const loaded = loadFriendHub({
+    responses: [{ items: [feedItem('sh-like')], nextCursor: null }],
+    likes: [pending.promise]
+  })
+  t.after(() => loaded.restore())
+  const hub = loaded.createInstance()
+  await hub.loadFeed()
+  assert.equal(hub.data.feedItems[0].likedByMe, false)
+  assert.equal(hub.data.feedItems[0].likeCount, 2)
+
+  const flight = hub.toggleFeedLike({ currentTarget: { dataset: { shareId: 'sh-like' } } })
+  assert.equal(hub.data.feedItems[0].likedByMe, true)
+  assert.equal(hub.data.feedItems[0].likeCount, 3)
+  pending.resolve({ shareId: 'sh-like', likedByMe: true, likeCount: 8 })
+  await flight
+  assert.equal(hub.data.feedItems[0].likeCount, 8)
+
+  const failing = loadFriendHub({
+    responses: [{ items: [feedItem('sh-fail')], nextCursor: null }],
+    likes: [Object.assign(new Error('offline'), { code: 'NETWORK_ERROR' })]
+  })
+  t.after(() => failing.restore())
+  const failingHub = failing.createInstance()
+  await failingHub.loadFeed()
+  await failingHub.toggleFeedLike({ currentTarget: { dataset: { shareId: 'sh-fail' } } })
+  assert.equal(failingHub.data.feedItems[0].likedByMe, false)
+  assert.equal(failingHub.data.feedItems[0].likeCount, 2)
+  assert.equal(failing.calls.toast.length, 1)
+})
+
+test('rapid feed like toggles stay responsive and coalesce to the latest state', async t => {
+  const likeOn = deferred()
+  const likeOff = deferred()
+  const loaded = loadFriendHub({
+    responses: [{ items: [feedItem('sh-rapid')], nextCursor: null }],
+    likes: [likeOn.promise, likeOff.promise]
+  })
+  t.after(() => loaded.restore())
+  const hub = loaded.createInstance()
+  await hub.loadFeed()
+
+  const first = hub.toggleFeedLike({ currentTarget: { dataset: { shareId: 'sh-rapid' } } })
+  assert.equal(hub.data.feedItems[0].likedByMe, true)
+  assert.equal(hub.data.feedItems[0].likeCount, 3)
+
+  const second = hub.toggleFeedLike({ currentTarget: { dataset: { shareId: 'sh-rapid' } } })
+  assert.equal(second, first)
+  assert.equal(hub.data.feedItems[0].likedByMe, false)
+  assert.equal(hub.data.feedItems[0].likeCount, 2)
+  assert.equal(loaded.calls.setLike.length, 1)
+
+  likeOn.resolve({ shareId: 'sh-rapid', likedByMe: true, likeCount: 3 })
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(loaded.calls.setLike.length, 2)
+  assert.equal(loaded.calls.setLike[1].liked, false)
+  assert.equal(hub.data.feedItems[0].likedByMe, false)
+  assert.equal(hub.data.feedItems[0].likeCount, 2)
+
+  likeOff.resolve({ shareId: 'sh-rapid', likedByMe: false, likeCount: 2 })
+  await first
+  assert.equal(hub.data.feedItems[0].likeSubmitting, false)
+  assert.equal(loaded.calls.toast.length, 0)
+})
 
 function requireFeedCache() {
   assert.equal(fs.existsSync(cachePath), true, 'Task 4 must create utils/social-cache.js')

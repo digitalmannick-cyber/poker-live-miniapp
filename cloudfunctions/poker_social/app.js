@@ -56,6 +56,8 @@ const PUBLIC_ERROR_MESSAGES = Object.freeze({
   RATE_LIMITED: 'rate limited',
   CONTENT_UNAVAILABLE: 'content unavailable',
   INVALID_COMMENT: 'invalid comment',
+  COMMENT_CONTENT_BLOCKED: 'comment content blocked',
+  COMMENT_CHECK_UNAVAILABLE: 'comment check unavailable',
   INVALID_MODERATION_REASON: 'invalid moderation reason',
   INVALID_LIKE: 'invalid like'
 })

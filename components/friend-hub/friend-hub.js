@@ -4,6 +4,7 @@ const socialCache = require('../../utils/social-cache')
 const socialDemoData = require('../../utils/social-demo-data')
 const cardUi = require('../../utils/card-ui')
 const avatarCache = require('../../utils/player-avatar-cache')
+const socialMutation = require('../../utils/social-mutation')
 
 const FEED_PAGE_SIZE = 20
 const SOCIAL_CACHE_SCHEMA_VERSION = socialCache.SOCIAL_CACHE_SCHEMA_VERSION || 1
@@ -259,6 +260,7 @@ Component({
   lifetimes: {
     attached() {
       this._friendHubAttached = true
+      this._feedLikeControllers = Object.create(null)
       this._friendLoadSequence = Number(this._friendLoadSequence) || 0
       this._rankingLoadSequence = Number(this._rankingLoadSequence) || 0
       this._feedGeneration = Number(this._feedGeneration) || 0
@@ -269,6 +271,7 @@ Component({
 
     detached() {
       this._friendHubAttached = false
+      this._feedLikeControllers = Object.create(null)
       this._friendLoadSequence = (Number(this._friendLoadSequence) || 0) + 1
       this._friendLoadPromise = null
       this._friendLoadMorePromise = null
@@ -528,6 +531,86 @@ Component({
       const shareId = String(dataset.shareId || dataset.id || '')
       const target = String(dataset.target || 'detail')
       if (shareId) this.triggerEvent('openhand', { shareId, target })
+    },
+
+    renderFeedLikeState(shareId, controller, submitting) {
+      if (this._friendHubAttached !== true) return
+      const index = this.data.feedItems.findIndex(item => item.shareId === shareId)
+      if (index < 0) return
+      const optimisticCount = Math.max(0, controller.confirmedCount +
+        (controller.desiredLiked ? 1 : 0) - (controller.confirmedLiked ? 1 : 0))
+      const next = Object.assign({}, this.data.feedItems[index], {
+        likedByMe: controller.desiredLiked,
+        likeCount: optimisticCount,
+        likeSubmitting: !!submitting
+      })
+      this.data.feedItems[index] = next
+      this.setData({ [`feedItems[${index}]`]: next })
+    },
+
+    syncFeedLike(shareId, controller) {
+      if (controller.syncPromise) return controller.syncPromise
+      const syncPromise = (async () => {
+        while (this._friendHubAttached === true && controller.desiredLiked !== controller.confirmedLiked) {
+          const requestedLiked = controller.desiredLiked
+          try {
+            const result = await socialService.setLike({
+              shareId,
+              liked: requestedLiked,
+              clientMutationId: socialMutation.createMutationId('feed_set_like')
+            })
+            const likedByMe = !!(result && result.likedByMe)
+            const likeCount = Number(result && result.likeCount)
+            if (!Number.isSafeInteger(likeCount) || likeCount < 0) throw feedContractError()
+            controller.confirmedLiked = likedByMe
+            controller.confirmedCount = likeCount
+            this.renderFeedLikeState(shareId, controller, controller.desiredLiked !== controller.confirmedLiked)
+          } catch (error) {
+            if (this._friendHubAttached !== true) return
+            const failedStateStillWanted = controller.desiredLiked === requestedLiked
+            if (failedStateStillWanted) {
+              controller.desiredLiked = controller.confirmedLiked
+              this.renderFeedLikeState(shareId, controller, false)
+              if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '点赞失败，请重试', icon: 'none' })
+            } else {
+              this.renderFeedLikeState(shareId, controller, false)
+            }
+            return
+          }
+        }
+        this.renderFeedLikeState(shareId, controller, false)
+      })()
+      controller.syncPromise = syncPromise.finally(() => {
+        controller.syncPromise = null
+        if (this._feedLikeControllers && this._feedLikeControllers[shareId] === controller &&
+          controller.desiredLiked === controller.confirmedLiked) {
+          delete this._feedLikeControllers[shareId]
+        }
+      })
+      return controller.syncPromise
+    },
+
+    toggleFeedLike(event) {
+      if (this._friendHubAttached !== true || this.data.feedReadOnly) return Promise.resolve()
+      const dataset = event && event.currentTarget && event.currentTarget.dataset || {}
+      const shareId = String(dataset.shareId || '')
+      const index = this.data.feedItems.findIndex(item => item.shareId === shareId)
+      if (!shareId || index < 0) return Promise.resolve()
+      this._feedLikeControllers = this._feedLikeControllers || Object.create(null)
+      let controller = this._feedLikeControllers[shareId]
+      if (!controller) {
+        const current = this.data.feedItems[index]
+        controller = {
+          confirmedLiked: !!current.likedByMe,
+          confirmedCount: Math.max(0, Number(current.likeCount) || 0),
+          desiredLiked: !!current.likedByMe,
+          syncPromise: null
+        }
+        this._feedLikeControllers[shareId] = controller
+      }
+      controller.desiredLiked = !controller.desiredLiked
+      this.renderFeedLikeState(shareId, controller, true)
+      return this.syncFeedLike(shareId, controller)
     },
 
     openReplay(event) {

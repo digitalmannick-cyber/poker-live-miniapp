@@ -9,7 +9,8 @@
 .social-messages-summary { margin-bottom: 3rpx; padding: 5rpx 12rpx; border-radius: 999rpx; color: rgba(255,255,255,.48); font-size: 20rpx; line-height: 1.25; font-weight: 850; background: rgba(255,255,255,.055); }
 .social-messages-summary.has-unread { color: #00d9ff; background: rgba(0,209,255,.09); }
 .mark-all, .state-action, .more-button, .more-retry { margin: 0; border: 0; color: #fff; font-size: 24rpx; font-weight: 900; }
-.mark-all { flex: 0 0 auto; min-width: 126rpx; min-height: 58rpx; padding: 0 20rpx; border-radius: 14rpx; font-size: 21rpx; background: linear-gradient(135deg, #e60012, #ff2941); box-shadow: 0 8rpx 20rpx rgba(230,0,18,.2); }
+.mark-all { flex: 0 0 180rpx; width: 180rpx; max-width: 180rpx; height: 62rpx; min-height: 62rpx; margin-left: auto; padding: 0 18rpx; box-sizing: border-box; border-radius: 14rpx; font-size: 21rpx; line-height: 62rpx; background: linear-gradient(135deg, #e60012, #ff2941); box-shadow: 0 8rpx 20rpx rgba(230,0,18,.2); }
+.mark-all::after, .request-action::after, .state-action::after, .more-button::after, .more-retry::after { border: 0; }
 .mark-all[disabled] { color: rgba(255,255,255,.34); background: rgba(255,255,255,.07); }
 .offline-banner { margin-bottom: 18rpx; padding: 16rpx 20rpx; border-radius: 16rpx; color: #ffd166; font-size: 23rpx; background: rgba(255,209,102,.08); border: 1rpx solid rgba(255,209,102,.22); }
 .messages-state { min-height: 360rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20rpx; text-align: center; color: rgba(255,255,255,.52); }
@@ -21,19 +22,19 @@
 .message-card.is-unread { border-color: rgba(0,209,255,.34); box-shadow: 0 14rpx 32rpx rgba(0,0,0,.2), inset 0 0 24rpx rgba(0,209,255,.025); }
 .message-card.is-read { opacity: .72; }
 .message-card.is-unavailable { filter: saturate(.5); }
-.message-card-corner { position: absolute; top: 0; right: 0; width: 54rpx; height: 12rpx; background: linear-gradient(90deg, transparent, rgba(230,0,18,.9)); clip-path: polygon(30% 0, 100% 0, 100% 100%, 0 100%); }
+.message-card-corner { position: absolute; top: 0; right: -10rpx; width: 58rpx; height: 7rpx; border-radius: 0 0 0 7rpx; background: linear-gradient(90deg, rgba(230,0,18,0), rgba(255,38,58,.95)); transform: skewX(-28deg); transform-origin: right top; }
 .unread-marker { position: absolute; left: 0; top: 23rpx; width: 6rpx; height: 52rpx; border-radius: 0 8rpx 8rpx 0; background: #00d9ff; box-shadow: 0 0 12rpx rgba(0,209,255,.55); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
 .message-avatar { flex: 0 0 78rpx; width: 78rpx; height: 78rpx; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 17rpx; color: #fff; font-size: 27rpx; font-weight: 1000; background: #252b38; border: 2rpx solid rgba(255,255,255,.16); box-shadow: 0 7rpx 16rpx rgba(0,0,0,.25); }
 .message-avatar image { width: 100%; height: 100%; }
-.message-main { flex: 1; min-width: 0; }
+.message-main { flex: 1; min-width: 0; overflow: hidden; }
 .message-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 14rpx; }
 .message-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 27rpx; font-weight: 950; }
 .message-time { flex: 0 0 auto; color: rgba(255,255,255,.32); font-size: 19rpx; }
 .message-summary { margin-top: 7rpx; display: -webkit-box; overflow: hidden; color: rgba(255,255,255,.58); font-size: 23rpx; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-all; }
 .message-unavailable, .request-result { margin-top: 14rpx; color: rgba(255,255,255,.46); font-size: 23rpx; font-weight: 800; }
-.request-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; margin-top: 16rpx; }
-.request-action { min-width: 0; min-height: 62rpx; margin: 0; padding: 0 20rpx; border-radius: 14rpx; color: #fff; font-size: 22rpx; font-weight: 950; line-height: 62rpx; }
+.request-actions { display: flex; align-items: stretch; gap: 12rpx; width: 100%; margin-top: 16rpx; }
+.request-action { flex: 1 1 0; width: 0; min-width: 0; height: 62rpx; min-height: 62rpx; margin: 0; padding: 0 12rpx; box-sizing: border-box; border-radius: 14rpx; color: #fff; font-size: 22rpx; font-weight: 950; line-height: 62rpx; }
 .request-action.accept { background: linear-gradient(135deg, #e60012, #ff263e); border: 0; box-shadow: 0 8rpx 18rpx rgba(230,0,18,.18); }
 .request-action.reject { background: rgba(255,255,255,.055); border: 1rpx solid rgba(255,255,255,.13); }
 .request-action[disabled] { opacity: .48; }

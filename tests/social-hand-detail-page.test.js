@@ -11,6 +11,8 @@ const root = path.resolve(__dirname, '..')
 const detailRoute = 'pages/social-hand-detail/social-hand-detail'
 const detailRoot = path.join(root, 'pages', 'social-hand-detail')
 const detailJs = path.join(detailRoot, 'social-hand-detail.js')
+const detailWxml = path.join(detailRoot, 'social-hand-detail.wxml')
+const detailWxss = path.join(detailRoot, 'social-hand-detail.wxss')
 
 test('hand detail route and four page files are registered before navigation is possible', () => {
   const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'))
@@ -479,6 +481,43 @@ function assertExactSnapshot(value) {
   value.actions.forEach(item => assertExactKeys(item, ['street', 'actor', 'type', 'amountBb']))
   value.showdown.forEach(item => assertExactKeys(item, ['actor', 'cards']))
 }
+
+test('action line groups streets and exposes actor, current contribution, and exact post-action pot', async () => {
+  const dto = expectedDetail('share-action-line', 'square', false)
+  dto.handSnapshot.players[0].label = '银狼'
+  dto.handSnapshot.actions = [
+    { street: 'preflop', actor: '银狼', type: 'raise', amountBb: 2.5 },
+    { street: 'preflop', actor: 'Hero', type: 'call', amountBb: 2.5 },
+    { street: 'flop', actor: 'Hero', type: 'bet', amountBb: 10 },
+    { street: 'flop', actor: '银狼', type: 'fold', amountBb: 0 }
+  ]
+  dto.handSnapshot.potBb = 16.5
+  const loaded = loadDetailPage({ responses: [dto] })
+  try {
+    const page = createInstance(loaded.definition)
+    await page.onLoad({ shareId: 'share-action-line' })
+    assert.deepEqual(page.data.actionTimeline.map(item => ({
+      streetStart: item.streetStart,
+      streetLabel: item.streetLabel,
+      actor: item.actor,
+      actorPosition: item.actorPosition,
+      typeLabel: item.typeLabel,
+      amountLabel: item.amountLabel,
+      potAfterLabel: item.potAfterLabel
+    })), [
+      { streetStart: true, streetLabel: '翻前', actor: '银狼', actorPosition: 'BB', typeLabel: '加注', amountLabel: '2.5 BB', potAfterLabel: '4 BB' },
+      { streetStart: false, streetLabel: '翻前', actor: 'Hero', actorPosition: 'BTN', typeLabel: '跟注', amountLabel: '2.5 BB', potAfterLabel: '6.5 BB' },
+      { streetStart: true, streetLabel: '翻牌', actor: 'Hero', actorPosition: 'BTN', typeLabel: '下注', amountLabel: '10 BB', potAfterLabel: '16.5 BB' },
+      { streetStart: false, streetLabel: '翻牌', actor: '银狼', actorPosition: 'BB', typeLabel: '弃牌', amountLabel: '', potAfterLabel: '16.5 BB' }
+    ])
+    const wxml = fs.readFileSync(detailWxml, 'utf8')
+    const wxss = fs.readFileSync(detailWxss, 'utf8')
+    assert.match(wxml, /行动后底池/)
+    assert.match(wxml, /class="action-position">\{\{item\.actorPosition\}\}<\/text>/)
+    assert.match(wxml, /class="comment-action reply-action"[^>]*>回复<\/view>/)
+    assert.match(wxss, /\.reply-action\s*\{[^}]*border:/s)
+  } finally { loaded.restore() }
+})
 
 function loadDetailPage(options = {}) {
   assert.equal(fs.existsSync(detailJs), true, 'Task 4 detail page is not implemented')

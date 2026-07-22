@@ -108,9 +108,11 @@
             <image class="feed-action-icon feed-comment-icon" src="/assets/social-icons/message-circle.svg" mode="aspectFit"></image>
             <text class="feed-action-copy">{{item.commentCount}} 条评论</text>
           </view>
-          <view class="feed-action feed-like-action {{item.likedByMe ? 'is-liked' : ''}}" data-share-id="{{item.shareId}}" catchtap="openHand" aria-label="点赞 {{item.likeCount}}">
-            <image wx:if="{{item.likedByMe}}" class="feed-action-icon" src="/assets/social-icons/heart-filled.svg" mode="aspectFit"></image>
-            <image wx:else class="feed-action-icon" src="/assets/social-icons/heart-outline.svg" mode="aspectFit"></image>
+          <view class="feed-action feed-like-action {{item.likedByMe ? 'is-liked' : ''}} {{item.likeSubmitting ? 'is-submitting' : ''}}" data-share-id="{{item.shareId}}" catchtap="toggleFeedLike" aria-label="点赞 {{item.likeCount}}">
+            <view class="feed-heart-stack">
+              <image class="feed-action-icon feed-heart-outline" src="/assets/social-icons/heart-outline.svg" mode="aspectFit"></image>
+              <image class="feed-action-icon feed-heart-filled" src="/assets/social-icons/heart-filled.svg" mode="aspectFit"></image>
+            </view>
             <text class="feed-action-count">{{item.likeCount}}</text>
           </view>
         </view>

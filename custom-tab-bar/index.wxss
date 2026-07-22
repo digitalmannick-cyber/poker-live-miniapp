@@ -31,16 +31,26 @@
   transition: transform 120ms ease, background 120ms ease;
 }
 
-.tab-social-dot {
+.tab-social-badge {
   position: absolute;
-  top: 10rpx;
-  right: calc(50% - 35rpx);
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 50%;
-  background: #e60012;
+  z-index: 2;
+  top: 4rpx;
+  right: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 7rpx;
+  box-sizing: border-box;
   border: 3rpx solid #121722;
-  box-shadow: 0 0 12rpx rgba(230,0,18,.55);
+  border-radius: 999rpx;
+  color: #fff;
+  background: linear-gradient(145deg, #ff3147, #d90012);
+  box-shadow: 0 4rpx 12rpx rgba(230,0,18,.42);
+  font-size: 16rpx;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .tab-item.active {

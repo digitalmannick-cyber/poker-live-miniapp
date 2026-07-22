@@ -61,6 +61,53 @@ function decorateCards(value, limit, street) {
   }))
 }
 
+const ACTION_LABELS = Object.freeze({
+  fold: '弃牌', check: '过牌', call: '跟注', bet: '下注', raise: '加注', all_in: '全下', allin: '全下'
+})
+const STREET_LABELS = Object.freeze({ preflop: '翻前', flop: '翻牌', turn: '转牌', river: '河牌' })
+
+function roundedBb(value) {
+  return Math.round((Number(value) || 0) * 100) / 100
+}
+
+function bbLabel(value) {
+  const rounded = roundedBb(value)
+  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : String(rounded)} BB`
+}
+
+function buildActionTimeline(snapshot) {
+  const source = snapshot || {}
+  const actions = Array.isArray(source.actions) ? source.actions : []
+  const positionsByActor = Object.create(null)
+  ;[source.hero].concat(Array.isArray(source.players) ? source.players : []).forEach(player => {
+    const label = text(player && player.label)
+    const position = text(player && player.position).toUpperCase()
+    if (label && position) positionsByActor[label] = position
+  })
+  const actionTotal = actions.reduce((sum, action) => sum + (Number.isFinite(action.amountBb) ? action.amountBb : 0), 0)
+  const finalPot = Number(source.potBb)
+  let runningPot = Number.isFinite(finalPot) ? Math.max(0, roundedBb(finalPot - actionTotal)) : 0
+  let previousStreet = ''
+  return actions.map((action, index) => {
+    const street = String(action.street || 'preflop').toLowerCase()
+    const type = String(action.type || '').toLowerCase()
+    const amount = Number.isFinite(action.amountBb) ? action.amountBb : 0
+    runningPot = roundedBb(runningPot + amount)
+    const streetStart = street !== previousStreet
+    previousStreet = street
+    return Object.assign({}, action, {
+      key: `${street}-${index}`,
+      streetStart,
+      streetLabel: STREET_LABELS[street] || street.toUpperCase(),
+      actorPosition: positionsByActor[text(action.actor)] || '',
+      typeLabel: ACTION_LABELS[type] || type,
+      amountLabel: amount > 0 ? bbLabel(amount) : '',
+      potAfterLabel: bbLabel(runningPot),
+      tone: type === 'raise' || type === 'bet' || type === 'all_in' || type === 'allin' ? 'aggressive' : (type === 'fold' ? 'fold' : 'passive')
+    })
+  })
+}
+
 function buildDetailVisuals(value) {
   const detail = value || {}
   const snapshot = detail.handSnapshot || {}
@@ -70,7 +117,8 @@ function buildDetailVisuals(value) {
     boardCardsVisual: []
       .concat(decorateCards(board.flop, 3, 'flop'))
       .concat(decorateCards(board.turn, 1, 'turn'))
-      .concat(decorateCards(board.river, 1, 'river'))
+      .concat(decorateCards(board.river, 1, 'river')),
+    actionTimeline: buildActionTimeline(snapshot)
   }
 }
 
@@ -302,6 +350,13 @@ function unavailableError(error) {
   return UNAVAILABLE_CODES.indexOf(text(error && error.code)) >= 0
 }
 
+function commentErrorMessage(error) {
+  const code = text(error && error.code)
+  if (code === 'COMMENT_CONTENT_BLOCKED') return '评论可能含有不适宜内容，请修改后重试'
+  if (code === 'COMMENT_CHECK_UNAVAILABLE') return '内容检测暂不可用，请稍后重试'
+  return '评论发送失败'
+}
+
 function eventValue(event, key) {
   return text(event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset[key])
 }
@@ -322,6 +377,7 @@ Page({
     detail: null,
     heroCardsVisual: [],
     boardCardsVisual: [],
+    actionTimeline: [],
     replayData: null,
     replayVisible: false,
     status: 'loading',
@@ -357,11 +413,12 @@ Page({
     this._commentsFlight = null
     this._likeFlight = null
     this._commentWriteFlight = null
+    this._pendingCommentUi = null
     const shareId = safeDecode(options && options.shareId)
     this._openReplayAfterLoad = text(options && (options.replay || options.autoplay)) === '1'
     this._openCommentsAfterLoad = text(options && options.section) === 'comments'
     this.invalidateDetail()
-    this.setData({ shareId, detail: null, heroCardsVisual: [], boardCardsVisual: [], replayData: null, replayVisible: false, status: 'loading', errorMessage: '' })
+    this.setData({ shareId, detail: null, heroCardsVisual: [], boardCardsVisual: [], actionTimeline: [], replayData: null, replayVisible: false, status: 'loading', errorMessage: '' })
     return this.loadDetail()
   },
 
@@ -381,6 +438,7 @@ Page({
 
   onHide() {
     this._detailVisible = false
+    this.rollbackPendingCommentUi()
     this.setData({ manageVisible: false, manageSubmitting: false, replayVisible: false })
     this.invalidateDetail()
   },
@@ -388,6 +446,7 @@ Page({
   onUnload() {
     this._detailAttached = false
     this._detailVisible = false
+    this.rollbackPendingCommentUi()
     this.setData({ manageVisible: false, manageSubmitting: false, replayVisible: false })
     this.invalidateDetail()
   },
@@ -417,6 +476,7 @@ Page({
       detail: null,
       heroCardsVisual: [],
       boardCardsVisual: [],
+      actionTimeline: [],
       status: 'loading',
       errorMessage: '',
       mySocialUserId: '',
@@ -439,6 +499,7 @@ Page({
           detail,
           heroCardsVisual: detailVisuals.heroCardsVisual,
           boardCardsVisual: detailVisuals.boardCardsVisual,
+          actionTimeline: detailVisuals.actionTimeline,
           replayData,
           replayVisible: !!(this._openReplayAfterLoad && replayData.available),
           status: 'ready',
@@ -569,6 +630,19 @@ Page({
   openReplay() {
     if (!this.data.replayData || !this.data.replayData.available) return
     this.setData({ replayVisible: true })
+  },
+
+  rollbackPendingCommentUi() {
+    const pending = this._pendingCommentUi
+    if (!pending) return
+    this._pendingCommentUi = null
+    this.setData({
+      comments: (this.data.comments || []).filter(item => item.commentId !== pending.optimisticId),
+      detail: this.data.detail ? Object.assign({}, this.data.detail, { commentCount: pending.previousCount }) : this.data.detail,
+      commentDraft: pending.previousDraft,
+      replyTo: pending.previousReplyTo,
+      commentSubmitting: false
+    })
   },
 
   closeReplay() {
@@ -708,7 +782,14 @@ Page({
     if (!shareId || !detail || this.data.status !== 'ready' || this.data.commentsStatus !== 'ready') return Promise.resolve()
     const liked = !detail.likedByMe
     const mutation = mutationChain(this, 'set_like', shareId, [liked])
-    this.setData({ likeSubmitting: true })
+    const previous = { likedByMe: detail.likedByMe, likeCount: detail.likeCount }
+    this.setData({
+      detail: Object.assign({}, detail, {
+        likedByMe: liked,
+        likeCount: Math.max(0, detail.likeCount + (liked ? 1 : -1))
+      }),
+      likeSubmitting: true
+    })
     const flight = (async () => {
       try {
         const result = copyLikeResult(await socialService.setLike({
@@ -723,7 +804,7 @@ Page({
         if (!this.isCurrentDetail(generation, shareId)) return
         if (unavailableError(error)) this.setData({ detail: null, status: 'unavailable', comments: [], commentsStatus: 'unavailable', likeSubmitting: false })
         else {
-          this.setData({ likeSubmitting: false })
+          this.setData({ detail: Object.assign({}, this.data.detail, previous), likeSubmitting: false })
           if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '操作失败，请重试', icon: 'none' })
         }
       }
@@ -793,7 +874,36 @@ Page({
     const generation = this._detailGeneration
     if (!shareId || !this.data.detail || this.data.status !== 'ready' || this.data.commentsStatus !== 'ready') return Promise.resolve()
     const mutation = mutationChain(this, 'create_comment', shareId, [input.parentCommentId, input.kind, input.text, input.stickerId])
-    this.setData({ commentSubmitting: true })
+    const previousDraft = this.data.commentDraft
+    const previousReplyTo = this.data.replyTo
+    const previousCount = this.data.detail.commentCount
+    const optimisticId = `pending-${mutation.id}`
+    const optimisticComment = {
+      commentId: optimisticId,
+      shareId,
+      parentCommentId: input.parentCommentId,
+      author: { socialUserId: this.data.mySocialUserId || 'me', nickname: '我', avatarUrl: '', avatarText: '我' },
+      kind: input.kind,
+      text: input.text,
+      stickerId: input.stickerId,
+      sticker: input.stickerId ? POKER_STICKER_BY_ID[input.stickerId] : null,
+      deleted: false,
+      createdAt: Date.now(),
+      isReply: !!input.parentCommentId,
+      canDelete: false,
+      canModerate: false,
+      pending: true
+    }
+    this._pendingCommentUi = { optimisticId, previousDraft, previousReplyTo, previousCount }
+    this.setData({
+      comments: mergeComments(this.data.comments, [optimisticComment], true),
+      detail: Object.assign({}, this.data.detail, { commentCount: previousCount + 1 }),
+      commentDraft: '',
+      commentSubmitting: true,
+      replyTo: null,
+      emojiPanelVisible: false,
+      stickerPanelVisible: false
+    })
     const flight = (async () => {
       try {
         const result = copyInteractionResult(await socialService.createComment({
@@ -805,8 +915,9 @@ Page({
           clientMutationId: mutation.id
         }), ['comment', 'commentCount'], shareId, this.data.mySocialUserId, this.data.detail && this.data.detail.canModerateComments)
         if (!this.isCurrentDetail(generation, shareId)) return
+        this._pendingCommentUi = null
         this.setData({
-          comments: mergeComments(this.data.comments, [result.comment], true),
+          comments: mergeComments(this.data.comments.filter(item => item.commentId !== optimisticId), [result.comment], true),
           detail: Object.assign({}, this.data.detail, { commentCount: result.commentCount }),
           commentDraft: '',
           commentSubmitting: false,
@@ -817,10 +928,17 @@ Page({
         clearMutationChain(this, 'create_comment', shareId, mutation)
       } catch (error) {
         if (!this.isCurrentDetail(generation, shareId)) return
+        this._pendingCommentUi = null
         if (unavailableError(error)) this.setData({ detail: null, status: 'unavailable', comments: [], commentsStatus: 'unavailable', commentSubmitting: false })
         else {
-          this.setData({ commentSubmitting: false })
-          if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: '评论发送失败', icon: 'none' })
+          this.setData({
+            comments: this.data.comments.filter(item => item.commentId !== optimisticId),
+            detail: Object.assign({}, this.data.detail, { commentCount: previousCount }),
+            commentDraft: input.kind === 'text' ? previousDraft : '',
+            replyTo: previousReplyTo,
+            commentSubmitting: false
+          })
+          if (typeof wx !== 'undefined' && wx.showToast) wx.showToast({ title: commentErrorMessage(error), icon: 'none' })
         }
       }
     })()
